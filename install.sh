@@ -8,6 +8,7 @@ START=true
 INSTALL_CRON=true
 REPLACE_CRON=false
 BUILD=true
+HEALTH_TIMEOUT_SECONDS=240
 
 usage() {
   cat <<'TXT'
@@ -59,6 +60,86 @@ read_env_value() {
   sed -n "s/^${key}=//p" "$ROOT/.env" | tail -n 1 | tr -d '\r\n'
 }
 
+project_version() {
+  sed -n 's:.*<Version>\([^<][^<]*\)</Version>.*:\1:p' \
+    "$ROOT/src/AudioBookRed.Api/AudioBookRed.Api.csproj" | head -n 1
+}
+
+show_api_diagnostics() {
+  local api_id health_status
+
+  echo
+  echo "Состояние Compose:" >&2
+  docker compose --env-file .env ps >&2 || true
+
+  api_id="$(docker compose --env-file .env ps -q api 2>/dev/null || true)"
+  if [[ -n "$api_id" ]]; then
+    health_status="$(docker inspect "$api_id" \
+      --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' \
+      2>/dev/null || true)"
+    echo "API container health: ${health_status:-unknown}" >&2
+
+    docker inspect "$api_id" \
+      --format '{{if .State.Health}}{{range .State.Health.Log}}{{.End}} exit={{.ExitCode}} {{printf "%q" .Output}}{{println}}{{end}}{{end}}' \
+      2>/dev/null | tail -n 10 >&2 || true
+  fi
+
+  echo "Последние логи API:" >&2
+  docker compose --env-file .env logs --tail=200 api >&2 || true
+}
+
+wait_for_api() {
+  local port="$1"
+  local expected_version="$2"
+  local deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
+  local health_file api_id health_status actual_version status
+
+  health_file="$(mktemp)"
+  api_id="$(docker compose --env-file .env ps -q api 2>/dev/null || true)"
+
+  while (( SECONDS < deadline )); do
+    if curl --fail --silent --show-error \
+      --connect-timeout 3 --max-time 10 \
+      "http://127.0.0.1:$port/health" >"$health_file" 2>/dev/null; then
+
+      read -r status actual_version < <(
+        python3 - "$health_file" <<'PY'
+import json
+import sys
+
+try:
+    payload = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    print("", "")
+else:
+    print(payload.get("status", ""), payload.get("version", ""))
+PY
+      )
+
+      if [[ "$status" == "ok" && "$actual_version" == "$expected_version" ]]; then
+        python3 -m json.tool "$health_file"
+        rm -f "$health_file"
+        return 0
+      fi
+    fi
+
+    if [[ -n "$api_id" ]]; then
+      health_status="$(docker inspect "$api_id" \
+        --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' \
+        2>/dev/null || true)"
+      if [[ "$health_status" == "unhealthy" ]]; then
+        rm -f "$health_file"
+        return 1
+      fi
+    fi
+
+    sleep 2
+  done
+
+  rm -f "$health_file"
+  return 1
+}
+
 [[ $EUID -eq 0 ]] || fail "запустите скрипт от root"
 require_command docker
 require_command curl
@@ -71,6 +152,7 @@ docker compose version >/dev/null 2>&1 || fail "требуется Docker Compos
 cd "$ROOT"
 [[ -f docker-compose.yml ]] || fail "не найден $ROOT/docker-compose.yml"
 [[ -f scripts/audiobookred-source ]] || fail "не найден scripts/audiobookred-source"
+[[ -f src/AudioBookRed.Api/AudioBookRed.Api.csproj ]] || fail "не найден файл проекта API"
 
 # Шаблон нужен только для новой установки. Существующий рабочий .env
 # не должен блокироваться из-за отсутствующего .env.example.
@@ -78,9 +160,8 @@ if [[ ! -f .env ]]; then
   [[ -f .env.example ]] || fail "не найден $ROOT/.env.example; обновите checkout из $REPOSITORY"
 fi
 
-chmod +x install.sh backup-db.sh restore-db.sh update.sh uninstall.sh doctor.sh \
-  scripts/audiobookred-source scripts/install-from-github.sh
-
+# Не меняем режимы отслеживаемых Git-файлов: это делало checkout грязным
+# на серверах, где executable bit учитывается. Все repo-скрипты вызываются через bash.
 if [[ -d .git ]]; then
   origin="$(git remote get-url origin 2>/dev/null || true)"
   if [[ -n "$origin" && "$origin" != "$REPOSITORY" && "$origin" != "git@github.com:ivzaislu/audiobookred.git" ]]; then
@@ -106,10 +187,12 @@ api_key="$(read_env_value API_KEY)"
 db_password="$(read_env_value DB_PASSWORD)"
 port="$(read_env_value AUDIOBOOKRED_PORT)"
 port="${port:-9117}"
+expected_version="$(project_version)"
 
 [[ -n "$api_key" && "$api_key" != "change-me" ]] || fail "задайте безопасный API_KEY в $ROOT/.env"
 [[ -n "$db_password" && "$db_password" != "change-me" ]] || fail "задайте безопасный DB_PASSWORD в $ROOT/.env"
 [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || fail "AUDIOBOOKRED_PORT должен быть числом 1..65535"
+[[ -n "$expected_version" ]] || fail "не удалось определить версию проекта"
 
 free_kb="$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')"
 if [[ "$free_kb" =~ ^[0-9]+$ ]]; then
@@ -129,6 +212,7 @@ docker compose --env-file .env config >/dev/null
   printf 'AUDIOBOOKRED_BRANCH=%q\n' "$BRANCH"
 } > /etc/default/audiobookred
 chmod 644 /etc/default/audiobookred
+
 install -m 0755 scripts/audiobookred-source /usr/local/sbin/audiobookred-source
 
 if $INSTALL_CRON; then
@@ -162,21 +246,21 @@ fi
 
 docker compose --env-file .env up -d --remove-orphans
 
-echo "Ожидание API на порту $port..."
-health_file="$(mktemp)"
-trap 'rm -f "$health_file"' EXIT
-for _ in $(seq 1 90); do
-  if curl -fsS "http://127.0.0.1:$port/health" >"$health_file" 2>/dev/null; then
-    python3 -m json.tool "$health_file"
-    host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    echo "AudioBookRed запущен."
-    echo "UI: http://${host_ip:-SERVER_IP}:$port/ui/"
-    echo "Обновление: cd '$ROOT' && sudo bash update.sh"
-    exit 0
-  fi
-  sleep 2
-done
+echo "Ожидание готовности AudioBookRed $expected_version на порту $port..."
+if ! wait_for_api "$port" "$expected_version"; then
+  show_api_diagnostics
+  fail "API не стал готов за ${HEALTH_TIMEOUT_SECONDS} секунд"
+fi
 
-echo "API не ответил за 180 секунд. Последние логи:" >&2
-docker compose --env-file .env logs --tail=200 api >&2
-exit 4
+api_id="$(docker compose --env-file .env ps -q api 2>/dev/null || true)"
+if [[ -n "$api_id" ]]; then
+  health_status="$(docker inspect "$api_id" \
+    --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' \
+    2>/dev/null || true)"
+  echo "API container health: ${health_status:-unknown}"
+fi
+
+host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+echo "AudioBookRed запущен."
+echo "UI: http://${host_ip:-SERVER_IP}:$port/ui/"
+echo "Обновление: cd '$ROOT' && sudo bash update.sh"

@@ -3,6 +3,12 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FULL=false
+TMP_DIR=""
+
+cleanup() {
+  [[ -n "$TMP_DIR" ]] && rm -rf "$TMP_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 for arg in "$@"; do
   case "$arg" in
@@ -31,8 +37,15 @@ if command -v git >/dev/null 2>&1; then
     [[ "$origin" == "https://github.com/ivzaislu/audiobookred.git" || "$origin" == "git@github.com:ivzaislu/audiobookred.git" ]] \
       && ok "Git origin: $origin" || warn "Git origin: ${origin:-не задан}"
     ok "Git: ${branch:-detached}@${commit:-unknown}"
-    [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ]] \
-      && ok "Git checkout без локальных изменений" || warn "В Git checkout есть локальные изменения"
+
+    git_status="$(git -C "$ROOT" status --porcelain --untracked-files=normal)"
+    if [[ -z "$git_status" ]]; then
+      ok "Git checkout без локальных изменений"
+    else
+      warn "В Git checkout есть локальные изменения"
+      printf '%s\n' "$git_status"
+      git -C "$ROOT" diff --summary || true
+    fi
   else
     warn "каталог не является Git checkout; update.sh не сможет обновлять проект"
   fi
@@ -47,6 +60,9 @@ else
   err "Docker не установлен"
 fi
 
+command -v curl >/dev/null 2>&1 && ok "curl доступен" || err "curl не установлен"
+command -v python3 >/dev/null 2>&1 && ok "python3 доступен" || err "python3 не установлен"
+
 if [[ -f "$ROOT/.env.example" ]]; then
   ok ".env.example найден"
 elif [[ -f "$ROOT/.env" ]]; then
@@ -55,6 +71,7 @@ else
   err "не найдены ни $ROOT/.env, ни $ROOT/.env.example"
 fi
 
+api_key=""
 if [[ -f "$ROOT/.env" ]]; then
   mode="$(stat -c '%a' "$ROOT/.env" 2>/dev/null || true)"
   [[ "$mode" == "600" ]] && ok ".env найден, права 600" || warn ".env найден, рекомендуемые права 600; текущие ${mode:-unknown}"
@@ -78,6 +95,8 @@ if [[ "$free_kb" =~ ^[0-9]+$ ]]; then
   fi
 fi
 
+TMP_DIR="$(mktemp -d)"
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && [[ -f "$ROOT/.env" ]]; then
   cd "$ROOT"
   if docker compose --env-file .env config >/dev/null 2>&1; then
@@ -95,12 +114,37 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
     err "PostgreSQL не отвечает"
   fi
 
+  api_id="$(docker compose --env-file .env ps -q api 2>/dev/null || true)"
+  if [[ -n "$api_id" ]]; then
+    health_status="$(docker inspect "$api_id" \
+      --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' \
+      2>/dev/null || true)"
+    case "$health_status" in
+      healthy) ok "API container health: healthy" ;;
+      starting) warn "API container health: starting" ;;
+      not-configured) warn "API container healthcheck не настроен; требуется пересборка после патча 4" ;;
+      *) err "API container health: ${health_status:-unknown}" ;;
+    esac
+  else
+    err "контейнер API не найден"
+  fi
+
   port="$(sed -n 's/^AUDIOBOOKRED_PORT=//p' .env | tail -n 1 | tr -d '\r\n')"
   port="${port:-9117}"
-  if command -v curl >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:$port/health" >/tmp/audiobookred-doctor-health.json 2>/dev/null; then
-    ok "API health check на порту $port"
-    python3 -m json.tool /tmp/audiobookred-doctor-health.json 2>/dev/null || cat /tmp/audiobookred-doctor-health.json
-    rm -f /tmp/audiobookred-doctor-health.json
+  health_file="$TMP_DIR/health.json"
+
+  if command -v curl >/dev/null 2>&1 && curl --fail --silent --show-error \
+    --connect-timeout 3 --max-time 10 \
+    "http://127.0.0.1:$port/health" >"$health_file" 2>/dev/null; then
+    ok "API health endpoint на порту $port"
+    if command -v python3 >/dev/null 2>&1; then
+      python3 -m json.tool "$health_file" 2>/dev/null || {
+        cat "$health_file"
+        warn "health endpoint вернул некорректный JSON"
+      }
+    else
+      cat "$health_file"
+    fi
   else
     err "API не отвечает на http://127.0.0.1:$port/health"
   fi
@@ -113,10 +157,49 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
     volume="$(docker inspect "$db_id" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)"
   fi
   [[ -n "$volume" ]] && ok "PostgreSQL volume: $volume" || warn "не удалось определить PostgreSQL volume контейнера db"
+
+  if $FULL && [[ -n "$api_key" ]] && command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    caps_file="$TMP_DIR/caps.xml"
+    if curl --fail --silent --show-error --get \
+      --connect-timeout 3 --max-time 20 \
+      --data-urlencode 't=caps' \
+      --data-urlencode "apikey=$api_key" \
+      "http://127.0.0.1:$port/torznab/api" >"$caps_file" 2>/dev/null; then
+
+      if python3 - "$caps_file" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+assert root.tag == "caps"
+assert root.find("./categories/category/subcat[@id='3030']") is not None
+assert root.find("./searching/book-search[@available='yes']") is not None
+PY
+      then
+        ok "Torznab caps"
+      else
+        err "Torznab caps вернул неожиданный XML"
+      fi
+    else
+      err "Torznab caps недоступен"
+    fi
+  fi
 fi
 
 [[ -x /usr/local/sbin/audiobookred-source ]] && ok "CLI установлен" || warn "CLI /usr/local/sbin/audiobookred-source не установлен"
-[[ -f /etc/default/audiobookred ]] && ok "/etc/default/audiobookred установлен" || warn "/etc/default/audiobookred отсутствует"
+
+if [[ -f /etc/default/audiobookred ]]; then
+  ok "/etc/default/audiobookred установлен"
+  expected_root_line="AUDIOBOOKRED_ROOT=$ROOT"
+  if grep -Fxq "$expected_root_line" /etc/default/audiobookred; then
+    ok "системный путь совпадает с checkout"
+  else
+    warn "AUDIOBOOKRED_ROOT в /etc/default/audiobookred не совпадает с $ROOT"
+  fi
+else
+  warn "/etc/default/audiobookred отсутствует"
+fi
+
 [[ -f /etc/cron.d/audiobookred ]] && ok "cron установлен" || warn "cron не установлен"
 [[ -f /etc/logrotate.d/audiobookred ]] && ok "logrotate установлен" || warn "logrotate не установлен"
 

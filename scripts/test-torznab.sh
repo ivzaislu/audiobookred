@@ -15,10 +15,30 @@ API_KEY="$(sed -n 's/^API_KEY=//p' "$ENV_FILE" | tail -1 | tr -d '\r\n')"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-curl -fsS -G \
+curl_common=(
+  --fail
+  --silent
+  --show-error
+  --connect-timeout 5
+  --max-time 30
+)
+
+curl "${curl_common[@]}" "$BASE_URL/health" >"$TMP_DIR/health.json"
+
+python3 - "$TMP_DIR/health.json" <<'PY'
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload.get("status") == "ok", payload
+assert payload.get("service") == "audiobookred", payload
+print(f"health: ok, version={payload.get('version', 'unknown')}")
+PY
+
+curl "${curl_common[@]}" -G \
   --data-urlencode 't=caps' \
   --data-urlencode "apikey=$API_KEY" \
-  "$BASE_URL/torznab/api" > "$TMP_DIR/caps.xml"
+  "$BASE_URL/torznab/api" >"$TMP_DIR/caps.xml"
 
 python3 - "$TMP_DIR/caps.xml" <<'PY'
 import sys
@@ -34,11 +54,11 @@ assert root.find("./categories/category/subcat[@id='3030']") is not None
 print("caps: ok")
 PY
 
-curl -fsS -G \
+curl "${curl_common[@]}" -G \
   --data-urlencode 't=search' \
   --data-urlencode 'limit=1' \
   --data-urlencode "apikey=$API_KEY" \
-  "$BASE_URL/torznab/api" > "$TMP_DIR/search.xml"
+  "$BASE_URL/torznab/api" >"$TMP_DIR/search.xml"
 
 python3 - "$TMP_DIR/search.xml" <<'PY'
 import sys
@@ -54,10 +74,14 @@ assert "offset" in response.attrib and "total" in response.attrib
 print(f"search: ok, total={response.attrib['total']}")
 PY
 
-status="$(curl -sS -o "$TMP_DIR/error.xml" -w '%{http_code}' -G \
-  --data-urlencode 't=caps' \
-  --data-urlencode 'apikey=incorrect-key' \
-  "$BASE_URL/torznab/api")"
+status="$(
+  curl --silent --show-error \
+    --connect-timeout 5 --max-time 30 \
+    -o "$TMP_DIR/error.xml" -w '%{http_code}' -G \
+    --data-urlencode 't=caps' \
+    --data-urlencode 'apikey=incorrect-key' \
+    "$BASE_URL/torznab/api"
+)"
 [[ "$status" == "401" ]] || { echo "Ожидался HTTP 401, получен $status" >&2; exit 1; }
 
 python3 - "$TMP_DIR/error.xml" <<'PY'
