@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AudioBookRed — поиск аудиокниг</title>
+  <link rel="stylesheet" href="./styles.css?v=8">
+</head>
+<body>
+  <main id="page">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand" aria-label="AudioBookRed">
+          <span class="brand-main">AudioBook</span><span class="brand-accent">Red</span>
+        </div>
+        <button id="databaseStats" class="database-stats" type="button" aria-live="polite" aria-expanded="false" hidden></button>
+        <div id="databaseStatsDetails" class="database-stats-details" hidden></div>
+      </div>
+      <div class="topbar-actions">
+        <span id="apiStatus" class="api-status">API</span>
+        <button id="apiKeyButton" class="secondary-button" type="button">API-ключ</button>
+        <a class="secondary-button link-button" href="/swagger" target="_blank" rel="noopener">Swagger</a>
+      </div>
+    </header>
+
+    <section id="searchForm" aria-label="Поиск аудиокниг">
+      <form id="search" autocomplete="off">
+        <div class="search-line-field">
+          <label class="sr-only" for="q">Название, автор или серия</label>
+          <input id="q" name="q" placeholder="Название аудиокниги, автор или серия" type="search">
+          <button id="submitButton" type="submit">Найти</button>
+        </div>
+
+        <div class="search-options">
+          <label class="limit-field">
+            <span>Лимит результатов</span>
+            <select id="limit" name="limit">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="250">250</option>
+            </select>
+          </label>
+        </div>
+      </form>
+
+      <div id="filterArea" class="client-filters" hidden>
+        <label>
+          <span>Автор</span>
+          <select id="authorFilter"><option value="">Любой</option></select>
+        </label>
+        <label>
+          <span>Чтец</span>
+          <select id="narratorFilter"><option value="">Любой</option></select>
+        </label>
+        <label>
+          <span>Серия</span>
+          <select id="seriesFilter"><option value="">Любая</option></select>
+        </label>
+        <label>
+          <span>Источник</span>
+          <select id="sourceFilter"><option value="">Любой</option></select>
+        </label>
+        <label>
+          <span>Формат</span>
+          <select id="formatFilter"><option value="">Любой</option></select>
+        </label>
+        <label>
+          <span>Качество</span>
+          <select id="qualityFilter"><option value="">Любое</option></select>
+        </label>
+        <label>
+          <span>Год</span>
+          <select id="yearFilter"><option value="">Любой</option></select>
+        </label>
+        <label>
+          <span>Magnet</span>
+          <select id="magnetFilter">
+            <option value="">Все</option>
+            <option value="yes">Есть</option>
+            <option value="no">Нет</option>
+          </select>
+        </label>
+        <button id="resetFilters" class="secondary-button reset-button" type="button">Сбросить</button>
+      </div>
+
+      <p id="facetHint" class="facet-hint" hidden>Фильтры пересчитываются по всей базе. Если запрос совпал с автором, чтецом или серией, список показывает только прямые совпадения.</p>
+
+      <div id="sortBar" class="sort-bar" hidden>
+        <span>Сортировка:</span>
+        <label><input type="radio" name="sort" value="seeders" checked> по сидам</label>
+        <label><input type="radio" name="sort" value="updatedAt"> по дате</label>
+        <label><input type="radio" name="sort" value="sizeBytes"> по размеру</label>
+        <label><input type="radio" name="sort" value="title"> по названию</label>
+      </div>
+    </section>
+
+    <section id="summaryRow" class="summary-row" aria-live="polite" hidden>
+      <div id="summary"></div>
+      <button id="reloadButton" class="text-button" type="button">Обновить</button>
+    </section>
+
+    <section id="results" aria-live="polite"></section>
+
+    <section id="welcome" class="welcome-panel" aria-live="polite">
+      <svg class="welcome-icon" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="27" cy="27" r="17"></circle>
+        <path d="M40 40 55 55"></path>
+      </svg>
+      <h1>Начните поиск</h1>
+      <p>Введите название аудиокниги, автора или серию. Результаты появятся после запроса.</p>
+    </section>
+
+    <div id="noresults" class="message" hidden>По заданному запросу ничего не найдено.</div>
+    <div id="loading" class="message" hidden>Поиск…</div>
+    <div id="error" class="message error-message" hidden></div>
+
+    <footer class="footer">
+      <span>AudioBookRed 0.17.4.1</span>
+      <span>Интерфейс адаптирован по структуре JacRed для каталога аудиокниг.</span>
+    </footer>
+  </main>
+
+  <template id="releaseTemplate">
+    <article class="release-card">
+      <div class="release-main">
+        <div class="release-heading">
+          <a class="release-title" target="_blank" rel="noopener noreferrer"></a>
+          <span class="source-badge"></span>
+        </div>
+        <div class="release-subtitle"></div>
+        <div class="release-meta"></div>
+      </div>
+      <div class="release-footer">
+        <div class="stats"></div>
+        <div class="actions"></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="./app.js?v=8" defer></script>
+</body>
+</html>

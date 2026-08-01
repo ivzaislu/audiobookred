@@ -1,0 +1,65 @@
+name: audiobookred
+
+services:
+  api:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ApiKey: ${API_KEY:?Set API_KEY in .env}
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=audiobookred;Username=audiobookred;Password=${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      RuTracker__BaseUrl: ${RUTRACKER_BASE_URL:-https://rutracker.org}
+      RuTracker__Username: ${RUTRACKER_USERNAME:-}
+      RuTracker__Password: ${RUTRACKER_PASSWORD:-}
+      RuTracker__DefaultForumId: ${RUTRACKER_FORUM_ID:-2388}
+      RuTrackerAlias__Url: ${RUTRACKER_ALIAS_URL:-}
+      RuTrackerAlias__Token: ${RUTRACKER_ALIAS_TOKEN:-}
+      RuTrackerProxy__Url: ${RUTRACKER_PROXY_URL:-}
+      RuTrackerProxy__Username: ${RUTRACKER_PROXY_USERNAME:-}
+      RuTrackerProxy__Password: ${RUTRACKER_PROXY_PASSWORD:-}
+      RuTrackerNetwork__TimeoutSeconds: ${RUTRACKER_NETWORK_TIMEOUT_SECONDS:-45}
+      RuTrackerNetwork__SessionHours: ${RUTRACKER_SESSION_HOURS:-168}
+      RuTrackerAtom__Enabled: ${RUTRACKER_ATOM_ENABLED:-false}
+      RuTrackerAtom__BaseUrl: ${RUTRACKER_ATOM_BASE_URL:-https://feed.rutracker.cc}
+      RuTrackerAtom__ForumIds: ${RUTRACKER_ATOM_FORUM_IDS:-2388}
+      RuTrackerAtom__IntervalMinutes: ${RUTRACKER_ATOM_INTERVAL_MINUTES:-15}
+      RuTrackerAtom__MaxEntries: ${RUTRACKER_ATOM_MAX_ENTRIES:-50}
+      RuTrackerMagnet__Enabled: ${RUTRACKER_MAGNET_ENABLED:-false}
+      RuTrackerMagnet__IntervalMinutes: ${RUTRACKER_MAGNET_INTERVAL_MINUTES:-10}
+      RuTrackerMagnet__BatchSize: ${RUTRACKER_MAGNET_BATCH_SIZE:-20}
+      RuTrackerMagnet__DelayMilliseconds: ${RUTRACKER_MAGNET_DELAY_MS:-2000}
+      RuTrackerMagnet__MaxAttempts: ${RUTRACKER_MAGNET_MAX_ATTEMPTS:-5}
+      RuTrackerMagnet__RetryMinutes: ${RUTRACKER_MAGNET_RETRY_MINUTES:-60}
+    ports:
+      - "9117:9117"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: audiobookred
+      POSTGRES_USER: audiobookred
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - audiobookred-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audiobookred -d audiobookred"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  audiobookred-db:

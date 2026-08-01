@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[ -r /etc/default/audiobookred ] && . /etc/default/audiobookred
+ROOT="${AUDIOBOOKRED_ROOT:-/opt/audiobookred}"
+BASE_URL="${AUDIOBOOKRED_URL:-http://127.0.0.1:9117}"
+SOURCE="${1:-}"
+COMMAND="${2:-}"
+ARG="${3:-}"
+ARG2="${4:-}"
+
+usage() {
+  cat <<'TXT'
+Использование:
+  audiobookred-source <source> discover
+  audiobookred-source <source> bootstrap
+  audiobookred-source <source> work [1..16]
+  audiobookred-source <source> latest
+  audiobookred-source <source> incremental
+  audiobookred-source <source> reconcile
+  audiobookred-source <source> completeness
+  audiobookred-source <source> retry-topics
+  audiobookred-source <source> status
+  audiobookred-source <source> events [limit]
+  audiobookred-source <source> settings
+  audiobookred-source <source> set <параметр> <значение>
+  audiobookred-source <source> pause
+  audiobookred-source <source> resume
+  audiobookred-source <source> retry-failed [bootstrap|incremental|reconcile]
+  audiobookred-source <source> reset-bootstrap
+  audiobookred-source <source> maintenance
+  audiobookred-source <source> stats-refresh
+
+Параметры set:
+  enabled true|false
+  incrementalPages 1..10
+  workerJobLimit 1..16
+  pageConcurrency 1..8
+  detailConcurrency 1..16
+  requestDelayMilliseconds 0..10000
+  maximumAttempts 1..20
+TXT
+}
+
+[[ -n "$SOURCE" && -n "$COMMAND" ]] || { usage >&2; exit 2; }
+[[ "$SOURCE" =~ ^[a-z0-9_-]+$ ]] || { echo "Недопустимое имя источника" >&2; exit 2; }
+[[ -f "$ROOT/.env" ]] || { echo "Не найден $ROOT/.env" >&2; exit 1; }
+
+API_KEY="$(sed -n 's/^API_KEY=//p' "$ROOT/.env" | tail -n 1 | tr -d '\r\n')"
+[[ -n "$API_KEY" ]] || { echo "API_KEY отсутствует в $ROOT/.env" >&2; exit 1; }
+
+request() {
+  local method="$1"
+  local path="$2"
+  local max_time="${3:-480}"
+  local body="${4:-}"
+  local args=(
+    --fail-with-body --silent --show-error
+    --connect-timeout 20 --max-time "$max_time"
+    -X "$method" -H "X-Api-Key: $API_KEY"
+  )
+  if [[ -n "$body" ]]; then
+    args+=( -H 'Content-Type: application/json' --data "$body" )
+  fi
+  curl "${args[@]}" "$BASE_URL$path"
+}
+
+pretty() {
+  python3 -m json.tool 2>/dev/null || cat
+}
+
+base="/api/v1/sources/$SOURCE"
+
+case "$COMMAND" in
+  status)
+    request GET "$base/crawl/status" 60 | pretty
+    ;;
+  discover|bootstrap|bootstrap-start)
+    request POST "$base/bootstrap/discover" 300 | pretty
+    ;;
+  work)
+    limit="${ARG:-3}"
+    [[ "$limit" =~ ^[0-9]+$ ]] && (( limit >= 1 && limit <= 16 )) || {
+      echo "limit должен быть 1..16" >&2; exit 2;
+    }
+    request POST "$base/work?limit=$limit" 540 | pretty
+    ;;
+  latest|incremental|incremental-enqueue)
+    request POST "$base/incremental/enqueue" 120 | pretty
+    ;;
+  reconcile)
+    request POST "$base/reconcile" 600 | pretty
+    ;;
+  completeness|topic-status)
+    request GET "$base/completeness" 120 | pretty
+    ;;
+  retry-topics)
+    request POST "$base/topics/retry-failed" 120 | pretty
+    ;;
+  events)
+    limit="${ARG:-20}"
+    [[ "$limit" =~ ^[0-9]+$ ]] || { echo "limit должен быть числом" >&2; exit 2; }
+    request GET "$base/events?limit=$limit" 60 | pretty
+    ;;
+  settings)
+    request GET "$base/settings" 60 | pretty
+    ;;
+  set)
+    [[ -n "$ARG" && -n "$ARG2" ]] || { usage >&2; exit 2; }
+    body="$(python3 - "$ARG" "$ARG2" <<'PY'
+import json, sys
+key, raw = sys.argv[1:]
+allowed = {
+    'enabled', 'incrementalPages', 'workerJobLimit', 'pageConcurrency',
+    'detailConcurrency', 'requestDelayMilliseconds', 'maximumAttempts'
+}
+if key not in allowed:
+    raise SystemExit(f'Неизвестный параметр: {key}')
+if key == 'enabled':
+    value = raw.lower()
+    if value not in {'true', 'false'}:
+        raise SystemExit('enabled должен быть true или false')
+    parsed = value == 'true'
+else:
+    parsed = int(raw)
+print(json.dumps({key: parsed}, ensure_ascii=False))
+PY
+)"
+    request PUT "$base/settings" 60 "$body" | pretty
+    ;;
+  pause)
+    request POST "$base/bootstrap/pause" 60 | pretty
+    ;;
+  resume)
+    request POST "$base/bootstrap/resume" 60 | pretty
+    ;;
+  retry-failed)
+    if [[ -n "$ARG" ]]; then
+      [[ "$ARG" == "bootstrap" || "$ARG" == "incremental" || "$ARG" == "reconcile" ]] || {
+        echo "mode должен быть bootstrap, incremental или reconcile" >&2; exit 2;
+      }
+      request POST "$base/jobs/retry-failed?mode=$ARG" 60 | pretty
+    else
+      request POST "$base/jobs/retry-failed" 60 | pretty
+    fi
+    ;;
+  reset-bootstrap)
+    request POST "$base/bootstrap/reset" 60 | pretty
+    ;;
+  maintenance)
+    request POST "$base/maintenance" 120 | pretty
+    ;;
+  stats-refresh)
+    request POST /api/v1/stats/refresh 120 | pretty
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

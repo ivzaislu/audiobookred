@@ -1,0 +1,10 @@
+/var/log/audiobookred-*.log {
+    daily
+    rotate 7
+    size 20M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

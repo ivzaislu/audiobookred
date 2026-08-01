@@ -1,0 +1,39 @@
+# AudioBookRed — пример единого файла cron.
+# install.sh устанавливает этот файл в /etc/cron.d/audiobookred.
+# Удалите или закомментируйте ненужные задачи после установки.
+#
+# Обязательные поля /etc/cron.d: minute hour day month weekday user command
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# -----------------------------------------------------------------------------
+# RuTracker
+# -----------------------------------------------------------------------------
+
+# Постоянный короткий worker. Берёт до 3 страниц из общей очереди.
+# flock не позволяет наложиться двум экземплярам одного worker.
+* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work 3 >> /var/log/audiobookred-rutracker-worker.log 2>&1
+
+# Первые N страниц категорий — поиск новых раздач каждый час.
+17 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1
+
+# Обновление кэшированной статистики для UI.
+*/10 * * * * root /usr/bin/flock -n /run/lock/audiobookred-stats.lock /usr/bin/timeout 2m /usr/local/sbin/audiobookred-source rutracker stats-refresh >> /var/log/audiobookred-maintenance.log 2>&1
+
+# Повтор окончательно упавших страниц. Не обязателен: можно запускать вручную.
+23 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-retry.lock /usr/bin/timeout 2m /usr/local/sbin/audiobookred-source rutracker retry-failed >> /var/log/audiobookred-rutracker-retry.log 2>&1
+
+# Очистка старых завершённых заданий/событий и обновление статистики.
+42 3 * * * root /usr/bin/flock -n /run/lock/audiobookred-maintenance.lock /usr/bin/timeout 5m /usr/local/sbin/audiobookred-source rutracker maintenance >> /var/log/audiobookred-maintenance.log 2>&1
+
+# Полный bootstrap в cron НЕ добавляется. Он запускается вручную один раз:
+#   /usr/local/sbin/audiobookred-source rutracker discover
+# После discover минутный worker автоматически обработает весь каталог.
+
+# -----------------------------------------------------------------------------
+# Следующий источник
+# -----------------------------------------------------------------------------
+# Для нового источника добавляется такой же набор строк, но со своим именем,
+# lock-файлами и смещёнными минутами. Пример:
+# * * * * * root /usr/bin/flock -n /run/lock/audiobookred-source2-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source source2 work 3 >> /var/log/audiobookred-source2-worker.log 2>&1
+# 47 */12 * * * root /usr/bin/flock -n /run/lock/audiobookred-source2-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source source2 latest >> /var/log/audiobookred-source2-latest.log 2>&1
