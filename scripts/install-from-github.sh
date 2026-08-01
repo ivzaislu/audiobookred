@@ -55,9 +55,11 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
     "$REPOSITORY"|git@github.com:ivzaislu/audiobookred.git) ;;
     *) fail "$INSTALL_DIR уже является другим Git-репозиторием: ${origin:-origin не задан}" ;;
   esac
+
   if [[ -n "$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=normal)" ]]; then
     fail "в $INSTALL_DIR есть локальные изменения; сохраните их перед установкой"
   fi
+
   git -C "$INSTALL_DIR" fetch --prune --tags origin
   if git -C "$INSTALL_DIR" show-ref --verify --quiet "refs/heads/$BRANCH"; then
     git -C "$INSTALL_DIR" checkout "$BRANCH"
@@ -66,7 +68,7 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
   fi
   git -C "$INSTALL_DIR" pull --ff-only origin "$BRANCH"
 elif [[ -e "$INSTALL_DIR" ]] && [[ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
-  fail "$INSTALL_DIR существует и не является Git checkout. Для старой установки используйте scripts/migrate-existing-install.sh"
+  fail "$INSTALL_DIR существует и не является Git checkout. Используйте пустой каталог или выберите другой путь через --dir."
 else
   rm -rf "$INSTALL_DIR"
   git clone --branch "$BRANCH" --single-branch "$REPOSITORY" "$INSTALL_DIR"

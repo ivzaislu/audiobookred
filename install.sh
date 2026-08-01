@@ -79,7 +79,7 @@ if [[ ! -f .env ]]; then
 fi
 
 chmod +x install.sh backup-db.sh restore-db.sh update.sh uninstall.sh doctor.sh \
-  scripts/audiobookred-source scripts/install-from-github.sh scripts/migrate-existing-install.sh
+  scripts/audiobookred-source scripts/install-from-github.sh
 
 if [[ -d .git ]]; then
   origin="$(git remote get-url origin 2>/dev/null || true)"
