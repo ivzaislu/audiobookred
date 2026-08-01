@@ -42,6 +42,54 @@ sudo audiobookred-source rutracker set requestDelayMilliseconds 150
 
 Значение `work N` в `/etc/cron.d/audiobookred` должно соответствовать `workerJobLimit`.
 
+## Atom discovery worker
+
+Atom worker по умолчанию отключён. Он получает свежие темы из Atom feed и передаёт их в основной pipeline RuTracker:
+
+```text
+Atom feed
+  → source_topic_jobs
+  → RuTracker detail processor
+  → magnet и метаданные
+  → audiobook_releases
+```
+
+Он не создаёт отдельную параллельную базу и использует те же ограничения, повторные попытки и дедупликацию, что и обычный crawler.
+
+Включение:
+
+```bash
+cd /opt/audiobookred
+sed -i 's/^RUTRACKER_ATOM_ENABLED=.*/RUTRACKER_ATOM_ENABLED=true/' .env
+docker compose --env-file .env up -d --force-recreate api
+```
+
+Статус:
+
+```bash
+API_KEY="$(sed -n 's/^API_KEY=//p' .env | tail -1)"
+
+curl -fsS \
+  -H "X-Api-Key: $API_KEY" \
+  http://127.0.0.1:9117/api/v1/sources/rutracker/atom/status \
+  | python3 -m json.tool
+```
+
+Ручной запуск одного прохода:
+
+```bash
+curl -fsS -X POST \
+  -H "X-Api-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"maxEntries":20}' \
+  http://127.0.0.1:9117/api/v1/sources/rutracker/atom/import \
+  | python3 -m json.tool
+```
+
+Параллельные ручной и фоновый проходы не выполняются: второй запрос получает `409 Conflict`.
+
+`RUTRACKER_MAGNET_ENABLED` пока следует оставлять `false`. Отдельный legacy Magnet worker не используется; magnet получает основной detail processor из очереди тем.
+
 ## Обновление
 
 ```bash

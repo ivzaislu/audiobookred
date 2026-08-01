@@ -1,4 +1,3 @@
-using AudioBookRed.Api.Data;
 using AudioBookRed.Api.Models;
 
 namespace AudioBookRed.Api.Services;
@@ -6,11 +5,19 @@ namespace AudioBookRed.Api.Services;
 public sealed class RuTrackerAtomImporter(
     RuTrackerAtomClient client,
     RuTrackerAtomState state,
-    AudiobookRepository repository,
+    RuTrackerDetailProcessor detailProcessor,
     ILogger<RuTrackerAtomImporter> logger)
 {
-    public async Task<RuTrackerAtomImportResult> ImportAsync(int forumId, int maxEntries, CancellationToken ct)
+    private readonly SemaphoreSlim _runLock = new(1, 1);
+
+    public async Task<RuTrackerAtomImportResult> ImportAsync(
+        int forumId,
+        int maxEntries,
+        CancellationToken ct)
     {
+        if (!await _runLock.WaitAsync(0, ct))
+            throw new InvalidOperationException("Импорт RuTracker Atom уже выполняется.");
+
         state.MarkStarted(forumId);
         try
         {
@@ -30,43 +37,31 @@ public sealed class RuTrackerAtomImporter(
                 return notModified;
             }
 
-            var imported = 0;
-            var failed = 0;
+            var listings = feed.Entries
+                .Select(entry => new RuTrackerSearchItem(
+                    entry.TopicId,
+                    entry.Title,
+                    entry.Publisher ?? $"forum-{forumId}",
+                    entry.TopicUrl,
+                    entry.SizeBytes ?? 0,
+                    0,
+                    0))
+                .ToArray();
+
+            var summary = await detailProcessor.ImportListingsAsync(
+                listings,
+                forumId,
+                page: 1,
+                ct);
+
+            var imported = summary.Inserted + summary.Changed;
+            var failed = summary.Details.Failed + summary.Details.Missing;
             var errors = new List<string>();
 
-            foreach (var entry in feed.Entries)
-            {
-                try
-                {
-                    var id = await repository.UpsertAsync(new CreateAudiobookRelease(
-                        entry.Title,
-                        "rutracker",
-                        entry.TopicId.ToString(),
-                        entry.TopicUrl,
-                        null,
-                        null,
-                        entry.SizeBytes,
-                        null,
-                        null), ct);
-
-                    if (id is null)
-                    {
-                        failed++;
-                        if (errors.Count < 10)
-                            errors.Add($"topic {entry.TopicId}: magnet отсутствует, запись пропущена");
-                        continue;
-                    }
-
-                    imported++;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    logger.LogWarning(ex, "Не удалось импортировать RuTracker topic {TopicId}", entry.TopicId);
-                    if (errors.Count < 10)
-                        errors.Add($"topic {entry.TopicId}: {ex.Message}");
-                }
-            }
+            if (summary.Details.Missing > 0)
+                errors.Add($"magnet не найден: {summary.Details.Missing}");
+            if (summary.Details.Failed > 0)
+                errors.Add($"ошибки обработки: {summary.Details.Failed}");
 
             var result = new RuTrackerAtomImportResult(
                 forumId,
@@ -77,13 +72,31 @@ public sealed class RuTrackerAtomImporter(
                 false,
                 feed.FeedUpdatedAt,
                 errors);
+
             state.MarkFinished(result);
+            logger.LogInformation(
+                "RuTracker Atom forum {ForumId}: received={Received}, inserted={Inserted}, changed={Changed}, missing={Missing}, failed={Failed}",
+                forumId,
+                feed.Entries.Count,
+                summary.Inserted,
+                summary.Changed,
+                summary.Details.Missing,
+                summary.Details.Failed);
             return result;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            state.MarkCancelled(forumId);
+            throw;
         }
         catch (Exception ex)
         {
             state.MarkFailed(forumId, ex);
             throw;
+        }
+        finally
+        {
+            _runLock.Release();
         }
     }
 }

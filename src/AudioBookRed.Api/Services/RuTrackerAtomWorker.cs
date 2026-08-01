@@ -7,6 +7,12 @@ public sealed class RuTrackerAtomWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        logger.LogInformation(
+            "RuTracker Atom worker started: enabled={Enabled}, intervalMinutes={IntervalMinutes}, forums={Forums}",
+            client.Enabled,
+            client.IntervalMinutes,
+            string.Join(",", client.ForumIds));
+
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
@@ -24,7 +30,10 @@ public sealed class RuTrackerAtomWorker(
                 {
                     try
                     {
-                        var result = await importer.ImportAsync(forumId, client.MaxEntries, stoppingToken);
+                        var result = await importer.ImportAsync(
+                            forumId,
+                            client.MaxEntries,
+                            stoppingToken);
                         logger.LogInformation(
                             "RuTracker Atom forum {ForumId}: received={Received}, imported={Imported}, failed={Failed}, notModified={NotModified}",
                             forumId,
@@ -33,13 +42,24 @@ public sealed class RuTrackerAtomWorker(
                             result.Failed,
                             result.NotModified);
                     }
+                    catch (InvalidOperationException ex)
+                        when (ex.Message.Contains("уже выполняется", StringComparison.Ordinal))
+                    {
+                        logger.LogDebug(
+                            "RuTracker Atom forum {ForumId} пропущен: {Message}",
+                            forumId,
+                            ex.Message);
+                    }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                     {
                         return;
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "Ошибка фонового импорта RuTracker Atom forum {ForumId}", forumId);
+                        logger.LogError(
+                            ex,
+                            "Ошибка фонового импорта RuTracker Atom forum {ForumId}",
+                            forumId);
                     }
                 }
             }

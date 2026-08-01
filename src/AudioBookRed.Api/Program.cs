@@ -24,6 +24,7 @@ builder.Services.AddSingleton<RuTrackerAtomImporter>();
 builder.Services.AddSingleton<RuTrackerMagnetClient>();
 builder.Services.AddSingleton<RuTrackerMagnetState>();
 builder.Services.AddSingleton<RuTrackerMagnetEnricher>();
+builder.Services.AddHostedService<RuTrackerAtomWorker>();
 
 // Универсальная основа задач источников. Для RuTracker категории и политика
 // находятся в модуле источника, а не в .env.
@@ -424,6 +425,10 @@ app.MapPost("/api/v1/sources/rutracker/atom/import", async (
     try
     {
         return Results.Ok(await importer.ImportAsync(forumId, maxEntries, ct));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = "rutracker_atom_busy", message = ex.Message });
     }
     catch (HttpRequestException ex)
     {

@@ -39,7 +39,20 @@ public sealed class RuTrackerAtomState
             _lastImported = result.Imported;
             _lastFailed = result.Failed;
             _lastNotModified = result.NotModified;
-            _lastError = result.Errors.Count == 0 ? null : string.Join("; ", result.Errors.Take(3));
+            _lastError = result.Errors.Count == 0
+                ? null
+                : string.Join("; ", result.Errors.Take(3));
+        }
+    }
+
+    public void MarkCancelled(int forumId)
+    {
+        lock (_gate)
+        {
+            _running = false;
+            _lastFinishedAt = DateTimeOffset.UtcNow;
+            _lastForumId = forumId;
+            _lastError = null;
         }
     }
 
