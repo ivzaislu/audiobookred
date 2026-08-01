@@ -3,7 +3,7 @@
 AudioBookRed — агрегатор метаданных аудиокниг на .NET 9 и PostgreSQL. Проект индексирует источники через очереди, хранит torrent-метаданные, предоставляет REST API и браузерный интерфейс с взаимозависимыми фасетными фильтрами.
 
 Репозиторий: `ivzaislu/audiobookred`
-Текущая версия приложения: **0.17.5.3**
+Текущая версия приложения: **0.18.0**
 
 ## Возможности
 
@@ -14,6 +14,7 @@ AudioBookRed — агрегатор метаданных аудиокниг на
 - PostgreSQL-очереди страниц и отдельных тем с lease/retry;
 - полный `discover`, восстановительный `reconcile` и почасовой `latest`;
 - RuTracker через прямое соединение, прокси или собственный Cloudflare Worker;
+- совместимый Torznab API для Prowlarr, Jackett-совместимых клиентов и других приложений;
 - Docker Compose, cron, logrotate, диагностика, обновление и резервное копирование.
 
 Проект вдохновлён архитектурными идеями JacRed, но реализован как отдельное приложение для каталога аудиокниг.
@@ -139,7 +140,7 @@ curl -sS http://127.0.0.1:9117/health | python3 -m json.tool
 {
   "status": "ok",
   "service": "audiobookred",
-  "version": "0.17.5.3-no-swagger"
+  "version": "0.18.0-torznab"
 }
 ```
 
@@ -307,7 +308,7 @@ sudo bash install.sh --no-start --replace-cron
 
 ## REST API
 
-Все маршруты, кроме `/health`, требуют заголовок:
+Собственные REST-маршруты, кроме `/health`, требуют заголовок:
 
 ```text
 X-Api-Key: <API_KEY>
@@ -332,11 +333,85 @@ POST /api/v1/sources/rutracker/work
 
 Интерактивный Swagger в рабочей сборке отключён и маршрут `/swagger` не регистрируется.
 
+## Torznab API
+
+AudioBookRed предоставляет отдельный слой совместимости и не изменяет собственный REST API или браузерный интерфейс.
+
+Поддерживаемые адреса:
+
+```text
+GET /torznab/api
+GET /api/v2.0/indexers/audiobookred/results/torznab/api
+GET /api/v2.0/indexers/all/results/torznab/api
+GET /api/v1/indexer/audiobookred/newznab
+GET /api/v1/indexer/all/newznab
+```
+
+Ключ можно передать стандартным заголовком или параметром Torznab:
+
+```text
+X-Api-Key: <API_KEY>
+?apikey=<API_KEY>
+```
+
+Параметр `apikey` принимается только совместимыми Torznab-маршрутами. Административные маршруты по-прежнему требуют заголовок `X-Api-Key`.
+
+Проверка возможностей:
+
+```bash
+API_KEY="$(sed -n 's/^API_KEY=//p' .env | tail -1)"
+
+curl -sS -G \
+  --data-urlencode "t=caps" \
+  --data-urlencode "apikey=$API_KEY" \
+  http://127.0.0.1:9117/torznab/api
+```
+
+Поиск:
+
+```bash
+curl -sS -G \
+  --data-urlencode "t=booksearch" \
+  --data-urlencode "q=Злотников" \
+  --data-urlencode "author=Роман Злотников" \
+  --data-urlencode "limit=50" \
+  --data-urlencode "offset=0" \
+  --data-urlencode "apikey=$API_KEY" \
+  http://127.0.0.1:9117/torznab/api
+```
+
+Поддерживаемые действия:
+
+```text
+t=caps
+t=indexers
+t=search&q=...
+t=booksearch&q=...&title=...&author=...&year=...
+t=musicsearch&q=...&album=...&artist=...&year=...
+t=audiosearch&q=...&album=...&artist=...&year=...
+```
+
+Категория выдачи: `3030 Audio/Audiobook`. В XML передаются magnet-ссылка, info hash, размер, сидеры, личеры, источник, язык, год, автор, серия, формат и чтецы. `limit` ограничен значением 250, поддерживается `offset`.
+
+Пример URL для добавления как Torznab/Newznab-индексатора:
+
+```text
+http://SERVER_IP:9117/torznab/api
+```
+
+API key в настройках индексатора должен совпадать с `API_KEY` из `.env`.
+
+Проверка совместимости после развёртывания:
+
+```bash
+bash scripts/test-torznab.sh
+```
+
 ## Структура репозитория
 
 ```text
 audiobookred/
-├── src/AudioBookRed.Api/          API, crawler и UI
+├── src/AudioBookRed.Api/          API, Torznab, crawler и UI
 ├── scripts/audiobookred-source    CLI управления источниками
 ├── scripts/install-from-github.sh установка из GitHub
 ├── scripts/migrate-existing-install.sh

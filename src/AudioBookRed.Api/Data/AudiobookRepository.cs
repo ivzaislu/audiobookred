@@ -383,21 +383,27 @@ public sealed class AudiobookRepository(
         AudiobookSearchRequest request,
         CancellationToken ct)
     {
-        var response = await SearchFacetedAsync(request, includeFacets: false, ct);
+        var response = await SearchFacetedAsync(request, includeFacets: false, offset: 0, ct: ct);
         return response.Items;
     }
 
     public async Task<AudiobookSearchResponse> SearchFacetedAsync(
         AudiobookSearchRequest request,
-        CancellationToken ct) => await SearchFacetedAsync(request, includeFacets: true, ct);
+        CancellationToken ct) => await SearchFacetedAsync(request, includeFacets: true, offset: 0, ct: ct);
+
+    public async Task<AudiobookSearchResponse> SearchPageAsync(
+        AudiobookSearchRequest request,
+        int offset,
+        CancellationToken ct) => await SearchFacetedAsync(request, includeFacets: false, offset: offset, ct: ct);
 
     private async Task<AudiobookSearchResponse> SearchFacetedAsync(
         AudiobookSearchRequest request,
         bool includeFacets,
+        int offset,
         CancellationToken ct)
     {
         var filters = BuildFilters(request);
-        var parameters = BuildParameters(filters);
+        var parameters = BuildParameters(filters, offset);
         var allWhere = BuildWhere(filters, excludeFacet: null);
         var orderBy = BuildOrderBy(filters.Sort);
 
@@ -411,7 +417,8 @@ public sealed class AudiobookRepository(
         FROM audiobook_releases r
         WHERE {allWhere}
         ORDER BY {orderBy}
-        LIMIT @Limit;
+        LIMIT @Limit
+        OFFSET @Offset;
 
         SELECT COUNT(*)::bigint
         FROM audiobook_releases r
@@ -531,7 +538,7 @@ public sealed class AudiobookRepository(
             Math.Clamp(request.Limit, 1, 250));
     }
 
-    private static DynamicParameters BuildParameters(SearchFilterValues filters)
+    private static DynamicParameters BuildParameters(SearchFilterValues filters, int offset = 0)
     {
         var parameters = new DynamicParameters();
         parameters.Add("QueryPattern", filters.Query is null ? null : $"%{filters.Query}%");
@@ -548,6 +555,7 @@ public sealed class AudiobookRepository(
         parameters.Add("Year", filters.Year);
         parameters.Add("Magnet", filters.Magnet);
         parameters.Add("Limit", filters.Limit);
+        parameters.Add("Offset", Math.Clamp(offset, 0, 1_000_000));
         return parameters;
     }
 

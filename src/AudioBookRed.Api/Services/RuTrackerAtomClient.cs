@@ -29,7 +29,7 @@ public sealed partial class RuTrackerAtomClient : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(45)
         };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("AudioBookRed/0.17.5.3 (+metadata-only)");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("AudioBookRed/0.18.0 (+metadata-only)");
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/atom+xml,application/xml;q=0.9,*/*;q=0.5");
     }
 

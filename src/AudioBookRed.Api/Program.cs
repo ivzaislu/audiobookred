@@ -1,3 +1,4 @@
+using AudioBookRed.Api.Compatibility;
 using AudioBookRed.Api.Data;
 using AudioBookRed.Api.Models;
 using AudioBookRed.Api.Services;
@@ -64,10 +65,24 @@ app.Use(async (context, next) =>
         return;
     }
 
-    if (!context.Request.Headers.TryGetValue("X-Api-Key", out var value) || value != apiKey)
+    var isTorznab = TorznabEndpoints.IsCompatibilityPath(context.Request.Path);
+    var headerKey = context.Request.Headers["X-Api-Key"].ToString();
+    var queryKey = isTorznab ? context.Request.Query["apikey"].ToString() : string.Empty;
+    var suppliedKey = !string.IsNullOrWhiteSpace(headerKey) ? headerKey : queryKey;
+
+    if (!string.Equals(suppliedKey, apiKey, StringComparison.Ordinal))
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await context.Response.WriteAsJsonAsync(new { error = "invalid_api_key" });
+        if (isTorznab)
+        {
+            context.Response.ContentType = "application/xml; charset=utf-8";
+            await context.Response.WriteAsync(
+                TorznabXmlFormatter.CreateError("100", "Incorrect user credentials"));
+        }
+        else
+        {
+            await context.Response.WriteAsJsonAsync(new { error = "invalid_api_key" });
+        }
         return;
     }
 
@@ -92,8 +107,10 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
     service = "audiobookred",
-    version = "0.17.5.3-no-swagger"
+    version = "0.18.0-torznab"
 }));
+
+app.MapAudioBookRedTorznab();
 
 app.MapPost("/api/v1/parse-title", (ParseTitleRequest request, TitleNormalizer parser) =>
     Results.Ok(parser.Parse(request.RawTitle)));
