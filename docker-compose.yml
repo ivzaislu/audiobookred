@@ -11,6 +11,7 @@ services:
     environment:
       ApiKey: ${API_KEY:?Set API_KEY in .env}
       ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=audiobookred;Username=audiobookred;Password=${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DatabaseMigration__CommandTimeoutSeconds: ${DB_MIGRATION_TIMEOUT_SECONDS:-600}
       RuTracker__BaseUrl: ${RUTRACKER_BASE_URL:-https://rutracker.org}
       RuTracker__Username: ${RUTRACKER_USERNAME:-}
       RuTracker__Password: ${RUTRACKER_PASSWORD:-}
@@ -42,7 +43,7 @@ services:
       interval: 10s
       timeout: 6s
       retries: 18
-      start_period: 30s
+      start_period: "${AUDIOBOOKRED_STARTUP_TIMEOUT_SECONDS:-900}s"
     logging:
       driver: json-file
       options:

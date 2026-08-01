@@ -11,6 +11,7 @@ public sealed class AudiobookRepository(
     PersonNameParser personNames,
     SeriesNameParser seriesNames,
     CanonicalFacetRepository canonicalFacets,
+    DatabaseMigrationRunner migrationRunner,
     ILogger<AudiobookRepository> logger)
 {
     private const string AuthorRole = "author";
@@ -21,7 +22,10 @@ public sealed class AudiobookRepository(
 
     public async Task InitializeAsync(CancellationToken ct)
     {
-        const string sql = """
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        logger.LogInformation("Database schema initialization started.");
+
+        const string schemaSql = """
         CREATE TABLE IF NOT EXISTS audiobook_releases (
           id BIGSERIAL PRIMARY KEY,
           title TEXT NOT NULL,
@@ -55,11 +59,14 @@ public sealed class AudiobookRepository(
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           UNIQUE(source, source_id)
         );
+
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS magnet_attempts INT NOT NULL DEFAULT 0;
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS magnet_attempted_at TIMESTAMPTZ NULL;
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS magnet_error TEXT NULL;
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS normalized_series TEXT NULL;
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS search_text TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS listing_fingerprint TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS detail_fingerprint TEXT NULL;
 
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -82,67 +89,6 @@ public sealed class AudiobookRepository(
           FOR EACH ROW
           EXECUTE FUNCTION audiobookred_refresh_search_text();
 
-        UPDATE audiobook_releases
-        SET search_text = LOWER(REPLACE(BTRIM(REGEXP_REPLACE(
-          CONCAT_WS(' ', title, author, series, ARRAY_TO_STRING(narrators, ' '), raw_title),
-          '\s+', ' ', 'g')), 'ё', 'е'))
-        WHERE search_text IS NULL OR BTRIM(search_text) = '';
-
-        CREATE INDEX IF NOT EXISTS ix_audiobook_search_text_trgm
-          ON audiobook_releases USING GIN(search_text gin_trgm_ops);
-
-        UPDATE audiobook_releases
-        SET normalized_series = LOWER(REPLACE(BTRIM(REGEXP_REPLACE(series, '\s+', ' ', 'g')), 'ё', 'е'))
-        WHERE series IS NOT NULL
-          AND BTRIM(series) <> ''
-          AND (normalized_series IS NULL OR BTRIM(normalized_series) = '');
-
-        DELETE FROM audiobook_releases
-        WHERE magnet_uri IS NULL OR BTRIM(magnet_uri) = '';
-
-        ALTER TABLE audiobook_releases
-          DROP CONSTRAINT IF EXISTS ck_audiobook_magnet_required;
-        ALTER TABLE audiobook_releases
-          ADD CONSTRAINT ck_audiobook_magnet_required
-          CHECK (magnet_uri IS NOT NULL AND BTRIM(magnet_uri) <> '');
-
-        DROP INDEX IF EXISTS ux_audiobook_info_hash;
-        CREATE INDEX IF NOT EXISTS ix_audiobook_info_hash
-          ON audiobook_releases(info_hash) WHERE info_hash IS NOT NULL AND info_hash <> '';
-
-        WITH duplicates AS (
-          SELECT id,
-            ROW_NUMBER() OVER (
-              PARTITION BY source, LOWER(info_hash)
-              ORDER BY seeders DESC NULLS LAST, updated_at DESC, id DESC) AS row_number
-          FROM audiobook_releases
-          WHERE info_hash IS NOT NULL AND BTRIM(info_hash) <> ''
-        )
-        DELETE FROM audiobook_releases release
-        USING duplicates
-        WHERE release.id = duplicates.id AND duplicates.row_number > 1;
-
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_audiobook_source_info_hash
-          ON audiobook_releases(source, LOWER(info_hash))
-          WHERE info_hash IS NOT NULL AND BTRIM(info_hash) <> '';
-        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS listing_fingerprint TEXT NULL;
-        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS detail_fingerprint TEXT NULL;
-        CREATE INDEX IF NOT EXISTS ix_audiobook_search
-          ON audiobook_releases(normalized_author, normalized_title);
-        CREATE INDEX IF NOT EXISTS ix_audiobook_series
-          ON audiobook_releases(normalized_series) WHERE normalized_series IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS ix_audiobook_source
-          ON audiobook_releases(LOWER(source));
-        CREATE INDEX IF NOT EXISTS ix_audiobook_format
-          ON audiobook_releases(LOWER(audio_format)) WHERE audio_format IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS ix_audiobook_year
-          ON audiobook_releases(release_year) WHERE release_year IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS ix_audiobook_bitrate
-          ON audiobook_releases(bitrate_kbps) WHERE bitrate_kbps IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS ix_audiobook_updated
-          ON audiobook_releases(updated_at DESC);
-        DROP INDEX IF EXISTS ix_audiobook_missing_magnet;
-
         CREATE TABLE IF NOT EXISTS people (
           id BIGSERIAL PRIMARY KEY,
           display_name TEXT NOT NULL,
@@ -150,7 +96,6 @@ public sealed class AudiobookRepository(
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
-
         CREATE INDEX IF NOT EXISTS ix_people_normalized_name_trgm
           ON people USING GIN(normalized_name gin_trgm_ops);
 
@@ -174,7 +119,17 @@ public sealed class AudiobookRepository(
 
         await using var db = new NpgsqlConnection(ConnectionString);
         await db.OpenAsync(ct);
-        await db.ExecuteAsync(new CommandDefinition(sql, cancellationToken: ct));
+        await db.ExecuteAsync(new CommandDefinition(
+            schemaSql,
+            commandTimeout: 120,
+            cancellationToken: ct));
+
+        stopwatch.Stop();
+        logger.LogInformation(
+            "Database schema initialization completed: durationMs={DurationMs}",
+            stopwatch.ElapsedMilliseconds);
+
+        await migrationRunner.RunAsync(db, ct);
         await canonicalFacets.InitializeAsync(db, ct);
     }
 

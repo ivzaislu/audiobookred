@@ -26,6 +26,103 @@ ok() { printf 'OK    %s\n' "$*"; }
 warn() { printf 'WARN  %s\n' "$*"; warnings=$((warnings + 1)); }
 err() { printf 'ERROR %s\n' "$*"; errors=$((errors + 1)); }
 
+check_database_migrations() {
+  local keys required key missing integrity index_count
+
+  keys="$(
+    docker compose --env-file .env exec -T db \
+      psql -X -U audiobookred -d audiobookred -At <<'SQL'
+SELECT migration_key FROM app_migrations ORDER BY migration_key;
+SQL
+  )" || {
+    warn "не удалось прочитать app_migrations"
+    return
+  }
+
+  required=(
+    audiobook-search-text-v1
+    audiobook-normalized-series-v1
+    audiobook-magnet-required-v1
+    audiobook-infohash-dedup-v1
+    audiobook-core-indexes-v1
+  )
+  missing=0
+  for key in "${required[@]}"; do
+    if ! grep -Fxq "$key" <<<"$keys"; then
+      warn "миграция не зарегистрирована: $key"
+      missing=$((missing + 1))
+    fi
+  done
+  (( missing == 0 )) && ok "обязательные database migrations зарегистрированы"
+
+  integrity="$(
+    docker compose --env-file .env exec -T db \
+      psql -X -U audiobookred -d audiobookred -At -F '|' <<'SQL'
+SELECT
+  COUNT(*) FILTER (WHERE search_text IS NULL OR BTRIM(search_text) = ''),
+  COUNT(*) FILTER (
+    WHERE series IS NOT NULL AND BTRIM(series) <> ''
+      AND (normalized_series IS NULL OR BTRIM(normalized_series) = '')),
+  COUNT(*) FILTER (WHERE magnet_uri IS NULL OR BTRIM(magnet_uri) = ''),
+  (
+    SELECT COUNT(*)
+    FROM (
+      SELECT source, LOWER(info_hash)
+      FROM audiobook_releases
+      WHERE info_hash IS NOT NULL AND BTRIM(info_hash) <> ''
+      GROUP BY source, LOWER(info_hash)
+      HAVING COUNT(*) > 1
+    ) duplicate_groups
+  )
+FROM audiobook_releases;
+SQL
+  )" || {
+    warn "не удалось проверить целостность audiobook_releases"
+    return
+  }
+
+  IFS='|' read -r missing_search missing_series missing_magnet duplicate_groups <<<"$integrity"
+  if [[ "$missing_search" == "0" && "$missing_series" == "0" && "$missing_magnet" == "0" && "$duplicate_groups" == "0" ]]; then
+    ok "database migration invariants"
+  else
+    err "database migration invariants: search=$missing_search series=$missing_series magnet=$missing_magnet duplicates=$duplicate_groups"
+  fi
+
+  index_count="$(
+    docker compose --env-file .env exec -T db \
+      psql -X -U audiobookred -d audiobookred -At <<'SQL'
+SELECT COUNT(*)
+FROM pg_class index_row
+JOIN pg_index index_state ON index_state.indexrelid = index_row.oid
+JOIN pg_class table_row ON table_row.oid = index_state.indrelid
+JOIN pg_namespace schema_row ON schema_row.oid = table_row.relnamespace
+WHERE schema_row.nspname = 'public'
+  AND table_row.relname = 'audiobook_releases'
+  AND index_row.relname = ANY(ARRAY[
+    'ix_audiobook_search_text_trgm',
+    'ix_audiobook_info_hash',
+    'ux_audiobook_source_info_hash',
+    'ix_audiobook_search',
+    'ix_audiobook_series',
+    'ix_audiobook_source',
+    'ix_audiobook_format',
+    'ix_audiobook_year',
+    'ix_audiobook_bitrate',
+    'ix_audiobook_updated'
+  ])
+  AND index_state.indisvalid
+  AND index_state.indisready;
+SQL
+  )" || {
+    warn "не удалось проверить индексы audiobook_releases"
+    return
+  }
+
+  [[ "$index_count" == "10" ]] \
+    && ok "основные индексы audiobook_releases валидны" \
+    || err "валидных основных индексов audiobook_releases: ${index_count:-unknown}/10"
+}
+
 printf 'AudioBookRed doctor\n'
 printf 'Каталог: %s\n\n' "$ROOT"
 
@@ -184,6 +281,11 @@ PY
       err "Torznab caps недоступен"
     fi
   fi
+fi
+
+
+if $FULL && command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && [[ -f "$ROOT/.env" ]]; then
+  check_database_migrations
 fi
 
 [[ -x /usr/local/sbin/audiobookred-source ]] && ok "CLI установлен" || warn "CLI /usr/local/sbin/audiobookred-source не установлен"

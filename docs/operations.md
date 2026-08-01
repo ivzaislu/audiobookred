@@ -233,3 +233,34 @@ RUTRACKER_MAGNET_ENABLED=false
 Контрольный `rutracker latest` запускается ежедневно в 04:17 и проверяет две
 первые страницы каждой категории. Он обновляет сиды и личи из `viewforum.php`
 без detail-запроса для каждой темы.
+
+<!-- patch-07-startup-migrations -->
+## Одноразовые миграции базы
+
+Версия 0.20.1 отделяет быструю инициализацию схемы от операций по всему каталогу.
+Migration runner использует `app_migrations` и PostgreSQL advisory lock. На уже
+подготовленной базе состояние принимается без повторного обновления всех строк.
+
+Настройки:
+
+```dotenv
+DB_MIGRATION_TIMEOUT_SECONDS=600
+AUDIOBOOKRED_STARTUP_TIMEOUT_SECONDS=900
+```
+
+Основные ключи миграций:
+
+```text
+audiobook-search-text-v1
+audiobook-normalized-series-v1
+audiobook-magnet-required-v1
+audiobook-infohash-dedup-v1
+audiobook-core-indexes-v1
+```
+
+Проверка после обновления:
+
+```bash
+bash doctor.sh --full
+docker compose --env-file .env logs --since=10m api | grep 'Database migration'
+```

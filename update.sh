@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BRANCH="main"
 BACKUP=true
 PRUNE=true
-HEALTH_TIMEOUT_SECONDS=240
+HEALTH_TIMEOUT_SECONDS=900
 
 usage() {
   cat <<'TXT'
@@ -190,6 +190,11 @@ git pull --ff-only origin "$BRANCH"
 new_commit="$(git rev-parse --short HEAD)"
 expected_version="$(project_version)"
 [[ -n "$expected_version" ]] || fail "не удалось определить версию проекта"
+startup_timeout="$(sed -n 's/^AUDIOBOOKRED_STARTUP_TIMEOUT_SECONDS=//p' .env | tail -n 1 | tr -d '\r\n')"
+startup_timeout="${startup_timeout:-900}"
+[[ "$startup_timeout" =~ ^[0-9]+$ ]] && (( startup_timeout >= 60 && startup_timeout <= 3600 )) \
+  || fail "AUDIOBOOKRED_STARTUP_TIMEOUT_SECONDS должен быть числом 60..3600"
+HEALTH_TIMEOUT_SECONDS="$startup_timeout"
 
 # Обновляем CLI, /etc/default, logrotate и при необходимости cron.
 # install.sh больше не меняет режимы отслеживаемых Git-файлов.

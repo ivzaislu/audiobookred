@@ -8,7 +8,7 @@ START=true
 INSTALL_CRON=true
 REPLACE_CRON=false
 BUILD=true
-HEALTH_TIMEOUT_SECONDS=240
+HEALTH_TIMEOUT_SECONDS=900
 
 usage() {
   cat <<'TXT'
@@ -220,6 +220,11 @@ db_password="$(read_env_value DB_PASSWORD)"
 port="$(read_env_value AUDIOBOOKRED_PORT)"
 port="${port:-9117}"
 expected_version="$(project_version)"
+startup_timeout="$(read_env_value AUDIOBOOKRED_STARTUP_TIMEOUT_SECONDS)"
+startup_timeout="${startup_timeout:-900}"
+[[ "$startup_timeout" =~ ^[0-9]+$ ]] && (( startup_timeout >= 60 && startup_timeout <= 3600 )) \
+  || fail "AUDIOBOOKRED_STARTUP_TIMEOUT_SECONDS должен быть числом 60..3600"
+HEALTH_TIMEOUT_SECONDS="$startup_timeout"
 
 [[ -n "$api_key" && "$api_key" != "change-me" ]] || fail "задайте безопасный API_KEY в $ROOT/.env"
 [[ -n "$db_password" && "$db_password" != "change-me" ]] || fail "задайте безопасный DB_PASSWORD в $ROOT/.env"

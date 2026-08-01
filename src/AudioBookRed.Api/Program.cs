@@ -9,6 +9,7 @@ builder.Services.AddSingleton<SeriesNameParser>();
 builder.Services.AddSingleton<TitleNormalizer>();
 builder.Services.AddSingleton<PersonNameParser>();
 builder.Services.AddSingleton<CanonicalFacetRepository>();
+builder.Services.AddSingleton<DatabaseMigrationRunner>();
 builder.Services.AddSingleton<AudiobookRepository>();
 builder.Services.AddSingleton<SourceCrawlRepository>();
 builder.Services.AddSingleton<SourceJobRepository>();
