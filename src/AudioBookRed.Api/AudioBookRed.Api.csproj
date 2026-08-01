@@ -3,7 +3,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.17.4.1</Version>
+    <Version>0.17.5</Version>
     <Product>AudioBookRed</Product>
     <Description>Агрегатор метаданных аудиокниг с фасетным поиском и очередями источников.</Description>
   </PropertyGroup>

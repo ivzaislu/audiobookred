@@ -83,7 +83,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
     service = "audiobookred",
-    version = "0.17.4.1"
+    version = "0.17.5-audiobookred"
 }));
 
 app.MapPost("/api/v1/parse-title", (ParseTitleRequest request, TitleNormalizer parser) =>
