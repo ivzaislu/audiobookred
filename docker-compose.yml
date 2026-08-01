@@ -34,7 +34,7 @@ services:
       RuTrackerMagnet__MaxAttempts: ${RUTRACKER_MAGNET_MAX_ATTEMPTS:-5}
       RuTrackerMagnet__RetryMinutes: ${RUTRACKER_MAGNET_RETRY_MINUTES:-60}
     ports:
-      - "9117:9117"
+      - "${AUDIOBOOKRED_PORT:-9117}:9117"
     logging:
       driver: json-file
       options:

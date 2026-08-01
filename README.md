@@ -1,22 +1,20 @@
 # AudioBookRed
 
-AudioBookRed — самостоятельный агрегатор метаданных аудиокниг на .NET 9 и PostgreSQL. Проект индексирует источники через очереди, хранит torrent-метаданные, предоставляет REST API и браузерный интерфейс с взаимозависимыми фасетными фильтрами.
+AudioBookRed — агрегатор метаданных аудиокниг на .NET 9 и PostgreSQL. Проект индексирует источники через очереди, хранит torrent-метаданные, предоставляет REST API и браузерный интерфейс с взаимозависимыми фасетными фильтрами.
 
-Текущая версия: **0.17.5**.
+Репозиторий: `ivzaislu/audiobookred`
+Текущая версия приложения: **0.17.5**
 
 ## Возможности
 
-- полнотекстовый и фасетный поиск по всей базе;
-- взаимозависимые фильтры по автору, чтецу, серии, формату, качеству, году и источнику;
-- канонизация авторов, чтецов и серий с поддержкой псевдонимов;
-- раздельное хранение названия серии и номера книги;
+- полнотекстовый и фасетный поиск;
+- фильтры по автору, чтецу, серии, формату, качеству, году и источнику;
+- канонизация авторов, чтецов и серий;
 - дедупликация по `info_hash`;
-- обязательная magnet-ссылка для публичного каталога;
 - PostgreSQL-очереди страниц и отдельных тем с lease/retry;
 - полный `discover`, восстановительный `reconcile` и почасовой `latest`;
-- статистика, журнал событий и контроль полноты импорта;
 - RuTracker через прямое соединение, прокси или собственный Cloudflare Worker;
-- Docker Compose, cron, logrotate и резервное копирование PostgreSQL.
+- Docker Compose, cron, logrotate, диагностика, обновление и резервное копирование.
 
 Проект вдохновлён архитектурными идеями JacRed, но реализован как отдельное приложение для каталога аудиокниг.
 
@@ -25,31 +23,102 @@ AudioBookRed — самостоятельный агрегатор метада�
 - Linux-сервер;
 - Docker Engine;
 - Docker Compose v2;
-- `curl`, `python3`;
-- свободный порт `9117`.
+- `git`, `curl`, `python3`;
+- не менее 3 ГБ свободного места для первой Docker-сборки;
+- свободный порт `9117` либо другой порт в `.env`.
 
-Перед сборкой проверьте свободное место:
+Проверка:
 
 ```bash
+docker --version
+docker compose version
 df -h /
 ```
 
-Не удаляйте Docker volumes командами `docker volume prune`, `docker compose down -v` или `docker system prune --volumes`: в volume хранится PostgreSQL.
+Не используйте `docker volume prune`, `docker compose down -v` и `docker system prune --volumes`: PostgreSQL хранится в Docker volume.
 
-## Быстрый запуск
+## Установка из GitHub
+
+### Автоматическая установка
+
+Скрипт клонирует ветку `main` в `/opt/audiobookred`, создаёт `.env`, генерирует секреты, устанавливает CLI, cron и logrotate, затем собирает контейнеры:
 
 ```bash
-git clone <URL_РЕПОЗИТОРИЯ> AudioBookRed
-cd AudioBookRed
-sudo ./install.sh
+curl -fsSL \
+  https://raw.githubusercontent.com/ivzaislu/audiobookred/main/scripts/install-from-github.sh \
+  | sudo bash
 ```
 
-При первом запуске `install.sh` создаёт `.env`, генерирует `API_KEY` и `DB_PASSWORD`, устанавливает CLI, cron и logrotate, затем собирает контейнеры.
-
-Проверьте `.env` перед импортом RuTracker:
+Другой каталог:
 
 ```bash
-nano .env
+curl -fsSL \
+  https://raw.githubusercontent.com/ivzaislu/audiobookred/main/scripts/install-from-github.sh \
+  | sudo bash -s -- --dir /srv/audiobookred
+```
+
+### Обычный git clone
+
+```bash
+sudo git clone https://github.com/ivzaislu/audiobookred.git /opt/audiobookred
+cd /opt/audiobookred
+sudo bash install.sh
+```
+
+GitHub может не сохранять исполняемый бит при загрузке через веб-интерфейс, поэтому в документации скрипты запускаются через `bash`.
+
+## Переход существующей установки на GitHub
+
+Для установки, ранее распакованной из ZIP или патча, выполните:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/ivzaislu/audiobookred/main/scripts/migrate-existing-install.sh \
+  | sudo bash -s -- /root/AudioBookRed
+```
+
+Скрипт:
+
+1. создаёт резервную копию PostgreSQL;
+2. перемещает старый каталог в `/root/AudioBookRed.pre-git-ДАТА`;
+3. клонирует этот репозиторий на прежнее место;
+4. переносит `.env`, `backups/` и Compose override;
+5. запускает установку.
+
+Docker volume не удаляется и не копируется. Благодаря фиксированному Compose project `audiobookred` новая Git-установка использует существующую базу.
+
+## Конфигурация
+
+Установщик создаёт `.env` из `.env.example`. Секреты не должны попадать в Git.
+
+```bash
+sudo nano /opt/audiobookred/.env
+```
+
+Основные параметры:
+
+```dotenv
+API_KEY=...
+DB_PASSWORD=...
+AUDIOBOOKRED_PORT=9117
+
+RUTRACKER_ALIAS_URL=https://YOUR-WORKER.workers.dev
+RUTRACKER_ALIAS_TOKEN=YOUR_PROXY_TOKEN
+```
+
+Для прямого режима вместо Worker:
+
+```dotenv
+RUTRACKER_BASE_URL=https://rutracker.org
+RUTRACKER_USERNAME=
+RUTRACKER_PASSWORD=
+```
+
+После изменения `.env`:
+
+```bash
+cd /opt/audiobookred
+sudo docker compose --env-file .env up -d --force-recreate api
 ```
 
 UI:
@@ -74,71 +143,27 @@ curl -sS http://127.0.0.1:9117/health | python3 -m json.tool
 }
 ```
 
-## Настройка RuTracker
-
-### Cloudflare Worker
-
-Рекомендуемый вариант — развернуть `cloudflare-worker/index.js` в своём Cloudflare Worker и создать secret:
-
-```text
-PROXY_TOKEN
-```
-
-После развёртывания заполните:
-
-```dotenv
-RUTRACKER_ALIAS_URL=https://YOUR-WORKER.workers.dev
-RUTRACKER_ALIAS_TOKEN=YOUR_PROXY_TOKEN
-```
-
-Worker разрешает только:
-
-```text
-/forum/viewforum.php
-/forum/viewtopic.php
-/forum/tracker.php
-```
-
-### Прямой режим
-
-Без `RUTRACKER_ALIAS_URL` приложение использует прямую авторизованную сессию:
-
-```dotenv
-RUTRACKER_USERNAME=
-RUTRACKER_PASSWORD=
-```
-
-При необходимости задайте `RUTRACKER_PROXY_URL` и данные прокси.
-
-После изменения `.env` пересоздайте API:
-
-```bash
-docker compose up -d --force-recreate api
-```
-
-## Первый полный импорт
+## Первый импорт RuTracker
 
 ```bash
 sudo audiobookred-source rutracker discover
 ```
-
-`discover` определяет число страниц во всех настроенных категориях и ставит их в PostgreSQL-очередь. Установленный cron-worker обрабатывает очередь каждую минуту.
 
 Наблюдение:
 
 ```bash
 sudo audiobookred-source rutracker status
 sudo audiobookred-source rutracker completeness
-tail -f /var/log/audiobookred-rutracker-worker.log
+sudo tail -f /var/log/audiobookred-rutracker-worker.log
 ```
 
-Восстановительный проход без очистки каталога:
+Восстановительный проход:
 
 ```bash
 sudo audiobookred-source rutracker reconcile
 ```
 
-Почасовая проверка первых страниц:
+Почасовая проверка новых раздач уже установлена в cron. Ручной запуск:
 
 ```bash
 sudo audiobookred-source rutracker latest
@@ -168,7 +193,117 @@ sudo audiobookred-source rutracker set detailConcurrency 4
 sudo audiobookred-source rutracker set requestDelayMilliseconds 150
 ```
 
-Значение `work N` в `/etc/cron.d/audiobookred` должно соответствовать выбранному `workerJobLimit`.
+Значение `work N` в `/etc/cron.d/audiobookred` должно соответствовать `workerJobLimit`.
+
+## Обновление из репозитория
+
+```bash
+cd /opt/audiobookred
+sudo bash update.sh
+```
+
+`update.sh`:
+
+- проверяет официальный `origin`;
+- отказывается обновлять checkout с локальными изменениями;
+- создаёт дамп базы;
+- выполняет `git pull --ff-only`;
+- пересобирает API;
+- сохраняет `.env`, PostgreSQL volume и изменённый вручную cron;
+- проверяет `/health`;
+- очищает только неиспользуемый build cache и dangling images.
+
+Параметры:
+
+```bash
+sudo bash update.sh --no-backup
+sudo bash update.sh --no-prune
+sudo bash update.sh --branch main
+```
+
+## Диагностика
+
+```bash
+cd /opt/audiobookred
+sudo bash doctor.sh
+sudo bash doctor.sh --full
+```
+
+Проверяются Git remote, свободное место, `.env`, Docker Compose, API, PostgreSQL, volume, CLI, cron и logrotate. Режим `--full` также показывает Docker disk usage и крупные JSON-логи.
+
+## Резервное копирование
+
+```bash
+cd /opt/audiobookred
+sudo bash backup-db.sh
+```
+
+Оставить только пять последних дампов:
+
+```bash
+sudo bash backup-db.sh --keep 5
+```
+
+Дамп и SHA256 создаются в `backups/`. Перед завершением скрипт проверяет дамп через `pg_restore -l`.
+
+## Восстановление базы
+
+Операция полностью заменяет текущую базу:
+
+```bash
+cd /opt/audiobookred
+sudo bash restore-db.sh backups/audiobookred-YYYYMMDD-HHMMSS.dump --yes
+```
+
+По умолчанию перед восстановлением создаётся страховочный дамп. API останавливается на время операции. При наличии `.sha256` контрольная сумма проверяется автоматически.
+
+## Удаление
+
+Остановить контейнеры и удалить системную интеграцию, сохранив базу и исходники:
+
+```bash
+cd /opt/audiobookred
+sudo bash uninstall.sh
+```
+
+Удалить также каталог проекта:
+
+```bash
+sudo bash uninstall.sh --remove-code
+```
+
+Удаление PostgreSQL volume возможно только с отдельным параметром и ручным вводом подтверждающей фразы:
+
+```bash
+sudo bash uninstall.sh --purge-data --remove-code
+```
+
+## Безопасная очистка места
+
+```bash
+docker builder prune -a -f
+docker image prune -f
+docker container prune -f
+journalctl --vacuum-size=200M
+```
+
+Не удаляйте `/var/lib/docker/overlay2` вручную и не очищайте Docker volumes.
+
+## Расписание
+
+`install.sh` устанавливает `/etc/cron.d/audiobookred`:
+
+- worker очереди — каждую минуту;
+- `latest` — каждый час в `:17`;
+- статистика — каждые 10 минут;
+- повтор упавших страниц — каждый час в `:23`;
+- обслуживание — ежедневно в `03:42`.
+
+При повторном запуске установщик сохраняет существующий cron. Для возврата к шаблону:
+
+```bash
+sudo bash install.sh --no-start --replace-cron
+```
 
 ## REST API
 
@@ -201,69 +336,22 @@ Swagger:
 http://SERVER_IP:9117/swagger
 ```
 
-Пример фасетного поиска:
-
-```bash
-API_KEY="$(sed -n 's/^API_KEY=//p' .env)"
-
-curl -sS -G \
-  -H "X-Api-Key: $API_KEY" \
-  --data-urlencode "q=лукьяненко" \
-  --data-urlencode "limit=100" \
-  http://127.0.0.1:9117/api/v1/search \
-  | python3 -m json.tool
-```
-
-## Расписание
-
-`install.sh` устанавливает `/etc/cron.d/audiobookred`:
-
-- worker очереди — каждую минуту;
-- `latest` — каждый час в `:17`;
-- статистика — каждые 10 минут;
-- повтор упавших страниц — каждый час в `:23`;
-- обслуживание — ежедневно в `03:42`.
-
-Полный `discover` автоматически не запускается.
-
-## Логи
-
-```bash
-docker compose logs -f --tail=200 api
-tail -f /var/log/audiobookred-rutracker-worker.log
-tail -f /var/log/audiobookred-rutracker-latest.log
-tail -f /var/log/audiobookred-rutracker-retry.log
-tail -f /var/log/audiobookred-maintenance.log
-```
-
-Docker-логи ограничены ротацией `10m × 3` для каждого контейнера.
-
-## Резервная копия
-
-```bash
-sudo ./backup-db.sh
-```
-
-Дамп и SHA256 создаются в каталоге `backups/`.
-
-Восстановление дампа:
-
-```bash
-docker compose exec -T db sh -lc \
-  'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' \
-  < backups/audiobookred-YYYYMMDD-HHMMSS.dump
-```
-
 ## Структура репозитория
 
 ```text
-AudioBookRed/
-├── src/AudioBookRed.Api/       API, crawler и UI
-├── scripts/audiobookred-source CLI управления источниками
-├── cloudflare-worker/          Worker-прокси RuTracker
-├── cron/                       cron и logrotate
+audiobookred/
+├── src/AudioBookRed.Api/          API, crawler и UI
+├── scripts/audiobookred-source    CLI управления источниками
+├── scripts/install-from-github.sh установка из GitHub
+├── scripts/migrate-existing-install.sh
+├── cloudflare-worker/             Worker-прокси RuTracker
+├── cron/                          cron и logrotate
 ├── docker-compose.yml
 ├── Dockerfile
 ├── install.sh
-└── backup-db.sh
+├── update.sh
+├── doctor.sh
+├── backup-db.sh
+├── restore-db.sh
+└── uninstall.sh
 ```
