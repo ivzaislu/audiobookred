@@ -70,8 +70,13 @@ docker compose version >/dev/null 2>&1 || fail "требуется Docker Compos
 
 cd "$ROOT"
 [[ -f docker-compose.yml ]] || fail "не найден $ROOT/docker-compose.yml"
-[[ -f .env.example ]] || fail "не найден $ROOT/.env.example; обновите checkout из $REPOSITORY"
 [[ -f scripts/audiobookred-source ]] || fail "не найден scripts/audiobookred-source"
+
+# Шаблон нужен только для новой установки. Существующий рабочий .env
+# не должен блокироваться из-за отсутствующего .env.example.
+if [[ ! -f .env ]]; then
+  [[ -f .env.example ]] || fail "не найден $ROOT/.env.example; обновите checkout из $REPOSITORY"
+fi
 
 chmod +x install.sh backup-db.sh restore-db.sh update.sh uninstall.sh doctor.sh \
   scripts/audiobookred-source scripts/install-from-github.sh scripts/migrate-existing-install.sh

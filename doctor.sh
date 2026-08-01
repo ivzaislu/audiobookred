@@ -47,6 +47,14 @@ else
   err "Docker не установлен"
 fi
 
+if [[ -f "$ROOT/.env.example" ]]; then
+  ok ".env.example найден"
+elif [[ -f "$ROOT/.env" ]]; then
+  warn ".env.example отсутствует; работающая установка не блокируется, но новая установка будет неполной"
+else
+  err "не найдены ни $ROOT/.env, ни $ROOT/.env.example"
+fi
+
 if [[ -f "$ROOT/.env" ]]; then
   mode="$(stat -c '%a' "$ROOT/.env" 2>/dev/null || true)"
   [[ "$mode" == "600" ]] && ok ".env найден, права 600" || warn ".env найден, рекомендуемые права 600; текущие ${mode:-unknown}"
@@ -97,8 +105,14 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
     err "API не отвечает на http://127.0.0.1:$port/health"
   fi
 
-  volume="$(docker volume ls --filter label=com.docker.compose.project=audiobookred --filter label=com.docker.compose.volume=audiobookred-db -q | head -n 1)"
-  [[ -n "$volume" ]] && ok "PostgreSQL volume: $volume" || warn "volume audiobookred-db не найден по Compose labels"
+  # Определяем фактически подключённый volume через контейнер БД.
+  # Это работает и для обычного Compose volume, и для external volume из override.
+  db_id="$(docker compose --env-file .env ps -q db 2>/dev/null || true)"
+  volume=""
+  if [[ -n "$db_id" ]]; then
+    volume="$(docker inspect "$db_id" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)"
+  fi
+  [[ -n "$volume" ]] && ok "PostgreSQL volume: $volume" || warn "не удалось определить PostgreSQL volume контейнера db"
 fi
 
 [[ -x /usr/local/sbin/audiobookred-source ]] && ok "CLI установлен" || warn "CLI /usr/local/sbin/audiobookred-source не установлен"
