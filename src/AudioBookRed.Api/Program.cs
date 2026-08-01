@@ -1,5 +1,6 @@
 using AudioBookRed.Api.Compatibility;
 using AudioBookRed.Api.Data;
+using AudioBookRed.Api.Infrastructure;
 using AudioBookRed.Api.Models;
 using AudioBookRed.Api.Services;
 
@@ -34,22 +35,8 @@ builder.Services.AddSingleton<RuTrackerCrawler>();
 
 var app = builder.Build();
 
-// Swagger/OpenAPI полностью отключены в production-сборке.
-// Возвращаем 404 для известных путей, чтобы не раскрывать служебную документацию.
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path.Value ?? string.Empty;
-    if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("/openapi", StringComparison.OrdinalIgnoreCase))
-    {
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
-        return;
-    }
 
-    await next();
-});
-
-// JacRed-style browser UI from wwwroot (/ui/).
+// Browser UI from wwwroot (/ui/).
 // Static files are served before API-key middleware; API calls still require X-Api-Key.
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -107,7 +94,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
     service = "audiobookred",
-    version = "0.18.0-torznab"
+    version = ApplicationVersion.Value
 }));
 
 app.MapAudioBookRedTorznab();
