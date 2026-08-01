@@ -31,12 +31,22 @@ builder.Services.AddSingleton<RuTrackerListingClient>();
 builder.Services.AddSingleton<RuTrackerDetailProcessor>();
 builder.Services.AddSingleton<RuTrackerCrawler>();
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
 var app = builder.Build();
-app.UseSwagger();
-app.UseSwaggerUI();
+
+// Swagger/OpenAPI полностью отключены в production-сборке.
+// Возвращаем 404 для известных путей, чтобы не раскрывать служебную документацию.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/openapi", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
 
 // JacRed-style browser UI from wwwroot (/ui/).
 // Static files are served before API-key middleware; API calls still require X-Api-Key.
@@ -48,8 +58,7 @@ if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Equals("change-me", StringCompar
     throw new InvalidOperationException("ApiKey не задан. Укажите API_KEY в .env.");
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/health") ||
-        context.Request.Path.StartsWithSegments("/swagger"))
+    if (context.Request.Path.StartsWithSegments("/health"))
     {
         await next();
         return;
@@ -83,7 +92,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
     service = "audiobookred",
-    version = "0.17.5-audiobookred"
+    version = "0.17.5.3-no-swagger"
 }));
 
 app.MapPost("/api/v1/parse-title", (ParseTitleRequest request, TitleNormalizer parser) =>

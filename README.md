@@ -3,7 +3,7 @@
 AudioBookRed — агрегатор метаданных аудиокниг на .NET 9 и PostgreSQL. Проект индексирует источники через очереди, хранит torrent-метаданные, предоставляет REST API и браузерный интерфейс с взаимозависимыми фасетными фильтрами.
 
 Репозиторий: `ivzaislu/audiobookred`
-Текущая версия приложения: **0.17.5**
+Текущая версия приложения: **0.17.5.3**
 
 ## Возможности
 
@@ -139,7 +139,7 @@ curl -sS http://127.0.0.1:9117/health | python3 -m json.tool
 {
   "status": "ok",
   "service": "audiobookred",
-  "version": "0.17.5-audiobookred"
+  "version": "0.17.5.3-no-swagger"
 }
 ```
 
@@ -307,7 +307,7 @@ sudo bash install.sh --no-start --replace-cron
 
 ## REST API
 
-Все маршруты, кроме `/health` и Swagger, требуют заголовок:
+Все маршруты, кроме `/health`, требуют заголовок:
 
 ```text
 X-Api-Key: <API_KEY>
@@ -330,11 +330,7 @@ POST /api/v1/sources/rutracker/incremental/enqueue
 POST /api/v1/sources/rutracker/work
 ```
 
-Swagger:
-
-```text
-http://SERVER_IP:9117/swagger
-```
+Интерактивный Swagger в рабочей сборке отключён и маршрут `/swagger` не регистрируется.
 
 ## Структура репозитория
 
