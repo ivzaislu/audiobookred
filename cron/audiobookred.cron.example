@@ -10,12 +10,13 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # RuTracker
 # -----------------------------------------------------------------------------
 
-# Постоянный короткий worker. Берёт до 3 страниц из общей очереди.
+# Постоянный короткий worker. Берёт до 3 страниц/тем из общей очереди.
 # flock не позволяет наложиться двум экземплярам одного worker.
 * * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work 3 >> /var/log/audiobookred-rutracker-worker.log 2>&1
 
-# Первые N страниц категорий — поиск новых раздач каждый час.
-17 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1
+# Контрольный обход первых двух страниц всех категорий раз в сутки.
+# Сиды и личи обновляются из viewforum.php без открытия каждой темы.
+17 4 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1
 
 # Обновление кэшированной статистики для UI.
 */10 * * * * root /usr/bin/flock -n /run/lock/audiobookred-stats.lock /usr/bin/timeout 2m /usr/local/sbin/audiobookred-source rutracker stats-refresh >> /var/log/audiobookred-maintenance.log 2>&1

@@ -3,6 +3,7 @@ namespace AudioBookRed.Api.Services;
 public sealed class RuTrackerAtomWorker(
     RuTrackerAtomClient client,
     RuTrackerAtomImporter importer,
+    RuTrackerAtomState state,
     ILogger<RuTrackerAtomWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -26,41 +27,36 @@ public sealed class RuTrackerAtomWorker(
         {
             if (client.Enabled)
             {
-                foreach (var forumId in client.ForumIds)
+                try
                 {
-                    try
-                    {
-                        var result = await importer.ImportAsync(
-                            forumId,
-                            client.MaxEntries,
-                            stoppingToken);
-                        logger.LogInformation(
-                            "RuTracker Atom forum {ForumId}: received={Received}, imported={Imported}, failed={Failed}, notModified={NotModified}",
-                            forumId,
-                            result.Received,
-                            result.Imported,
-                            result.Failed,
-                            result.NotModified);
-                    }
-                    catch (InvalidOperationException ex)
-                        when (ex.Message.Contains("уже выполняется", StringComparison.Ordinal))
-                    {
-                        logger.LogDebug(
-                            "RuTracker Atom forum {ForumId} пропущен: {Message}",
-                            forumId,
-                            ex.Message);
-                    }
-                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                    {
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(
-                            ex,
-                            "Ошибка фонового импорта RuTracker Atom forum {ForumId}",
-                            forumId);
-                    }
+                    await importer.ImportCycleAsync(
+                        client.ForumIds,
+                        client.MaxEntries,
+                        stoppingToken);
+                    var snapshot = state.Snapshot(client);
+                    logger.LogInformation(
+                        "RuTracker Atom cycle finished: forums={Forums}, received={Received}, new={New}, changed={Changed}, skipped={Skipped}, enqueued={Enqueued}, failed={Failed}, durationMs={DurationMs}",
+                        snapshot.TotalForums,
+                        snapshot.LastReceived,
+                        snapshot.LastNew,
+                        snapshot.LastChanged,
+                        snapshot.LastSkipped,
+                        snapshot.LastEnqueued,
+                        snapshot.LastFailed,
+                        snapshot.LastCycleDurationMilliseconds);
+                }
+                catch (InvalidOperationException ex)
+                    when (ex.Message.Contains("уже выполняется", StringComparison.Ordinal))
+                {
+                    logger.LogDebug("Фоновый Atom cycle пропущен: {Message}", ex.Message);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Ошибка фонового цикла RuTracker Atom");
                 }
             }
 

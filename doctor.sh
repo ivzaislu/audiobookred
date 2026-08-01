@@ -200,7 +200,18 @@ else
   warn "/etc/default/audiobookred отсутствует"
 fi
 
-[[ -f /etc/cron.d/audiobookred ]] && ok "cron установлен" || warn "cron не установлен"
+if [[ -f /etc/cron.d/audiobookred ]]; then
+  ok "cron установлен"
+  if grep -Eq '^17[[:space:]]+4[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*[[:space:]]+root[[:space:]].*audiobookred-source rutracker latest' /etc/cron.d/audiobookred; then
+    ok "rutracker latest: ежедневно в 04:17"
+  elif grep -Fq 'audiobookred-source rutracker latest' /etc/cron.d/audiobookred; then
+    warn "rutracker latest использует другое расписание; рекомендуется ежедневно в 04:17"
+  else
+    warn "cron-задача rutracker latest не найдена"
+  fi
+else
+  warn "cron не установлен"
+fi
 [[ -f /etc/logrotate.d/audiobookred ]] && ok "logrotate установлен" || warn "logrotate не установлен"
 
 if $FULL && command -v docker >/dev/null 2>&1; then

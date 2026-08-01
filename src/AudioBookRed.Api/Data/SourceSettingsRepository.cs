@@ -18,7 +18,7 @@ public sealed class SourceSettingsRepository(
         CREATE TABLE IF NOT EXISTS source_runtime_settings (
           source TEXT PRIMARY KEY,
           enabled BOOLEAN NOT NULL DEFAULT TRUE,
-          incremental_pages INT NOT NULL DEFAULT 3,
+          incremental_pages INT NOT NULL DEFAULT 2,
           worker_job_limit INT NOT NULL DEFAULT 3,
           page_concurrency INT NOT NULL DEFAULT 3,
           detail_concurrency INT NOT NULL DEFAULT 3,
@@ -32,6 +32,30 @@ public sealed class SourceSettingsRepository(
           CONSTRAINT ck_source_settings_delay CHECK (request_delay_ms BETWEEN 0 AND 10000),
           CONSTRAINT ck_source_settings_attempts CHECK (maximum_attempts BETWEEN 1 AND 20)
         );
+
+        ALTER TABLE source_runtime_settings
+          ALTER COLUMN incremental_pages SET DEFAULT 2;
+
+        CREATE TABLE IF NOT EXISTS audiobookred_migrations (
+          migration_key TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        -- Версия до 0.20.0 использовала 3 как штатное значение RuTracker.
+        -- Миграция выполняется один раз: после неё пользователь снова может
+        -- вручную выбрать 3, и последующие перезапуски это значение не изменят.
+        WITH applied AS (
+          INSERT INTO audiobookred_migrations(migration_key)
+          VALUES ('0.20.0-rutracker-incremental-pages-2')
+          ON CONFLICT (migration_key) DO NOTHING
+          RETURNING migration_key
+        )
+        UPDATE source_runtime_settings
+        SET incremental_pages = 2,
+            updated_at = NOW()
+        WHERE source = 'rutracker'
+          AND incremental_pages = 3
+          AND EXISTS (SELECT 1 FROM applied);
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);

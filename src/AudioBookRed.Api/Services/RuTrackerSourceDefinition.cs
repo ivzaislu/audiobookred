@@ -15,7 +15,7 @@ public sealed class RuTrackerSourceDefinition
 
     // Значения по умолчанию записываются в source_runtime_settings при первом запуске.
     // После этого их можно менять через API/CLI без пересборки контейнера.
-    public int DefaultIncrementalPages => 3;
+    public int DefaultIncrementalPages => 2;
     public int DefaultWorkerJobLimit => 3;
     public int DefaultPageConcurrency => 3;
     public int DefaultDetailConcurrency => 3;

@@ -211,3 +211,25 @@ sudo bash uninstall.sh --purge-data --remove-code
 ```
 
 Перед удалением данных обязательно создайте и сохраните резервную копию.
+
+<!-- patch-06-atom-dedup -->
+## Atom discovery без лишних запросов к Worker
+
+Начиная с версии 0.20.0 Atom-проход только обнаруживает темы. Состояние
+`topic_id + fingerprint(title, size, URL)` хранится в PostgreSQL, поэтому
+повторные записи feed получают статус `skipped` и не открывают `viewtopic.php`.
+Новые и действительно изменившиеся темы ставятся в `source_topic_jobs`, после
+чего обычный минутный worker получает magnet с существующими retry/lease.
+
+Рекомендуемый режим:
+
+```dotenv
+RUTRACKER_ATOM_ENABLED=true
+RUTRACKER_ATOM_INTERVAL_MINUTES=15
+RUTRACKER_ATOM_MAX_ENTRIES=10
+RUTRACKER_MAGNET_ENABLED=false
+```
+
+Контрольный `rutracker latest` запускается ежедневно в 04:17 и проверяет две
+первые страницы каждой категории. Он обновляет сиды и личи из `viewforum.php`
+без detail-запроса для каждой темы.

@@ -65,6 +65,38 @@ project_version() {
     "$ROOT/src/AudioBookRed.Api/AudioBookRed.Api.csproj" | head -n 1
 }
 
+migrate_existing_cron() {
+  local cron_file="/etc/cron.d/audiobookred"
+  local old_line='17 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
+  local new_line='17 4 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
+  local backup
+
+  [[ -f "$cron_file" ]] || return 0
+
+  if grep -Fxq "$old_line" "$cron_file"; then
+    backup="${cron_file}.backup-$(date +%Y%m%d-%H%M%S)"
+    cp -a "$cron_file" "$backup"
+    python3 - "$cron_file" "$old_line" "$new_line" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+text = path.read_text()
+if text.count(old) != 1:
+    raise SystemExit(f"ожидалась одна cron-строка, найдено {text.count(old)}")
+path.write_text(text.replace(old, new))
+PY
+    chmod 0644 "$cron_file"
+    echo "Cron latest перенесён с ежечасного запуска на ежедневный 04:17; backup: $backup"
+  elif grep -Fxq "$new_line" "$cron_file"; then
+    echo "Cron latest уже настроен на ежедневный запуск в 04:17."
+  elif grep -Fq 'audiobookred-source rutracker latest' "$cron_file"; then
+    echo "Предупреждение: обнаружено пользовательское расписание rutracker latest; оно сохранено без изменений." >&2
+  fi
+}
+
 show_api_diagnostics() {
   local api_id health_status
 
@@ -220,7 +252,8 @@ if $INSTALL_CRON; then
     install -m 0644 cron/audiobookred.cron.example /etc/cron.d/audiobookred
     echo "Установлен /etc/cron.d/audiobookred"
   else
-    echo "Существующий /etc/cron.d/audiobookred сохранён. Для замены используйте --replace-cron."
+    migrate_existing_cron
+    echo "Существующий /etc/cron.d/audiobookred сохранён. Для полной замены используйте --replace-cron."
   fi
   install -m 0644 cron/audiobookred.logrotate.example /etc/logrotate.d/audiobookred
 fi
