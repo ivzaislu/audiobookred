@@ -17,6 +17,22 @@ TestResults/
 *.nupkg
 *.snupkg
 *.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.dump
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
+compose.json
+coverage/
+coverage.*
+nul
 
 .DS_Store
 Thumbs.db

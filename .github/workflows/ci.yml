@@ -53,6 +53,9 @@ jobs:
       - name: Validate text encoding
         run: python3 scripts/check-text-encoding.py
 
+      - name: Validate repository hygiene
+        run: python3 scripts/check-repository-hygiene.py
+
       - name: Validate Compose security
         shell: bash
         run: |
