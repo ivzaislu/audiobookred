@@ -29,7 +29,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сластин Артем Вячеславич, ПолуЁж - Мастер Рун 7 [MP3]");
 
-        Assert.Equal(3, result.ParserVersion);
+        Assert.Equal(4, result.ParserVersion);
         Assert.Equal("Мастер Рун. Книга 7", result.ParsedTitle.Title);
         Assert.Equal(
             "Сластин Артем Вячеславич, ПолуЁж",
@@ -171,7 +171,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Нэппер Т. Р. - Призрак неонового бога [Игорь Князев, 2026, 128 kbps, MP3]");
 
-        Assert.Equal(3, result.ParserVersion);
+        Assert.Equal(4, result.ParserVersion);
         Assert.Equal("Призрак неонового бога", result.ParsedTitle.Title);
         Assert.Equal("Нэппер Т. Р.", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Игорь Князев" }, result.ParsedTitle.Narrators);
@@ -211,7 +211,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Тыркова-Вильямс Ариадна - Жизнь Пушкина (том 1) [Терновский Евгений, 2013 г., 96 kbps, MP3]");
 
-        Assert.Equal(3, result.ParserVersion);
+        Assert.Equal(4, result.ParserVersion);
         Assert.Equal("Жизнь Пушкина (том 1)", result.ParsedTitle.Title);
         Assert.Equal("Тыркова-Вильямс Ариадна", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Терновский Евгений" }, result.ParsedTitle.Narrators);
@@ -223,6 +223,142 @@ public sealed class RuTrackerTopicMetadataParserTests
         Assert.Null(result.Publisher);
         Assert.Equal("нигде не купишь", result.EditionType);
         Assert.Equal("аудиокнига", result.EditionCategory);
+    }
+
+    [Fact]
+    public void Prefers_fallback_title_and_splits_adjacent_field_labels()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span class="post-align" style="text-align: center;">
+                  <span class="post-b">
+                    <span style="font-size: 24px;">"Сатурн" почти не виден</span><br>
+                    Прочитано по изданию: М.Вече, 2008 г.
+                  </span>
+                </span><hr>
+                <var class="postImg" title="cover">&#10;</var>
+                <span class="post-b">Год выпуска</span>: 2010 г.<br>
+                <span class="post-b">Фамилия автора</span>:
+                <span class="post-b">Ардаматский</span>
+                <span class="post-b">Имя автора</span>:
+                <span class="post-b">Василий</span><br>
+                <span class="post-b">Исполнитель</span>: Герасимов Вячеслав<br>
+                <span class="post-b">Жанр</span>: Детектив<br>
+                <span class="post-b">Издательство</span>: Нигде не купишь<br>
+                <span class="post-b">Тип аудиокниги</span>: аудиокнига<br>
+                <span class="post-b">Аудио кодек</span>: MP3<br>
+                <span class="post-b">Битрейт аудио</span>: 96 kbps, 44 kHz, Mono<br>
+                <span class="post-b">Цикл/серия</span>: Сатурн почти не виден<br>
+                <span class="post-b">Номер книги</span>: 1 - 2
+                """),
+            "Ардаматский Василий - \"Сатурн\" почти не виден [Герасимов Вячеслав, 2010 г., 96 kbps, 44 kHz, Mono, MP3]");
+
+        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal("\"Сатурн\" почти не виден", result.ParsedTitle.Title);
+        Assert.Equal("Ардаматский Василий", result.ParsedTitle.Author);
+        Assert.Equal("Сатурн почти не виден", result.ParsedTitle.Series);
+        Assert.Null(result.ParsedTitle.SeriesPosition);
+        Assert.Equal("Нигде не купишь", result.Publisher);
+        Assert.Equal("аудиокнига", result.EditionType);
+        Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
+        Assert.Equal(96, result.ParsedTitle.BitrateKbps);
+        Assert.Equal(44_000, result.SampleRateHz);
+        Assert.Equal("Mono", result.AudioChannels);
+    }
+
+    [Fact]
+    public void Separates_unformatted_first_field_and_accepts_legacy_audio_labels()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Али-баба и 40 разбойников</span>
+                <var class="postImg" title="cover">&#10;</var>Год выпуска: 1981<br>
+                <span class="post-b">Автор</span>: Постановка - В.Смехов<br>
+                <span class="post-b">Исполнитель</span>: О.Табаков, Т.Никитина<br>
+                <span class="post-b">Жанр</span>: музыкальная сказка<br>
+                <span class="post-b">Издательство</span>: © "МЕЛОДИЯ", 1982<br>
+                <span class="post-b">Тип</span>: аудиоспектакль<br>
+                <span class="post-b">Аудио кодек</span>: MP3<br>
+                <span class="post-b">Битрейт аудио</span>: 256 kbps
+                """),
+            "Постановка - В.Смехов - Али-баба и 40 разбойников [О.Табаков, 1981, 256 kbps]");
+
+        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal("Али-баба и 40 разбойников", result.ParsedTitle.Title);
+        Assert.Equal("Постановка - В.Смехов", result.ParsedTitle.Author);
+        Assert.Equal(1981, result.ParsedTitle.ReleaseYear);
+        Assert.Equal("© \"МЕЛОДИЯ\", 1982", result.Publisher);
+        Assert.Equal("аудиоспектакль", result.EditionType);
+        Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
+        Assert.Equal(256, result.ParsedTitle.BitrateKbps);
+        Assert.True(result.ParsedTitle.IsDramatized);
+    }
+
+    [Fact]
+    public void Removes_trailing_contents_noise_from_publisher()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Черный пудель, рыжий кот, или Свадьба с препятствиями</span><br>
+                <span class="post-b">Год выпуска</span>: 2018<br>
+                <span class="post-b">Фамилия автора</span>: Михалкова<br>
+                <span class="post-b">Имя автора</span>: Елена<br>
+                <span class="post-b">Исполнитель</span>: Юлия Бочанова<br>
+                <span class="post-b">Издательство</span>: Аудиокнига Оглавление<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Михалкова Елена - Черный пудель, рыжий кот, или Свадьба с препятствиями [MP3]");
+
+        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal("Аудиокнига", result.Publisher);
+    }
+
+    [Fact]
+    public void Rejects_numeric_publisher_identifier()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span class="post-align" style="text-align: center;">
+                  <span style="font-size: 20px;">Елена Безрукова</span><br>
+                  <span class="post-b">Девочка, я тебя присвою 2</span>
+                </span><hr>
+                <span class="post-b">Год выпуска</span>: 2024<br>
+                <span class="post-b">Фамилия автора</span>: Безрукова<br>
+                <span class="post-b">Имя автора</span>: Елена<br>
+                <span class="post-b">Цикл/серия</span>: Архип + Снежинка<br>
+                <span class="post-b">Номер книги</span>: 2<br>
+                <span class="post-b">Издательство</span>: 140570025756<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Безрукова Елена - Архип+Снежинка #2. Девочка, я тебя присвою 2 [MP3]");
+
+        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal("Девочка, я тебя присвою 2", result.ParsedTitle.Title);
+        Assert.Null(result.Publisher);
+        Assert.Equal(2m, result.ParsedTitle.SeriesPosition);
+    }
+
+    [Fact]
+    public void Rejects_multi_book_series_position()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Цикл "Часодеи"</span><br>
+                <span class="post-b">Год выпуска</span>: 2024<br>
+                <span class="post-b">Фамилия автора</span>: Щерба<br>
+                <span class="post-b">Имя автора</span>: Наталья<br>
+                <span class="post-b">Исполнитель</span>: Наталья Терешкова<br>
+                <span class="post-b">Цикл/серия</span>: Часодеи<br>
+                <span class="post-b">Номер книги</span>: 1,2,3,4,5,6<br>
+                <span class="post-b">Издательство</span>: Издательство "Росмэн"<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Щерба Наталья - Цикл \"Часодеи\" [Наталья Терешкова, 2024, MP3]");
+
+        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal("Цикл \"Часодеи\"", result.ParsedTitle.Title);
+        Assert.Equal("Часодеи", result.ParsedTitle.Series);
+        Assert.Null(result.ParsedTitle.SeriesPosition);
     }
 
     [Fact]

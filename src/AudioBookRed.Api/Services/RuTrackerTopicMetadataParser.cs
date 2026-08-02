@@ -10,15 +10,17 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 3;
+    public const int CurrentParserVersion = 4;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex DecimalPattern = new(
-        @"\d+(?:[.,]\d+)?",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SeriesPositionPattern = new(
+        @"^\s*(?:(?:том|часть|книга|выпуск)\s*)?(?:№\s*)?(?<value>\d+(?:[.,]\d+)?)\s*$",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
 
     private static readonly Regex FormatPattern = new(
         @"\b(mp3|m4b|m4a|aac|flac|ogg|opus|ape|alac|wav|wavpack|wv)\b",
@@ -33,7 +35,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex ChannelPattern = new(
-        @"\b(joint\s+stereo|stereo|mono|стерео|моно)\b",
+        @"\b(joint\s+(?:stereo|стерео)|stereo|mono|стерео|моно)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex DurationPattern = new(
@@ -42,6 +44,22 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
 
     private static readonly Regex TitleContinuationPattern = new(
         @"^\(?\s*(?:том|часть|книга|выпуск)\s*(?:№\s*)?(?:\d+|[ivxlcdm]+)\s*\)?$",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
+
+    private static readonly Regex PublisherContentsSuffixPattern = new(
+        @"\s+оглавление\s*$",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
+
+    private static readonly Regex NumericPublisherPattern = new(
+        @"^\d{8,17}$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TitleNotePattern = new(
+        @"^(?:прочитано|записано)\s+по\s+изданию\s*:",
         RegexOptions.Compiled |
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant);
@@ -67,8 +85,10 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             ["жанры"] = TopicField.Genres,
             ["издательство"] = TopicField.Publisher,
             ["аудиокодек"] = TopicField.AudioFormat,
+            ["аудио кодек"] = TopicField.AudioFormat,
             ["формат"] = TopicField.AudioFormat,
             ["битрейт"] = TopicField.Bitrate,
+            ["битрейт аудио"] = TopicField.Bitrate,
             ["вид битрейта"] = TopicField.BitrateMode,
             ["частота дискретизации"] = TopicField.SampleRate,
             ["количество каналов моно стерео"] = TopicField.AudioChannels,
@@ -77,6 +97,8 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             ["время звучания"] = TopicField.Duration,
             ["длительность"] = TopicField.Duration,
             ["тип издания"] = TopicField.EditionType,
+            ["тип"] = TopicField.EditionType,
+            ["тип аудиокниги"] = TopicField.EditionType,
             ["категория"] = TopicField.EditionCategory,
             ["музыкальное сопровождение"] = TopicField.Music,
             ["описание"] = TopicField.Description
@@ -131,7 +153,11 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             return Empty(fallback);
 
         var series = Value(fields, TopicField.Series);
-        var seriesPosition = ParseDecimal(Value(fields, TopicField.SeriesPosition));
+        var seriesPositionValue = Value(fields, TopicField.SeriesPosition);
+        var seriesPosition = ParseSeriesPosition(seriesPositionValue);
+        var resolvedSeriesPosition = string.IsNullOrWhiteSpace(seriesPositionValue)
+            ? seriesPosition ?? fallback.SeriesPosition
+            : seriesPosition;
         var title = SelectTitle(
             lines.Take(firstFieldIndex).ToArray(),
             series,
@@ -144,20 +170,23 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             narrators = fallback.Narrators;
 
         var quality = Value(fields, TopicField.Quality);
+        var bitrateValue = Value(fields, TopicField.Bitrate);
         var audioFormat =
             ParseFormat(Value(fields, TopicField.AudioFormat)) ??
             ParseFormat(quality) ??
             fallback.AudioFormat;
         var bitrate =
-            ParseInteger(BitratePattern, Value(fields, TopicField.Bitrate)) ??
+            ParseInteger(BitratePattern, bitrateValue) ??
             ParseInteger(BitratePattern, quality) ??
             fallback.BitrateKbps;
         var sampleRate =
             ParseSampleRate(Value(fields, TopicField.SampleRate)) ??
-            ParseSampleRate(quality);
+            ParseSampleRate(quality) ??
+            ParseSampleRate(bitrateValue);
         var channels =
-            CleanOptional(Value(fields, TopicField.AudioChannels)) ??
-            ParseChannels(quality);
+            ParseChannels(Value(fields, TopicField.AudioChannels)) ??
+            ParseChannels(quality) ??
+            ParseChannels(bitrateValue);
         var bitrateMode = ParseBitrateMode(Value(fields, TopicField.BitrateMode));
 
         var corpus = string.Join(' ', lines);
@@ -165,7 +194,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             title,
             author,
             CleanOptional(series) ?? fallback.Series,
-            seriesPosition ?? fallback.SeriesPosition,
+            resolvedSeriesPosition,
             narrators,
             fallback.Language,
             ParseYear(Value(fields, TopicField.ReleaseYear)) ?? fallback.ReleaseYear,
@@ -180,7 +209,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             parsed,
             ParseDuration(Value(fields, TopicField.Duration)),
             SplitValues(Value(fields, TopicField.Genres)),
-            CleanOptional(Value(fields, TopicField.Publisher)),
+            CleanPublisher(Value(fields, TopicField.Publisher)),
             sampleRate,
             channels,
             bitrateMode,
@@ -225,7 +254,10 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         {
             if (child.NodeType == NodeType.Text)
             {
-                output.Append(child.TextContent);
+                var content = child.TextContent;
+                if (StartsWithKnownFieldLabel(content))
+                    AppendLineBreak(output);
+                output.Append(content);
                 continue;
             }
 
@@ -237,6 +269,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
                 continue;
             if (element.ClassList.Contains("q-wrap"))
                 continue;
+
+            if (IsKnownFieldLabelElement(element))
+                AppendLineBreak(output);
 
             if (tag is "BR" or "HR")
             {
@@ -265,6 +300,22 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         if (output.Length == 0 || output[^1] == '\n')
             return;
         output.Append('\n');
+    }
+
+    private static bool IsKnownFieldLabelElement(IElement element)
+    {
+        if (!element.ClassList.Contains("post-b"))
+            return false;
+
+        return KnownFields.ContainsKey(NormalizeLabel(element.TextContent));
+    }
+
+    private static bool StartsWithKnownFieldLabel(string value)
+    {
+        var trimmed = value.TrimStart();
+        var separator = trimmed.IndexOf(':');
+        return separator > 0 &&
+               KnownFields.ContainsKey(NormalizeLabel(trimmed[..separator]));
     }
 
     private static bool TryParseField(
@@ -309,9 +360,11 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
 
         var selectedIndex = Array.FindLastIndex(
             meaningful,
-            value => !LooksLikeSeriesHeading(value, series, position));
+            value =>
+                !LooksLikeSeriesHeading(value, series, position) &&
+                !LooksLikeTitleNote(value));
         if (selectedIndex < 0)
-            return meaningful[^1];
+            return fallback;
 
         var selected = meaningful[selectedIndex];
         if (selectedIndex > 0 && TitleContinuationPattern.IsMatch(selected))
@@ -330,6 +383,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
 
         return selected;
     }
+
+    private static bool LooksLikeTitleNote(string candidate) =>
+        TitleNotePattern.IsMatch(candidate);
 
     private static bool LooksLikeSeriesHeading(
         string candidate,
@@ -406,15 +462,15 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             : null;
     }
 
-    private static decimal? ParseDecimal(string? value)
+    private static decimal? ParseSeriesPosition(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        var match = DecimalPattern.Match(value);
+        var match = SeriesPositionPattern.Match(value);
         return match.Success &&
                decimal.TryParse(
-                   match.Value.Replace(',', '.'),
+                   match.Groups["value"].Value.Replace(',', '.'),
                    NumberStyles.AllowDecimalPoint,
                    CultureInfo.InvariantCulture,
                    out var parsed)
@@ -480,12 +536,17 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             return null;
 
         var channels = CleanText(match.Value);
-        if (channels.Equals("joint stereo", StringComparison.OrdinalIgnoreCase))
+        if (channels.Equals("joint stereo", StringComparison.OrdinalIgnoreCase) ||
+            channels.Equals("joint стерео", StringComparison.OrdinalIgnoreCase))
             return "Joint Stereo";
         if (channels.Equals("stereo", StringComparison.OrdinalIgnoreCase))
             return "Stereo";
         if (channels.Equals("mono", StringComparison.OrdinalIgnoreCase))
             return "Mono";
+        if (channels.Equals("стерео", StringComparison.OrdinalIgnoreCase))
+            return "Стерео";
+        if (channels.Equals("моно", StringComparison.OrdinalIgnoreCase))
+            return "Моно";
         return channels;
     }
 
@@ -536,6 +597,20 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         {
             return null;
         }
+    }
+
+    private static string? CleanPublisher(string? value)
+    {
+        var cleaned = CleanOptional(value);
+        if (cleaned is null)
+            return null;
+
+        cleaned = CleanText(
+            PublisherContentsSuffixPattern.Replace(cleaned, string.Empty));
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return null;
+
+        return NumericPublisherPattern.IsMatch(cleaned) ? null : cleaned;
     }
 
     private static string? CleanOptional(string? value)
