@@ -9,7 +9,7 @@
     <Description>Агрегатор метаданных аудиокниг с фасетным поиском и очередями источников.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Npgsql" Version="9.0.4" />
     <PackageReference Include="AngleSharp" Version="1.5.2" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
