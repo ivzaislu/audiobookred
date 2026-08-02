@@ -15,15 +15,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET 9
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 9.0.x
 
-      - name: Restore locked dependencies
-        run: dotnet restore tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --locked-mode
+      - name: Restore API locked dependencies
+        run: dotnet restore src/AudioBookRed.Api/AudioBookRed.Api.csproj --locked-mode
+
+      - name: Restore test dependencies
+        run: |
+          test ! -e tests/AudioBookRed.Api.Tests/packages.lock.json
+          dotnet restore tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --no-dependencies
 
       - name: Build
         run: dotnet build tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --configuration Release --no-restore -warnaserror
@@ -32,7 +37,9 @@ jobs:
         run: dotnet test tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
 
       - name: Audit NuGet dependencies
-        run: dotnet list tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj package --vulnerable --include-transitive
+        run: |
+          dotnet list src/AudioBookRed.Api/AudioBookRed.Api.csproj package --vulnerable --include-transitive
+          dotnet list tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj package --vulnerable --include-transitive
 
       - name: Validate shell syntax
         shell: bash
@@ -76,9 +83,4 @@ jobs:
           test -n "$user"
           test "$user" != "root"
           test "$user" != "0"
-          docker run --rm \
-            --read-only \
-            --tmpfs /tmp:rw,size=64m,mode=1777 \
-            --entrypoint sh \
-            audiobookred-ci \
-            -c 'test "$(id -u)" -ne 0; touch /tmp/audiobookred-write-test; if touch /app/audiobookred-write-test 2>/dev/null; then exit 1; fi'
+          docker run --rm             --read-only             --tmpfs /tmp:rw,size=64m,mode=1777             --entrypoint sh             audiobookred-ci             -c 'test "$(id -u)" -ne 0; touch /tmp/audiobookred-write-test; if touch /app/audiobookred-write-test 2>/dev/null; then exit 1; fi'
