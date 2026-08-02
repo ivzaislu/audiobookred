@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 1;
+    public const int CurrentParserVersion = 2;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -238,7 +238,12 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
                 continue;
             }
 
-            var block = tag is "DIV" or "P" or "LI" or "TR" or "TD" or "TABLE";
+            // RuTracker may render the centered author and title as sibling
+            // span.post-align elements without a BR between them. Treat these
+            // visual blocks as separate lines before title selection.
+            var block =
+                tag is "DIV" or "P" or "LI" or "TR" or "TD" or "TABLE" ||
+                element.ClassList.Contains("post-align");
             if (block)
                 AppendLineBreak(output);
 

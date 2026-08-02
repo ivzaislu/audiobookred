@@ -29,7 +29,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сластин Артем Вячеславич, ПолуЁж - Мастер Рун 7 [MP3]");
 
-        Assert.Equal(1, result.ParserVersion);
+        Assert.Equal(2, result.ParserVersion);
         Assert.Equal("Мастер Рун. Книга 7", result.ParsedTitle.Title);
         Assert.Equal(
             "Сластин Артем Вячеславич, ПолуЁж",
@@ -145,6 +145,45 @@ public sealed class RuTrackerTopicMetadataParserTests
         Assert.Equal(44_000, result.SampleRateHz);
         Assert.Equal("Joint Stereo", result.AudioChannels);
         Assert.Equal(11_973L, result.DurationSeconds);
+    }
+
+    [Fact]
+    public void Separates_adjacent_centered_author_and_title_before_first_field()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span class="post-align" style="text-align: center;">
+                  <span class="post-b"><span style="font-size: 26px">Т. Р. Нэппер</span></span>
+                </span><span class="post-align" style="text-align: center;">
+                  <span class="post-b"><span style="font-size: 22px">Призрак неонового бога</span></span>
+                </span><var class="postImg" title="cover">&#10;</var><span class="post-b">Год выпуска</span>: 2026<br>
+                <span class="post-b">Фамилия автора</span>: Нэппер<br>
+                <span class="post-b">Имя автора</span>: Т. Р.<br>
+                <span class="post-b">Исполнитель</span>: Игорь Князев<br>
+                <span class="post-b">Жанр</span>: Зарубежная фантастика, Киберпанк<br>
+                <span class="post-b">Издательство</span>: fanzon<br>
+                <span class="post-b">Аудиокодек</span>: MP3<br>
+                <span class="post-b">Битрейт</span>: 128 kbps<br>
+                <span class="post-b">Вид битрейта</span>: постоянный битрейт (CBR)<br>
+                <span class="post-b">Частота дискретизации</span>: 44 kHz<br>
+                <span class="post-b">Количество каналов (моно-стерео)</span>: Стерео<br>
+                <span class="post-b">Время звучания</span>: 17:52:25
+                """),
+            "Нэппер Т. Р. - Призрак неонового бога [Игорь Князев, 2026, 128 kbps, MP3]");
+
+        Assert.Equal(2, result.ParserVersion);
+        Assert.Equal("Призрак неонового бога", result.ParsedTitle.Title);
+        Assert.Equal("Нэппер Т. Р.", result.ParsedTitle.Author);
+        Assert.Equal(new[] { "Игорь Князев" }, result.ParsedTitle.Narrators);
+        Assert.Equal(2026, result.ParsedTitle.ReleaseYear);
+        Assert.Equal(new[] { "Зарубежная фантастика", "Киберпанк" }, result.Genres);
+        Assert.Equal("fanzon", result.Publisher);
+        Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
+        Assert.Equal(128, result.ParsedTitle.BitrateKbps);
+        Assert.Equal(44_000, result.SampleRateHz);
+        Assert.Equal("Стерео", result.AudioChannels);
+        Assert.Equal("CBR", result.BitrateMode);
+        Assert.Equal(64_345L, result.DurationSeconds);
     }
 
     [Fact]
