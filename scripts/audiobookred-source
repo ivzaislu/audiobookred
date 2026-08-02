@@ -8,6 +8,7 @@ SOURCE="${1:-}"
 COMMAND="${2:-}"
 ARG="${3:-}"
 ARG2="${4:-}"
+REMAINING_ARGS=("${@:3}")
 
 usage() {
   cat <<'TXT'
@@ -20,6 +21,9 @@ usage() {
   audiobookred-source <source> reconcile
   audiobookred-source <source> completeness
   audiobookred-source <source> retry-topics
+  audiobookred-source <source> metadata-status
+  audiobookred-source <source> reparse <topic_id> [topic_id ...] [--force]
+  audiobookred-source <source> reparse-stale [1..100]
   audiobookred-source <source> status
   audiobookred-source <source> events [limit]
   audiobookred-source <source> settings
@@ -102,6 +106,61 @@ case "$COMMAND" in
     ;;
   retry-topics)
     request POST "$base/topics/retry-failed" 120 | pretty
+    ;;
+  metadata-status)
+    request GET "$base/metadata/status" 120 | pretty
+    ;;
+  reparse)
+    (( ${#REMAINING_ARGS[@]} > 0 )) || {
+      echo "Передайте хотя бы один topic_id" >&2
+      exit 2
+    }
+    body="$(python3 - "${REMAINING_ARGS[@]}" <<'PY'
+import json
+import sys
+
+force = False
+values = []
+seen = set()
+
+for raw in sys.argv[1:]:
+    if raw == "--force":
+        force = True
+        continue
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            value = int(token)
+        except ValueError as error:
+            raise SystemExit(f"Некорректный topic_id: {token}") from error
+        if value <= 0:
+            raise SystemExit("topic_id должен быть положительным числом")
+        if value not in seen:
+            seen.add(value)
+            values.append(value)
+
+if not values:
+    raise SystemExit("Передайте хотя бы один topic_id")
+if len(values) > 100:
+    raise SystemExit("За один запрос разрешено не более 100 topic_id")
+
+print(json.dumps(
+    {"topicIds": values, "force": force},
+    ensure_ascii=False,
+))
+PY
+)"
+    request POST "$base/metadata/reparse" 120 "$body" | pretty
+    ;;
+  reparse-stale|metadata-backfill)
+    limit="${ARG:-25}"
+    [[ "$limit" =~ ^[0-9]+$ ]] && (( limit >= 1 && limit <= 100 )) || {
+      echo "limit должен быть 1..100" >&2
+      exit 2
+    }
+    request POST "$base/metadata/backfill?limit=$limit" 120 | pretty
     ;;
   events)
     limit="${ARG:-20}"

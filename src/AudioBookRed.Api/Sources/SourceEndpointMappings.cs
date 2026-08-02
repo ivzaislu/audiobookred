@@ -140,6 +140,73 @@ public static class SourceEndpointMappings
             return Results.Ok(new { source = crawler.SourceKey, retried });
         });
 
+        endpoints.MapGet("/api/v1/sources/{source}/metadata/status", async (
+            string source,
+            SourceRegistry registry,
+            CancellationToken ct) =>
+        {
+            if (!registry.TryGetCrawler(source, out var crawler))
+                return UnknownSource(source, registry);
+
+            return Results.Ok(await crawler.GetMetadataStatusAsync(ct));
+        });
+
+        endpoints.MapPost("/api/v1/sources/{source}/metadata/reparse", async (
+            string source,
+            SourceMetadataReparseRequest request,
+            SourceRegistry registry,
+            CancellationToken ct) =>
+        {
+            if (!registry.TryGetCrawler(source, out var crawler))
+                return UnknownSource(source, registry);
+
+            try
+            {
+                return Results.Ok(
+                    await crawler.EnqueueMetadataReparseAsync(request, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "invalid_metadata_reparse_request",
+                    message = ex.Message
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return SourceGuardUnavailable(ex);
+            }
+        });
+
+        endpoints.MapPost("/api/v1/sources/{source}/metadata/backfill", async (
+            string source,
+            int? limit,
+            SourceRegistry registry,
+            CancellationToken ct) =>
+        {
+            if (!registry.TryGetCrawler(source, out var crawler))
+                return UnknownSource(source, registry);
+
+            try
+            {
+                return Results.Ok(
+                    await crawler.EnqueueMetadataBackfillAsync(limit, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "invalid_metadata_backfill_request",
+                    message = ex.Message
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return SourceGuardUnavailable(ex);
+            }
+        });
+
         endpoints.MapPost("/api/v1/sources/{source}/bootstrap/start", async (
             string source,
             SourceRegistry registry,

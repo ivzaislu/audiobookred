@@ -34,6 +34,13 @@ public interface ISourceCrawler
     Task ResetBootstrapAsync(CancellationToken ct);
     Task<int> RetryFailedAsync(string? mode, CancellationToken ct);
     Task<int> RetryTopicFailuresAsync(CancellationToken ct);
+    Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
+        SourceMetadataReparseRequest request,
+        CancellationToken ct);
+    Task<SourceMetadataReparseResult> EnqueueMetadataBackfillAsync(
+        int? requestedLimit,
+        CancellationToken ct);
+    Task<SourceMetadataStatus> GetMetadataStatusAsync(CancellationToken ct);
     Task<object> GetCompletenessAsync(CancellationToken ct);
     Task<SourceRuntimeSettings> GetSettingsAsync(CancellationToken ct);
     Task<SourceRuntimeSettings> UpdateSettingsAsync(

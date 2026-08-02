@@ -20,6 +20,7 @@ public sealed class RuTrackerSourceDefinition : ISourceModule
     [
         "paged-listing",
         "topic-details",
+        "metadata-reparse",
         "magnet",
         "bootstrap",
         "incremental",

@@ -631,6 +631,300 @@ public sealed class RuTrackerTopicRepository(
             cancellationToken: ct));
     }
 
+    public async Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
+        string source,
+        IReadOnlyList<long> requestedTopicIds,
+        int parserVersion,
+        bool force,
+        CancellationToken ct)
+    {
+        var topicIds = SourceMetadataReparsePolicy.NormalizeTopicIds(
+            requestedTopicIds);
+        if (parserVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(parserVersion));
+
+        const string selectSql = """
+        WITH requested AS (
+          SELECT topic_id, ordinal
+          FROM unnest(CAST(@TopicIds AS bigint[])) WITH ORDINALITY
+            AS requested_values(topic_id, ordinal)
+        )
+        SELECT requested.topic_id AS TopicId,
+          job.id AS JobId,
+          job.status AS Status,
+          release.id AS ReleaseId,
+          release.metadata_parser_version AS MetadataParserVersion
+        FROM requested
+        LEFT JOIN source_topic_jobs job
+          ON job.source = @Source
+         AND job.topic_id = requested.topic_id
+        LEFT JOIN audiobook_releases release
+          ON release.source = @Source
+         AND release.source_id = requested.topic_id::text
+         AND release.magnet_uri IS NOT NULL
+         AND BTRIM(release.magnet_uri) <> ''
+        ORDER BY requested.ordinal;
+        """;
+
+        const string updateSql = """
+        UPDATE source_topic_jobs job
+        SET status = 'pending',
+            attempts = 0,
+            next_attempt_at = NOW(),
+            lease_until = NULL,
+            completed_at = NULL,
+            last_error = NULL,
+            updated_at = NOW()
+        WHERE job.source = @Source
+          AND job.topic_id = ANY(CAST(@TopicIds AS bigint[]))
+          AND job.status <> 'running'
+          AND EXISTS (
+            SELECT 1
+            FROM audiobook_releases release
+            WHERE release.source = @Source
+              AND release.source_id = job.topic_id::text
+              AND release.magnet_uri IS NOT NULL
+              AND BTRIM(release.magnet_uri) <> ''
+              AND (
+                @Force
+                OR release.metadata_parser_version < @ParserVersion
+              )
+          )
+        RETURNING job.topic_id;
+        """;
+
+        var args = new
+        {
+            Source = source,
+            TopicIds = topicIds,
+            ParserVersion = parserVersion,
+            Force = force
+        };
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        await db.OpenAsync(ct);
+        await using var tx = await db.BeginTransactionAsync(ct);
+
+        var candidates = (await db.QueryAsync<MetadataReparseCandidate>(
+            new CommandDefinition(
+                selectSql,
+                args,
+                tx,
+                cancellationToken: ct))).AsList();
+
+        var queuedIds = (await db.QueryAsync<long>(
+            new CommandDefinition(
+                updateSql,
+                args,
+                tx,
+                cancellationToken: ct))).AsList();
+
+        await tx.CommitAsync(ct);
+
+        var queuedSet = queuedIds.ToHashSet();
+        var orderedQueuedIds = topicIds
+            .Where(queuedSet.Contains)
+            .ToArray();
+        var matched = candidates
+            .Where(candidate =>
+                candidate.JobId is not null &&
+                candidate.ReleaseId is not null)
+            .ToArray();
+        var busy = matched.Count(candidate =>
+            string.Equals(
+                candidate.Status,
+                "running",
+                StringComparison.Ordinal));
+        var alreadyCurrent = force
+            ? 0
+            : matched.Count(candidate =>
+                !string.Equals(
+                    candidate.Status,
+                    "running",
+                    StringComparison.Ordinal) &&
+                candidate.MetadataParserVersion.GetValueOrDefault() >=
+                    parserVersion);
+        var status = await GetMetadataStatusAsync(
+            source,
+            parserVersion,
+            ct);
+
+        return new SourceMetadataReparseResult(
+            source,
+            "explicit",
+            parserVersion,
+            topicIds.Length,
+            matched.Length,
+            orderedQueuedIds.Length,
+            alreadyCurrent,
+            busy,
+            candidates.Count - matched.Length,
+            status.Stale,
+            orderedQueuedIds);
+    }
+
+    public async Task<SourceMetadataReparseResult> EnqueueMetadataBackfillAsync(
+        string source,
+        int requestedLimit,
+        int parserVersion,
+        CancellationToken ct)
+    {
+        var limit = SourceMetadataReparsePolicy.NormalizeBatchLimit(
+            requestedLimit);
+        if (parserVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(parserVersion));
+
+        const string selectSql = """
+        SELECT job.topic_id
+        FROM source_topic_jobs job
+        JOIN audiobook_releases release
+          ON release.source = job.source
+         AND release.source_id = job.topic_id::text
+        WHERE job.source = @Source
+          AND release.magnet_uri IS NOT NULL
+          AND BTRIM(release.magnet_uri) <> ''
+          AND release.metadata_parser_version < @ParserVersion
+          AND job.status NOT IN ('pending', 'retry', 'running')
+        ORDER BY release.metadata_parsed_at NULLS FIRST, release.id
+        LIMIT @Limit
+        FOR UPDATE OF job SKIP LOCKED;
+        """;
+
+        const string updateSql = """
+        UPDATE source_topic_jobs
+        SET status = 'pending',
+            attempts = 0,
+            next_attempt_at = NOW(),
+            lease_until = NULL,
+            completed_at = NULL,
+            last_error = NULL,
+            updated_at = NOW()
+        WHERE source = @Source
+          AND topic_id = ANY(CAST(@TopicIds AS bigint[]))
+        RETURNING topic_id;
+        """;
+
+        var args = new
+        {
+            Source = source,
+            ParserVersion = parserVersion,
+            Limit = limit
+        };
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        await db.OpenAsync(ct);
+        await using var tx = await db.BeginTransactionAsync(ct);
+
+        var selected = (await db.QueryAsync<long>(
+            new CommandDefinition(
+                selectSql,
+                args,
+                tx,
+                cancellationToken: ct))).AsList();
+
+        var queued = (await db.QueryAsync<long>(
+            new CommandDefinition(
+                updateSql,
+                new { Source = source, TopicIds = selected.ToArray() },
+                tx,
+                cancellationToken: ct))).AsList();
+
+        await tx.CommitAsync(ct);
+
+        var queuedSet = queued.ToHashSet();
+        var orderedQueuedIds = selected
+            .Where(queuedSet.Contains)
+            .ToArray();
+        var status = await GetMetadataStatusAsync(
+            source,
+            parserVersion,
+            ct);
+
+        return new SourceMetadataReparseResult(
+            source,
+            "backfill",
+            parserVersion,
+            limit,
+            selected.Count,
+            orderedQueuedIds.Length,
+            0,
+            0,
+            0,
+            status.Stale,
+            orderedQueuedIds);
+    }
+
+    public async Task<SourceMetadataStatus> GetMetadataStatusAsync(
+        string source,
+        int parserVersion,
+        CancellationToken ct)
+    {
+        if (parserVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(parserVersion));
+
+        const string sql = """
+        SELECT COUNT(*)::bigint AS Total,
+          COUNT(*) FILTER (
+            WHERE metadata_parser_version >= @ParserVersion
+          )::bigint AS Current,
+          COUNT(*) FILTER (
+            WHERE metadata_parser_version < @ParserVersion
+          )::bigint AS Stale,
+          MIN(metadata_parsed_at) FILTER (
+            WHERE metadata_parser_version >= @ParserVersion
+          ) AS FirstParsedAt,
+          MAX(metadata_parsed_at) FILTER (
+            WHERE metadata_parser_version >= @ParserVersion
+          ) AS LastParsedAt
+        FROM audiobook_releases
+        WHERE source = @Source
+          AND magnet_uri IS NOT NULL
+          AND BTRIM(magnet_uri) <> '';
+
+        SELECT COUNT(*) FILTER (
+            WHERE job.status IN ('pending', 'retry')
+          )::int AS Queued,
+          COUNT(*) FILTER (
+            WHERE job.status = 'running'
+          )::int AS Running
+        FROM source_topic_jobs job
+        JOIN audiobook_releases release
+          ON release.source = job.source
+         AND release.source_id = job.topic_id::text
+        WHERE job.source = @Source
+          AND release.magnet_uri IS NOT NULL
+          AND BTRIM(release.magnet_uri) <> ''
+          AND release.metadata_parser_version < @ParserVersion;
+        """;
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        await db.OpenAsync(ct);
+        using var grid = await db.QueryMultipleAsync(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                    Source = source,
+                    ParserVersion = parserVersion
+                },
+                cancellationToken: ct));
+
+        var counts = await grid.ReadSingleAsync<MetadataVersionCounts>();
+        var queue = await grid.ReadSingleAsync<MetadataQueueCounts>();
+
+        return new SourceMetadataStatus(
+            source,
+            parserVersion,
+            counts.Total,
+            counts.Current,
+            counts.Stale,
+            queue.Queued,
+            queue.Running,
+            counts.FirstParsedAt,
+            counts.LastParsedAt,
+            DateTimeOffset.UtcNow);
+    }
+
     public async Task<RuTrackerTopicQueueSummary> GetSummaryAsync(string source, CancellationToken ct)
     {
         const string sql = """
@@ -724,6 +1018,30 @@ public sealed class RuTrackerTopicRepository(
                 Error = error
             },
             cancellationToken: ct));
+    }
+
+    private sealed class MetadataReparseCandidate
+    {
+        public long TopicId { get; set; }
+        public long? JobId { get; set; }
+        public string? Status { get; set; }
+        public long? ReleaseId { get; set; }
+        public int? MetadataParserVersion { get; set; }
+    }
+
+    private sealed class MetadataVersionCounts
+    {
+        public long Total { get; set; }
+        public long Current { get; set; }
+        public long Stale { get; set; }
+        public DateTimeOffset? FirstParsedAt { get; set; }
+        public DateTimeOffset? LastParsedAt { get; set; }
+    }
+
+    private sealed class MetadataQueueCounts
+    {
+        public int Queued { get; set; }
+        public int Running { get; set; }
     }
 
     private sealed class TopicCounts

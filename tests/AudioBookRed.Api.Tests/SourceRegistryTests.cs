@@ -103,6 +103,17 @@ public sealed class SourceRegistryTests
         public Task<int> RetryTopicFailuresAsync(CancellationToken ct) =>
             throw new NotSupportedException();
 
+        public Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
+            SourceMetadataReparseRequest request,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<SourceMetadataReparseResult> EnqueueMetadataBackfillAsync(
+            int? requestedLimit,
+            CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<SourceMetadataStatus> GetMetadataStatusAsync(
+            CancellationToken ct) => throw new NotSupportedException();
+
         public Task<object> GetCompletenessAsync(CancellationToken ct) =>
             throw new NotSupportedException();
 

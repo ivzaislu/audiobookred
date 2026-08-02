@@ -389,6 +389,72 @@ public sealed class RuTrackerCrawler(
     public Task<int> RetryTopicFailuresAsync(CancellationToken ct) =>
         topicRepository.RetryFailedAsync(RuTrackerSourceDefinition.Key, ct);
 
+    public async Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
+        SourceMetadataReparseRequest request,
+        CancellationToken ct)
+    {
+        resourceGuard.EnsureEnoughDiskSpace();
+        _ = await GetEnabledSettingsAsync(ct);
+        var topicIds = SourceMetadataReparsePolicy.NormalizeTopicIds(
+            request.TopicIds);
+
+        var result = await topicRepository.EnqueueMetadataReparseAsync(
+            RuTrackerSourceDefinition.Key,
+            topicIds,
+            RuTrackerTopicMetadataParser.CurrentParserVersion,
+            request.Force,
+            ct);
+
+        if (result.Queued > 0)
+        {
+            await jobRepository.AddEventAsync(
+                RuTrackerSourceDefinition.Key,
+                "metadata_reparse_enqueued",
+                $"Точечный reparse: запрошено {result.Requested}, " +
+                $"поставлено {result.Queued}, актуальных {result.AlreadyCurrent}, " +
+                $"занято {result.Busy}, не найдено {result.Missing}.",
+                null,
+                ct);
+        }
+
+        return result;
+    }
+
+    public async Task<SourceMetadataReparseResult> EnqueueMetadataBackfillAsync(
+        int? requestedLimit,
+        CancellationToken ct)
+    {
+        resourceGuard.EnsureEnoughDiskSpace();
+        _ = await GetEnabledSettingsAsync(ct);
+        var limit = SourceMetadataReparsePolicy.NormalizeBatchLimit(
+            requestedLimit);
+
+        var result = await topicRepository.EnqueueMetadataBackfillAsync(
+            RuTrackerSourceDefinition.Key,
+            limit,
+            RuTrackerTopicMetadataParser.CurrentParserVersion,
+            ct);
+
+        if (result.Queued > 0)
+        {
+            await jobRepository.AddEventAsync(
+                RuTrackerSourceDefinition.Key,
+                "metadata_backfill_enqueued",
+                $"Metadata backfill: предел {limit}, поставлено {result.Queued}.",
+                null,
+                ct);
+        }
+
+        return result;
+    }
+
+    public Task<SourceMetadataStatus> GetMetadataStatusAsync(
+        CancellationToken ct) =>
+        topicRepository.GetMetadataStatusAsync(
+            RuTrackerSourceDefinition.Key,
+            RuTrackerTopicMetadataParser.CurrentParserVersion,
+            ct);
+
     public Task<RuTrackerCompletenessStatus> GetCompletenessAsync(CancellationToken ct) =>
         topicRepository.GetCompletenessAsync(RuTrackerSourceDefinition.Key, ct);
 
