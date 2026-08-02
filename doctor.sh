@@ -179,7 +179,7 @@ if [[ -f "$ROOT/.env" ]]; then
   [[ -n "$db_password" && "$db_password" != "change-me" ]] && ok "DB_PASSWORD настроен" || err "DB_PASSWORD не настроен"
   case "${bind_address:-0.0.0.0}" in
     127.0.0.1|::1|localhost) ok "API bind: ${bind_address:-127.0.0.1}" ;;
-    0.0.0.0|::|'[::]') warn "API РѕРїСѓР±Р»РёРєРѕРІР°РЅ РЅР° РІСЃРµС… РёРЅС‚РµСЂС„РµР№СЃР°С… (${bind_address:-0.0.0.0}); РѕРіСЂР°РЅРёС‡СЊС‚Рµ РїРѕСЂС‚ firewall" ;;
+    0.0.0.0|::|'[::]') warn "API опубликован на всех интерфейсах (${bind_address:-0.0.0.0}); ограничьте порт firewall" ;;
     *) ok "API bind: $bind_address" ;;
   esac
 else
@@ -230,28 +230,28 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
     esac
     container_user="$(docker inspect "$api_id" --format '{{.Config.User}}' 2>/dev/null || true)"
     if [[ -n "$container_user" && "$container_user" != "root" && "$container_user" != "0" ]]; then
-      ok "API container СЂР°Р±РѕС‚Р°РµС‚ РЅРµ РѕС‚ root: $container_user"
+      ok "API container работает не от root: $container_user"
     else
-      err "API container Р·Р°РїСѓС‰РµРЅ РѕС‚ root РёР»Рё user РЅРµ РѕРїСЂРµРґРµР»С‘РЅ"
+      err "API container запущен от root или user не определён"
     fi
 
     readonly_root="$(docker inspect "$api_id" --format '{{.HostConfig.ReadonlyRootfs}}' 2>/dev/null || true)"
-    [[ "$readonly_root" == "true" ]] && ok "API root filesystem read-only" || err "API root filesystem РЅРµ read-only"
+    [[ "$readonly_root" == "true" ]] && ok "API root filesystem read-only" || err "API root filesystem не read-only"
 
     security_opt="$(docker inspect "$api_id" --format '{{json .HostConfig.SecurityOpt}}' 2>/dev/null || true)"
     grep -qi 'no-new-privileges' <<<"$security_opt" \
-      && ok "API no-new-privileges РІРєР»СЋС‡С‘РЅ" \
-      || err "API no-new-privileges РЅРµ РІРєР»СЋС‡С‘РЅ"
+      && ok "API no-new-privileges включён" \
+      || err "API no-new-privileges не включён"
 
     cap_drop="$(docker inspect "$api_id" --format '{{json .HostConfig.CapDrop}}' 2>/dev/null || true)"
     grep -qi 'ALL' <<<"$cap_drop" \
-      && ok "API Linux capabilities СѓРґР°Р»РµРЅС‹" \
-      || err "API cap_drop ALL РЅРµ РїСЂРёРјРµРЅС‘РЅ"
+      && ok "API Linux capabilities удалены" \
+      || err "API cap_drop ALL не применён"
 
     tmpfs="$(docker inspect "$api_id" --format '{{json .HostConfig.Tmpfs}}' 2>/dev/null || true)"
     grep -q '"/tmp"' <<<"$tmpfs" \
-      && ok "API /tmp РїРѕРґРєР»СЋС‡С‘РЅ РєР°Рє tmpfs" \
-      || err "API /tmp tmpfs РЅРµ РЅР°СЃС‚СЂРѕРµРЅ"
+      && ok "API /tmp подключён как tmpfs" \
+      || err "API /tmp tmpfs не настроен"
   else
     err "контейнер API не найден"
   fi

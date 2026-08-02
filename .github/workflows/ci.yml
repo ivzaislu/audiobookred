@@ -50,6 +50,9 @@ jobs:
           done < <(find . -type f -name '*.sh' -print0)
           bash -n scripts/audiobookred-source
 
+      - name: Validate text encoding
+        run: python3 scripts/check-text-encoding.py
+
       - name: Validate Compose security
         shell: bash
         run: |
