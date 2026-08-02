@@ -5,6 +5,14 @@ services:
     build:
       context: .
     restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     depends_on:
       db:
         condition: service_healthy
@@ -35,7 +43,7 @@ services:
       RuTrackerMagnet__MaxAttempts: ${RUTRACKER_MAGNET_MAX_ATTEMPTS:-5}
       RuTrackerMagnet__RetryMinutes: ${RUTRACKER_MAGNET_RETRY_MINUTES:-60}
     ports:
-      - "${AUDIOBOOKRED_PORT:-9117}:9117"
+      - "${AUDIOBOOKRED_BIND_ADDRESS:-0.0.0.0}:${AUDIOBOOKRED_PORT:-9117}:9117"
     healthcheck:
       test:
         - CMD-SHELL

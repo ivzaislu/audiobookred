@@ -1,10 +1,26 @@
+using System.Threading.RateLimiting;
 using AudioBookRed.Api.Compatibility;
+using Microsoft.AspNetCore.RateLimiting;
 using AudioBookRed.Api.Data;
 using AudioBookRed.Api.Infrastructure;
 using AudioBookRed.Api.Models;
 using AudioBookRed.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 1024 * 1024;
+    options.Limits.MaxRequestLineSize = 8 * 1024;
+    options.Limits.MaxRequestHeadersTotalSize = 32 * 1024;
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(
+        RequestRateLimitPolicy.CreatePartition);
+    options.OnRejected = RequestRateLimitPolicy.WriteRejectedResponseAsync;
+});
 builder.Services.AddSingleton<SeriesNameParser>();
 builder.Services.AddSingleton<TitleNormalizer>();
 builder.Services.AddSingleton<PersonNameParser>();
@@ -39,11 +55,13 @@ builder.Services.AddSingleton<RuTrackerCrawler>();
 
 var app = builder.Build();
 
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 // Browser UI from wwwroot (/ui/).
 // Static files are served before API-key middleware; API calls still require X-Api-Key.
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseRateLimiter();
 
 var apiKey = builder.Configuration["ApiKey"]?.Trim();
 if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Equals("change-me", StringComparison.OrdinalIgnoreCase))
@@ -110,6 +128,24 @@ app.MapGet("/health/live", () => Results.Ok(new
 }));
 
 app.MapGet("/health/ready", async (
+    DatabaseReadinessProbe readinessProbe,
+    CancellationToken ct) =>
+{
+    var readiness = await readinessProbe.CheckAsync(ct);
+    return Results.Json(
+        new
+        {
+            status = readiness.Ready ? "ok" : "not_ready",
+            service = "audiobookred",
+            version = ApplicationVersion.Value,
+            database = readiness.Ready ? "ok" : "unavailable"
+        },
+        statusCode: readiness.Ready
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
+});
+
+app.MapGet("/api/v1/system/readiness", async (
     DatabaseReadinessProbe readinessProbe,
     CancellationToken ct) =>
 {

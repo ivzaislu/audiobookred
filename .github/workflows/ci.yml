@@ -22,14 +22,17 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Restore
-        run: dotnet restore tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj
+      - name: Restore locked dependencies
+        run: dotnet restore tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --locked-mode
 
       - name: Build
         run: dotnet build tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --configuration Release --no-restore -warnaserror
 
       - name: Test
         run: dotnet test tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
+
+      - name: Audit NuGet dependencies
+        run: dotnet list tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj package --vulnerable --include-transitive
 
       - name: Validate shell syntax
         shell: bash
@@ -40,11 +43,42 @@ jobs:
           done < <(find . -type f -name '*.sh' -print0)
           bash -n scripts/audiobookred-source
 
-      - name: Validate Compose
+      - name: Validate Compose security
         shell: bash
         run: |
+          set -Eeuo pipefail
           cp .env.example .env
-          docker compose --env-file .env config >/dev/null
+          docker compose --env-file .env config --format json > compose.json
+          python3 - <<'PY'
+          import json
+
+          with open("compose.json", encoding="utf-8") as handle:
+              config = json.load(handle)
+
+          api = config["services"]["api"]
+          assert api.get("init") is True
+          assert api.get("read_only") is True
+          assert "ALL" in api.get("cap_drop", [])
+          assert any("no-new-privileges" in value for value in api.get("security_opt", []))
+          assert any(str(value).startswith("/tmp") for value in api.get("tmpfs", []))
+          ports = api.get("ports", [])
+          assert ports and ports[0].get("host_ip") == "127.0.0.1"
+          PY
 
       - name: Build container
         run: docker build -t audiobookred-ci .
+
+      - name: Verify non-root read-only container
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          user="$(docker image inspect audiobookred-ci --format '{{.Config.User}}')"
+          test -n "$user"
+          test "$user" != "root"
+          test "$user" != "0"
+          docker run --rm \
+            --read-only \
+            --tmpfs /tmp:rw,size=64m,mode=1777 \
+            --entrypoint sh \
+            audiobookred-ci \
+            -c 'test "$(id -u)" -ne 0; touch /tmp/audiobookred-write-test; if touch /app/audiobookred-write-test 2>/dev/null; then exit 1; fi'
