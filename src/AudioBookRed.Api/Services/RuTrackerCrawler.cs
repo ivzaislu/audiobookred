@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using AudioBookRed.Api.Data;
 using AudioBookRed.Api.Models;
+using AudioBookRed.Api.Sources;
 
 namespace AudioBookRed.Api.Services;
 
@@ -15,9 +16,11 @@ public sealed class RuTrackerCrawler(
     SourceSettingsRepository settingsRepository,
     StatisticsRepository statisticsRepository,
     CrawlerResourceGuard resourceGuard,
-    ILogger<RuTrackerCrawler> logger)
+    ILogger<RuTrackerCrawler> logger) : ISourceCrawler
 {
     private readonly SemaphoreSlim _adminLock = new(1, 1);
+
+    public string SourceKey => RuTrackerSourceDefinition.Key;
 
     public IReadOnlyList<int> Categories => definition.Categories;
 
@@ -534,6 +537,13 @@ public sealed class RuTrackerCrawler(
             throw new InvalidOperationException("Источник rutracker отключён в runtime-настройках.");
         return settings;
     }
+
+    async Task<object> ISourceCrawler.GetCompletenessAsync(
+        CancellationToken ct) =>
+        await GetCompletenessAsync(ct);
+
+    async Task<object> ISourceCrawler.GetStatusAsync(CancellationToken ct) =>
+        await GetStatusAsync(ct);
 
     private static DetailDrainSummary EmptyDetails() => new(0, 0, 0, 0, 0);
 }

@@ -1,8 +1,13 @@
+using AudioBookRed.Api.Sources;
+
 namespace AudioBookRed.Api.Services;
 
-public sealed class RuTrackerSourceDefinition
+public sealed class RuTrackerSourceDefinition : ISourceModule
 {
     public const string Key = "rutracker";
+
+    public string SourceKey => Key;
+    public string DisplayName => "RuTracker";
 
     public IReadOnlyList<int> Categories { get; } =
     [
@@ -11,16 +16,34 @@ public sealed class RuTrackerSourceDefinition
         530, 2342, 2325, 2165, 716, 403, 1350
     ];
 
+    public IReadOnlyList<string> Capabilities { get; } =
+    [
+        "paged-listing",
+        "topic-details",
+        "magnet",
+        "bootstrap",
+        "incremental",
+        "reconcile"
+    ];
+
+    public SourceRuntimeDefaults RuntimeDefaults { get; } = new(
+        IncrementalPages: 2,
+        WorkerJobLimit: 3,
+        PageConcurrency: 3,
+        DetailConcurrency: 3,
+        RequestDelayMilliseconds: 150,
+        MaximumAttempts: 8);
+
     public int ListingPageSize => 50;
 
-    // Значения по умолчанию записываются в source_runtime_settings при первом запуске.
-    // После этого их можно менять через API/CLI без пересборки контейнера.
-    public int DefaultIncrementalPages => 2;
-    public int DefaultWorkerJobLimit => 3;
-    public int DefaultPageConcurrency => 3;
-    public int DefaultDetailConcurrency => 3;
-    public int DefaultRequestDelayMilliseconds => 150;
-    public int DefaultMaximumAttempts => 8;
+    // Compatibility properties for RuTracker-specific services.
+    public int DefaultIncrementalPages => RuntimeDefaults.IncrementalPages;
+    public int DefaultWorkerJobLimit => RuntimeDefaults.WorkerJobLimit;
+    public int DefaultPageConcurrency => RuntimeDefaults.PageConcurrency;
+    public int DefaultDetailConcurrency => RuntimeDefaults.DetailConcurrency;
+    public int DefaultRequestDelayMilliseconds =>
+        RuntimeDefaults.RequestDelayMilliseconds;
+    public int DefaultMaximumAttempts => RuntimeDefaults.MaximumAttempts;
 
     public int WorkerLeaseMinutes => 20;
     public int DetailRequestAttempts => 3;

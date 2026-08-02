@@ -5,6 +5,7 @@ using AudioBookRed.Api.Data;
 using AudioBookRed.Api.Infrastructure;
 using AudioBookRed.Api.Models;
 using AudioBookRed.Api.Services;
+using AudioBookRed.Api.Sources;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options =>
@@ -45,13 +46,18 @@ builder.Services.AddSingleton<RuTrackerMagnetState>();
 builder.Services.AddSingleton<RuTrackerMagnetEnricher>();
 builder.Services.AddHostedService<RuTrackerAtomWorker>();
 
-// Универсальная основа задач источников. Для RuTracker категории и политика
-// находятся в модуле источника, а не в .env.
+// Общая граница источников. Конкретный адаптер регистрирует module и crawler
+// под одним стабильным source key.
 builder.Services.AddSingleton<RuTrackerSourceDefinition>();
+builder.Services.AddSingleton<ISourceModule>(services =>
+    services.GetRequiredService<RuTrackerSourceDefinition>());
 builder.Services.AddSingleton<CrawlerResourceGuard>();
 builder.Services.AddSingleton<RuTrackerListingClient>();
 builder.Services.AddSingleton<RuTrackerDetailProcessor>();
 builder.Services.AddSingleton<RuTrackerCrawler>();
+builder.Services.AddSingleton<ISourceCrawler>(services =>
+    services.GetRequiredService<RuTrackerCrawler>());
+builder.Services.AddSingleton<SourceRegistry>();
 
 var app = builder.Build();
 
@@ -246,181 +252,9 @@ app.MapPost("/api/v1/sources/rutracker/network/probe", async (
     RuTrackerTransport transport,
     CancellationToken ct) => Results.Ok(await transport.ProbeAsync(ct)));
 
-app.MapGet("/api/v1/sources/rutracker/categories", (RuTrackerCrawler crawler) =>
-    Results.Ok(new { source = RuTrackerSourceDefinition.Key, categories = crawler.Categories }));
+app.MapSourceCrawlerEndpoints();
 
-app.MapGet("/api/v1/sources/rutracker/crawl/status", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.GetStatusAsync(ct)));
-
-app.MapGet("/api/v1/sources/rutracker/settings", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.GetSettingsAsync(ct)));
-
-app.MapPut("/api/v1/sources/rutracker/settings", async (
-    UpdateSourceRuntimeSettings update,
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.UpdateSettingsAsync(update, ct)));
-
-app.MapGet("/api/v1/sources/rutracker/events", async (
-    int? limit,
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.GetEventsAsync(limit ?? 20, ct)));
-
-app.MapPost("/api/v1/sources/rutracker/maintenance", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.RunMaintenanceAsync(ct)));
-
-app.MapPost("/api/v1/sources/rutracker/bootstrap/discover", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        return Results.Ok(await crawler.DiscoverBootstrapAsync(ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Json(
-            new { error = "source_crawl_guard", message = ex.Message },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-});
-
-app.MapPost("/api/v1/sources/rutracker/reconcile", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        return Results.Ok(await crawler.DiscoverReconcileAsync(ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Json(
-            new { error = "source_crawl_guard", message = ex.Message },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-});
-
-app.MapGet("/api/v1/sources/rutracker/completeness", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.GetCompletenessAsync(ct)));
-
-app.MapPost("/api/v1/sources/rutracker/topics/retry-failed", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    var retried = await crawler.RetryTopicFailuresAsync(ct);
-    return Results.Ok(new { source = RuTrackerSourceDefinition.Key, retried });
-});
-
-app.MapPost("/api/v1/sources/rutracker/bootstrap/start", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        return Results.Ok(await crawler.StartBootstrapAsync(ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Json(
-            new { error = "source_crawl_guard", message = ex.Message },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-});
-
-// Совместимость со старым bootstrap/tick: теперь это один короткий queue worker.
-app.MapPost("/api/v1/sources/rutracker/bootstrap/tick", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.WorkAsync(1, ct)));
-
-app.MapPost("/api/v1/sources/rutracker/work", async (
-    int? limit,
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        return Results.Ok(await crawler.WorkAsync(limit, ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Json(
-            new { error = "source_crawl_guard", message = ex.Message },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-});
-
-app.MapPost("/api/v1/sources/rutracker/bootstrap/pause", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    await crawler.PauseBootstrapAsync(ct);
-    return Results.Ok(new { source = RuTrackerSourceDefinition.Key, paused = true });
-});
-
-app.MapPost("/api/v1/sources/rutracker/bootstrap/resume", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    await crawler.ResumeBootstrapAsync(ct);
-    return Results.Ok(new { source = RuTrackerSourceDefinition.Key, paused = false });
-});
-
-app.MapPost("/api/v1/sources/rutracker/bootstrap/reset", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        await crawler.ResetBootstrapAsync(ct);
-        return Results.Ok(new { source = RuTrackerSourceDefinition.Key, reset = true });
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Conflict(new { error = "source_crawl_busy", message = ex.Message });
-    }
-});
-
-app.MapPost("/api/v1/sources/rutracker/incremental/enqueue", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        return Results.Ok(await crawler.EnqueueIncrementalAsync(ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Json(
-            new { error = "source_crawl_guard", message = ex.Message },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-});
-
-// Старый cron endpoint теперь только ставит короткие задачи в очередь.
-app.MapPost("/api/v1/sources/rutracker/incremental/run", async (
-    RuTrackerCrawler crawler,
-    CancellationToken ct) => Results.Ok(await crawler.EnqueueIncrementalAsync(ct)));
-
-app.MapPost("/api/v1/sources/rutracker/jobs/retry-failed", async (
-    string? mode,
-    RuTrackerCrawler crawler,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var retried = await crawler.RetryFailedAsync(mode, ct);
-        return Results.Ok(new { source = RuTrackerSourceDefinition.Key, mode, retried });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { error = "invalid_mode", message = ex.Message });
-    }
-});
-
+// RuTracker-specific compatibility and auxiliary endpoints remain explicit.
 app.MapPost("/api/v1/sources/rutracker/import", () =>
     Results.Json(
         new

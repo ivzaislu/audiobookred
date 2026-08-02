@@ -1,16 +1,42 @@
 using AudioBookRed.Api.Models;
-using AudioBookRed.Api.Services;
+using AudioBookRed.Api.Sources;
 using Dapper;
 using Npgsql;
 
 namespace AudioBookRed.Api.Data;
 
-public sealed class SourceSettingsRepository(
-    IConfiguration configuration,
-    RuTrackerSourceDefinition ruTrackerDefaults)
+public sealed class SourceSettingsRepository
 {
-    private string ConnectionString => configuration.GetConnectionString("DefaultConnection")
-        ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is missing");
+    private readonly IConfiguration _configuration;
+    private readonly IReadOnlyDictionary<string, ISourceModule> _sourceModules;
+
+    public SourceSettingsRepository(
+        IConfiguration configuration,
+        IEnumerable<ISourceModule> sourceModules)
+    {
+        _configuration = configuration;
+
+        var modules = new Dictionary<string, ISourceModule>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var module in sourceModules)
+        {
+            if (!modules.TryAdd(module.SourceKey, module))
+            {
+                throw new InvalidOperationException(
+                    $"Duplicate source module registration: '{module.SourceKey}'.");
+            }
+        }
+
+        if (modules.Count == 0)
+            throw new InvalidOperationException("No source modules are registered.");
+
+        _sourceModules = modules;
+    }
+
+    private string ConnectionString =>
+        _configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException(
+            "ConnectionStrings:DefaultConnection is missing");
 
     public async Task InitializeAsync(CancellationToken ct)
     {
@@ -60,11 +86,18 @@ public sealed class SourceSettingsRepository(
 
         await using var db = new NpgsqlConnection(ConnectionString);
         await db.ExecuteAsync(new CommandDefinition(sql, cancellationToken: ct));
-        await EnsureDefaultsAsync(RuTrackerSourceDefinition.Key, ct);
+
+        foreach (var module in _sourceModules.Values
+                     .OrderBy(value => value.SourceKey, StringComparer.Ordinal))
+        {
+            await EnsureDefaultsAsync(module.SourceKey, ct);
+        }
     }
 
     public async Task EnsureDefaultsAsync(string source, CancellationToken ct)
     {
+        var defaults = Defaults(source);
+
         const string sql = """
         INSERT INTO source_runtime_settings(
           source, enabled, incremental_pages, worker_job_limit,
@@ -76,12 +109,18 @@ public sealed class SourceSettingsRepository(
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);
-        await db.ExecuteAsync(new CommandDefinition(sql, Defaults(source), cancellationToken: ct));
+        await db.ExecuteAsync(new CommandDefinition(
+            sql,
+            defaults,
+            cancellationToken: ct));
     }
 
-    public async Task<SourceRuntimeSettings> GetAsync(string source, CancellationToken ct)
+    public async Task<SourceRuntimeSettings> GetAsync(
+        string source,
+        CancellationToken ct)
     {
         await EnsureDefaultsAsync(source, ct);
+
         const string sql = """
         SELECT source AS Source,
           enabled AS Enabled,
@@ -97,10 +136,11 @@ public sealed class SourceSettingsRepository(
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);
-        return await db.QuerySingleAsync<SourceRuntimeSettings>(new CommandDefinition(
-            sql,
-            new { Source = source },
-            cancellationToken: ct));
+        return await db.QuerySingleAsync<SourceRuntimeSettings>(
+            new CommandDefinition(
+                sql,
+                new { Source = CanonicalSource(source) },
+                cancellationToken: ct));
     }
 
     public async Task<SourceRuntimeSettings> UpdateAsync(
@@ -108,20 +148,37 @@ public sealed class SourceSettingsRepository(
         UpdateSourceRuntimeSettings update,
         CancellationToken ct)
     {
-        var current = await GetAsync(source, ct);
+        var canonicalSource = CanonicalSource(source);
+        var current = await GetAsync(canonicalSource, ct);
         var args = new
         {
-            Source = source,
+            Source = canonicalSource,
             Enabled = update.Enabled ?? current.Enabled,
-            IncrementalPages = Math.Clamp(update.IncrementalPages ?? current.IncrementalPages, 1, 10),
-            WorkerJobLimit = Math.Clamp(update.WorkerJobLimit ?? current.WorkerJobLimit, 1, 16),
-            PageConcurrency = Math.Clamp(update.PageConcurrency ?? current.PageConcurrency, 1, 8),
-            DetailConcurrency = Math.Clamp(update.DetailConcurrency ?? current.DetailConcurrency, 1, 16),
+            IncrementalPages = Math.Clamp(
+                update.IncrementalPages ?? current.IncrementalPages,
+                1,
+                10),
+            WorkerJobLimit = Math.Clamp(
+                update.WorkerJobLimit ?? current.WorkerJobLimit,
+                1,
+                16),
+            PageConcurrency = Math.Clamp(
+                update.PageConcurrency ?? current.PageConcurrency,
+                1,
+                8),
+            DetailConcurrency = Math.Clamp(
+                update.DetailConcurrency ?? current.DetailConcurrency,
+                1,
+                16),
             RequestDelayMilliseconds = Math.Clamp(
-                update.RequestDelayMilliseconds ?? current.RequestDelayMilliseconds,
+                update.RequestDelayMilliseconds
+                ?? current.RequestDelayMilliseconds,
                 0,
                 10_000),
-            MaximumAttempts = Math.Clamp(update.MaximumAttempts ?? current.MaximumAttempts, 1, 20)
+            MaximumAttempts = Math.Clamp(
+                update.MaximumAttempts ?? current.MaximumAttempts,
+                1,
+                20)
         };
 
         const string sql = """
@@ -147,20 +204,38 @@ public sealed class SourceSettingsRepository(
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);
-        return await db.QuerySingleAsync<SourceRuntimeSettings>(new CommandDefinition(
-            sql,
-            args,
-            cancellationToken: ct));
+        return await db.QuerySingleAsync<SourceRuntimeSettings>(
+            new CommandDefinition(
+                sql,
+                args,
+                cancellationToken: ct));
     }
 
-    private object Defaults(string source) => new
+    private object Defaults(string source)
     {
-        Source = source,
-        IncrementalPages = ruTrackerDefaults.DefaultIncrementalPages,
-        WorkerJobLimit = ruTrackerDefaults.DefaultWorkerJobLimit,
-        PageConcurrency = ruTrackerDefaults.DefaultPageConcurrency,
-        DetailConcurrency = ruTrackerDefaults.DefaultDetailConcurrency,
-        RequestDelayMilliseconds = ruTrackerDefaults.DefaultRequestDelayMilliseconds,
-        MaximumAttempts = ruTrackerDefaults.DefaultMaximumAttempts
-    };
+        var module = Module(source);
+        var defaults = module.RuntimeDefaults;
+
+        return new
+        {
+            Source = module.SourceKey,
+            defaults.IncrementalPages,
+            defaults.WorkerJobLimit,
+            defaults.PageConcurrency,
+            defaults.DetailConcurrency,
+            defaults.RequestDelayMilliseconds,
+            defaults.MaximumAttempts
+        };
+    }
+
+    private string CanonicalSource(string source) => Module(source).SourceKey;
+
+    private ISourceModule Module(string source)
+    {
+        if (_sourceModules.TryGetValue(source.Trim(), out var module))
+            return module;
+
+        throw new KeyNotFoundException(
+            $"Источник '{source}' не зарегистрирован.");
+    }
 }
