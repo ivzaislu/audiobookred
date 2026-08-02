@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 2;
+    public const int CurrentParserVersion = 3;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -39,6 +39,12 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
     private static readonly Regex DurationPattern = new(
         @"\b(?<hours>\d{1,4}):(?<minutes>[0-5]?\d):(?<seconds>[0-5]\d)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TitleContinuationPattern = new(
+        @"^\(?\s*(?:том|часть|книга|выпуск)\s*(?:№\s*)?(?:\d+|[ivxlcdm]+)\s*\)?$",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
 
     private static readonly IReadOnlyDictionary<string, TopicField> KnownFields =
         new Dictionary<string, TopicField>(StringComparer.Ordinal)
@@ -301,9 +307,28 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         if (meaningful.Length == 1)
             return meaningful[0];
 
-        var selected = meaningful
-            .LastOrDefault(value => !LooksLikeSeriesHeading(value, series, position));
-        return selected ?? meaningful[^1];
+        var selectedIndex = Array.FindLastIndex(
+            meaningful,
+            value => !LooksLikeSeriesHeading(value, series, position));
+        if (selectedIndex < 0)
+            return meaningful[^1];
+
+        var selected = meaningful[selectedIndex];
+        if (selectedIndex > 0 && TitleContinuationPattern.IsMatch(selected))
+        {
+            var prefix = meaningful[selectedIndex - 1];
+            if (!LooksLikeSeriesHeading(prefix, series, position))
+            {
+                var suffix = selected.Trim(' ', '(', ')');
+                if (fallback.Contains(prefix, StringComparison.OrdinalIgnoreCase) &&
+                    fallback.Contains(suffix, StringComparison.OrdinalIgnoreCase))
+                    return fallback;
+
+                return $"{prefix} ({suffix})";
+            }
+        }
+
+        return selected;
     }
 
     private static bool LooksLikeSeriesHeading(

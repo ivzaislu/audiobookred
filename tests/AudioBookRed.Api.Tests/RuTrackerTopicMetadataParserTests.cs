@@ -29,7 +29,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сластин Артем Вячеславич, ПолуЁж - Мастер Рун 7 [MP3]");
 
-        Assert.Equal(2, result.ParserVersion);
+        Assert.Equal(3, result.ParserVersion);
         Assert.Equal("Мастер Рун. Книга 7", result.ParsedTitle.Title);
         Assert.Equal(
             "Сластин Артем Вячеславич, ПолуЁж",
@@ -171,7 +171,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Нэппер Т. Р. - Призрак неонового бога [Игорь Князев, 2026, 128 kbps, MP3]");
 
-        Assert.Equal(2, result.ParserVersion);
+        Assert.Equal(3, result.ParserVersion);
         Assert.Equal("Призрак неонового бога", result.ParsedTitle.Title);
         Assert.Equal("Нэппер Т. Р.", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Игорь Князев" }, result.ParsedTitle.Narrators);
@@ -184,6 +184,45 @@ public sealed class RuTrackerTopicMetadataParserTests
         Assert.Equal("Стерео", result.AudioChannels);
         Assert.Equal("CBR", result.BitrateMode);
         Assert.Equal(64_345L, result.DurationSeconds);
+    }
+
+    [Fact]
+    public void Combines_split_title_with_volume_suffix()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <var class="postImg" title="cover">&#10;</var><hr><hr>
+                <span class="post-b">
+                  <span class="post-align" style="text-align: center;">
+                    <span style="font-size: 24px;">Жизнь Пушкина</span><br>
+                    <span style="font-size: 20px;">том 1</span>
+                  </span>
+                </span><hr><hr>
+                <span class="post-b">Год выпуска</span>: 2013 г.<br>
+                <span class="post-b">Фамилия автора</span>: Тыркова-Вильямс<br>
+                <span class="post-b">Имя автора</span>: Ариадна<br>
+                <span class="post-b">Исполнитель</span>: Терновский Евгений<hr><hr>
+                <span class="post-b">Жанр</span>: Биографии<br>
+                <span class="post-b">Тип издания</span>: нигде не купишь<br>
+                <span class="post-b">Категория</span>: аудиокнига<br>
+                <span class="post-b">Аудиокодек</span>: MP3<br>
+                <span class="post-b">Битрейт</span>: 96 kbps<br>
+                <span class="post-b">Время звучания</span>: 24:50:36
+                """),
+            "Тыркова-Вильямс Ариадна - Жизнь Пушкина (том 1) [Терновский Евгений, 2013 г., 96 kbps, MP3]");
+
+        Assert.Equal(3, result.ParserVersion);
+        Assert.Equal("Жизнь Пушкина (том 1)", result.ParsedTitle.Title);
+        Assert.Equal("Тыркова-Вильямс Ариадна", result.ParsedTitle.Author);
+        Assert.Equal(new[] { "Терновский Евгений" }, result.ParsedTitle.Narrators);
+        Assert.Equal(2013, result.ParsedTitle.ReleaseYear);
+        Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
+        Assert.Equal(96, result.ParsedTitle.BitrateKbps);
+        Assert.Equal(89_436L, result.DurationSeconds);
+        Assert.Equal(new[] { "Биографии" }, result.Genres);
+        Assert.Null(result.Publisher);
+        Assert.Equal("нигде не купишь", result.EditionType);
+        Assert.Equal("аудиокнига", result.EditionCategory);
     }
 
     [Fact]
