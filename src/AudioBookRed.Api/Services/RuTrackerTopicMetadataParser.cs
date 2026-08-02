@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 4;
+    public const int CurrentParserVersion = 5;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -155,6 +155,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         var series = Value(fields, TopicField.Series);
         var seriesPositionValue = Value(fields, TopicField.SeriesPosition);
         var seriesPosition = ParseSeriesPosition(seriesPositionValue);
+        var clearSeriesPosition =
+            !string.IsNullOrWhiteSpace(seriesPositionValue) &&
+            seriesPosition is null;
         var resolvedSeriesPosition = string.IsNullOrWhiteSpace(seriesPositionValue)
             ? seriesPosition ?? fallback.SeriesPosition
             : seriesPosition;
@@ -188,6 +191,11 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             ParseChannels(quality) ??
             ParseChannels(bitrateValue);
         var bitrateMode = ParseBitrateMode(Value(fields, TopicField.BitrateMode));
+        var publisherValue = Value(fields, TopicField.Publisher);
+        var publisher = CleanPublisher(publisherValue);
+        var clearPublisher =
+            !string.IsNullOrWhiteSpace(publisherValue) &&
+            publisher is null;
 
         var corpus = string.Join(' ', lines);
         var parsed = new ParsedAudiobookTitle(
@@ -209,14 +217,18 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             parsed,
             ParseDuration(Value(fields, TopicField.Duration)),
             SplitValues(Value(fields, TopicField.Genres)),
-            CleanPublisher(Value(fields, TopicField.Publisher)),
+            publisher,
             sampleRate,
             channels,
             bitrateMode,
             CleanOptional(Value(fields, TopicField.EditionType)),
             CleanOptional(Value(fields, TopicField.EditionCategory)),
             CleanOptional(Value(fields, TopicField.Music)),
-            CurrentParserVersion);
+            CurrentParserVersion)
+        {
+            ClearSeriesPosition = clearSeriesPosition,
+            ClearPublisher = clearPublisher
+        };
     }
 
     private static RuTrackerTopicMetadata Empty(ParsedAudiobookTitle fallback) =>

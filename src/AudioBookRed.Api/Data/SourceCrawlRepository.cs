@@ -639,6 +639,8 @@ public sealed class SourceCrawlRepository(
           END,
           series_position = CASE
             WHEN EXCLUDED.metadata_parser_version > 0
+                 AND @ClearSeriesPosition THEN NULL
+            WHEN EXCLUDED.metadata_parser_version > 0
               THEN COALESCE(EXCLUDED.series_position, audiobook_releases.series_position)
             WHEN audiobook_releases.metadata_parser_version > 0
               THEN audiobook_releases.series_position
@@ -691,6 +693,8 @@ public sealed class SourceCrawlRepository(
             ELSE audiobook_releases.genres
           END,
           publisher = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+                 AND @ClearPublisher THEN NULL
             WHEN EXCLUDED.metadata_parser_version > 0
               THEN COALESCE(EXCLUDED.publisher, audiobook_releases.publisher)
             ELSE audiobook_releases.publisher
@@ -857,6 +861,8 @@ public sealed class SourceCrawlRepository(
         parsed.BitrateKbps,
         Genres = metadata?.Genres ?? [],
         Publisher = metadata?.Publisher,
+        ClearSeriesPosition = metadata?.ClearSeriesPosition ?? false,
+        ClearPublisher = metadata?.ClearPublisher ?? false,
         SampleRateHz = metadata?.SampleRateHz,
         AudioChannels = metadata?.AudioChannels,
         BitrateMode = metadata?.BitrateMode,

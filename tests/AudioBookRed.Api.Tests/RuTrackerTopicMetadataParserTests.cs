@@ -29,7 +29,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сластин Артем Вячеславич, ПолуЁж - Мастер Рун 7 [MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Мастер Рун. Книга 7", result.ParsedTitle.Title);
         Assert.Equal(
             "Сластин Артем Вячеславич, ПолуЁж",
@@ -43,6 +43,8 @@ public sealed class RuTrackerTopicMetadataParserTests
         Assert.Equal(31_860L, result.DurationSeconds);
         Assert.Equal(new[] { "Попаданцы", "Боевое фэнтези" }, result.Genres);
         Assert.Equal("Аудио от автора", result.Publisher);
+        Assert.False(result.ClearSeriesPosition);
+        Assert.False(result.ClearPublisher);
         Assert.Equal(32_000, result.SampleRateHz);
         Assert.Equal("Стерео", result.AudioChannels);
         Assert.Equal("CBR", result.BitrateMode);
@@ -105,6 +107,8 @@ public sealed class RuTrackerTopicMetadataParserTests
         Assert.Equal("Хьюман Дэми", result.ParsedTitle.Author);
         Assert.Null(result.ParsedTitle.Series);
         Assert.Null(result.ParsedTitle.SeriesPosition);
+        Assert.False(result.ClearSeriesPosition);
+        Assert.False(result.ClearPublisher);
         Assert.Equal("аудиокнига своими руками", result.EditionType);
         Assert.Equal("аудиокнига", result.EditionCategory);
         Assert.Equal("присутствует постоянно", result.Music);
@@ -171,7 +175,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Нэппер Т. Р. - Призрак неонового бога [Игорь Князев, 2026, 128 kbps, MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Призрак неонового бога", result.ParsedTitle.Title);
         Assert.Equal("Нэппер Т. Р.", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Игорь Князев" }, result.ParsedTitle.Narrators);
@@ -211,7 +215,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Тыркова-Вильямс Ариадна - Жизнь Пушкина (том 1) [Терновский Евгений, 2013 г., 96 kbps, MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Жизнь Пушкина (том 1)", result.ParsedTitle.Title);
         Assert.Equal("Тыркова-Вильямс Ариадна", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Терновский Евгений" }, result.ParsedTitle.Narrators);
@@ -253,11 +257,13 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Ардаматский Василий - \"Сатурн\" почти не виден [Герасимов Вячеслав, 2010 г., 96 kbps, 44 kHz, Mono, MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("\"Сатурн\" почти не виден", result.ParsedTitle.Title);
         Assert.Equal("Ардаматский Василий", result.ParsedTitle.Author);
         Assert.Equal("Сатурн почти не виден", result.ParsedTitle.Series);
         Assert.Null(result.ParsedTitle.SeriesPosition);
+        Assert.True(result.ClearSeriesPosition);
+        Assert.False(result.ClearPublisher);
         Assert.Equal("Нигде не купишь", result.Publisher);
         Assert.Equal("аудиокнига", result.EditionType);
         Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
@@ -283,7 +289,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Постановка - В.Смехов - Али-баба и 40 разбойников [О.Табаков, 1981, 256 kbps]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Али-баба и 40 разбойников", result.ParsedTitle.Title);
         Assert.Equal("Постановка - В.Смехов", result.ParsedTitle.Author);
         Assert.Equal(1981, result.ParsedTitle.ReleaseYear);
@@ -309,8 +315,9 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Михалкова Елена - Черный пудель, рыжий кот, или Свадьба с препятствиями [MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Аудиокнига", result.Publisher);
+        Assert.False(result.ClearPublisher);
     }
 
     [Fact]
@@ -332,9 +339,11 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Безрукова Елена - Архип+Снежинка #2. Девочка, я тебя присвою 2 [MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Девочка, я тебя присвою 2", result.ParsedTitle.Title);
         Assert.Null(result.Publisher);
+        Assert.True(result.ClearPublisher);
+        Assert.False(result.ClearSeriesPosition);
         Assert.Equal(2m, result.ParsedTitle.SeriesPosition);
     }
 
@@ -355,10 +364,12 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Щерба Наталья - Цикл \"Часодеи\" [Наталья Терешкова, 2024, MP3]");
 
-        Assert.Equal(4, result.ParserVersion);
+        Assert.Equal(5, result.ParserVersion);
         Assert.Equal("Цикл \"Часодеи\"", result.ParsedTitle.Title);
         Assert.Equal("Часодеи", result.ParsedTitle.Series);
         Assert.Null(result.ParsedTitle.SeriesPosition);
+        Assert.True(result.ClearSeriesPosition);
+        Assert.False(result.ClearPublisher);
     }
 
     [Fact]

@@ -22,7 +22,11 @@ public sealed record RuTrackerTopicMetadata(
     string? EditionType,
     string? EditionCategory,
     string? Music,
-    int ParserVersion);
+    int ParserVersion)
+{
+    public bool ClearSeriesPosition { get; init; }
+    public bool ClearPublisher { get; init; }
+}
 
 public sealed record RuTrackerMagnetValue(
     string MagnetUri,
