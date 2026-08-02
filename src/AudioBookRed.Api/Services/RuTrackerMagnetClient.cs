@@ -7,7 +7,8 @@ namespace AudioBookRed.Api.Services;
 
 public sealed partial class RuTrackerMagnetClient(
     IConfiguration configuration,
-    RuTrackerTransport transport)
+    RuTrackerTransport transport,
+    RuTrackerTopicMetadataParser metadataParser)
 {
     public bool Enabled => configuration.GetValue<bool?>("RuTrackerMagnet:Enabled") ?? true;
     public int IntervalMinutes => Math.Clamp(
@@ -39,6 +40,7 @@ public sealed partial class RuTrackerMagnetClient(
         var html = await transport.GetAuthenticatedHtmlAsync(uri, uri, ct);
         var parser = new HtmlParser();
         var document = await parser.ParseDocumentAsync(html, ct);
+        var metadata = metadataParser.Parse(document, title);
 
         // Точный способ актуального JacRed: href у a.magnet-link.
         var magnet = document.QuerySelector("a.magnet-link")?.GetAttribute("href");
@@ -47,7 +49,7 @@ public sealed partial class RuTrackerMagnetClient(
             magnet = WebUtility.HtmlDecode(magnet).Trim();
             var hash = ExtractInfoHash(magnet);
             if (hash is not null)
-                return new RuTrackerMagnetValue(magnet, hash);
+                return new RuTrackerMagnetValue(magnet, hash) { Metadata = metadata };
         }
 
         // Запасной вариант: отдельный tor-hash в HTML.
@@ -61,7 +63,7 @@ public sealed partial class RuTrackerMagnetClient(
 
         var infoHash = hashMatch.Groups[1].Value.ToLowerInvariant();
         var generated = $"magnet:?xt=urn:btih:{infoHash}&dn={Uri.EscapeDataString(title)}";
-        return new RuTrackerMagnetValue(generated, infoHash);
+        return new RuTrackerMagnetValue(generated, infoHash) { Metadata = metadata };
     }
 
     private static string? ExtractInfoHash(string magnet)

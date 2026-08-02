@@ -223,11 +223,12 @@ public sealed class RuTrackerDetailProcessor(
 
         try
         {
-            var result = await crawlRepository.UpsertListingWithMagnetAsync(
+            var result = await crawlRepository.UpsertListingWithTopicMetadataAsync(
                 item,
                 job.CategoryId,
                 magnet.InfoHash,
                 magnet.MagnetUri,
+                magnet.Metadata,
                 job.ListingFingerprint,
                 job.DetailFingerprint,
                 ct);

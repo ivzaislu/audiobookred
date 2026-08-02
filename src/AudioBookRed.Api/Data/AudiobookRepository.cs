@@ -41,6 +41,16 @@ public sealed class AudiobookRepository(
           duration_seconds BIGINT NULL,
           audio_format VARCHAR(16) NULL,
           bitrate_kbps INT NULL,
+          genres TEXT[] NOT NULL DEFAULT '{}',
+          publisher TEXT NULL,
+          sample_rate_hz INT NULL,
+          audio_channels TEXT NULL,
+          bitrate_mode VARCHAR(16) NULL,
+          edition_type TEXT NULL,
+          edition_category TEXT NULL,
+          music TEXT NULL,
+          metadata_parser_version INT NOT NULL DEFAULT 0,
+          metadata_parsed_at TIMESTAMPTZ NULL,
           is_abridged BOOLEAN NULL,
           is_dramatized BOOLEAN NULL,
           source TEXT NOT NULL,
@@ -67,6 +77,17 @@ public sealed class AudiobookRepository(
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS search_text TEXT NULL;
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS listing_fingerprint TEXT NULL;
         ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS detail_fingerprint TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS duration_seconds BIGINT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS genres TEXT[] NOT NULL DEFAULT '{}';
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS publisher TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS sample_rate_hz INT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS audio_channels TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS bitrate_mode VARCHAR(16) NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS edition_type TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS edition_category TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS music TEXT NULL;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS metadata_parser_version INT NOT NULL DEFAULT 0;
+        ALTER TABLE audiobook_releases ADD COLUMN IF NOT EXISTS metadata_parsed_at TIMESTAMPTZ NULL;
 
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -76,7 +97,15 @@ public sealed class AudiobookRepository(
         AS $$
         BEGIN
           NEW.search_text := LOWER(REPLACE(BTRIM(REGEXP_REPLACE(
-            CONCAT_WS(' ', NEW.title, NEW.author, NEW.series, ARRAY_TO_STRING(NEW.narrators, ' '), NEW.raw_title),
+            CONCAT_WS(
+              ' ',
+              NEW.title,
+              NEW.author,
+              NEW.series,
+              ARRAY_TO_STRING(NEW.narrators, ' '),
+              ARRAY_TO_STRING(NEW.genres, ' '),
+              NEW.publisher,
+              NEW.raw_title),
             '\s+', ' ', 'g')), 'ё', 'е'));
           RETURN NEW;
         END;
@@ -84,7 +113,7 @@ public sealed class AudiobookRepository(
 
         DROP TRIGGER IF EXISTS trg_audiobookred_refresh_search_text ON audiobook_releases;
         CREATE TRIGGER trg_audiobookred_refresh_search_text
-          BEFORE INSERT OR UPDATE OF title, author, series, narrators, raw_title
+          BEFORE INSERT OR UPDATE OF title, author, series, narrators, genres, publisher, raw_title
           ON audiobook_releases
           FOR EACH ROW
           EXECUTE FUNCTION audiobookred_refresh_search_text();
@@ -366,6 +395,9 @@ public sealed class AudiobookRepository(
         SELECT id, title, normalized_title AS NormalizedTitle, author, normalized_author AS NormalizedAuthor,
           series, series_position AS SeriesPosition, narrators, language, release_year AS ReleaseYear,
           duration_seconds AS DurationSeconds, audio_format AS AudioFormat, bitrate_kbps AS BitrateKbps,
+          genres, publisher, sample_rate_hz AS SampleRateHz, audio_channels AS AudioChannels,
+          bitrate_mode AS BitrateMode, edition_type AS EditionType, edition_category AS EditionCategory,
+          music, metadata_parser_version AS MetadataParserVersion, metadata_parsed_at AS MetadataParsedAt,
           is_abridged AS IsAbridged, is_dramatized AS IsDramatized, source, source_id AS SourceId,
           source_url AS SourceUrl, info_hash AS InfoHash, magnet_uri AS MagnetUri, size_bytes AS SizeBytes,
           seeders, leechers, discovered_at AS DiscoveredAt, updated_at AS UpdatedAt

@@ -11,9 +11,25 @@ public sealed class RuTrackerMagnetCandidate
     public int Attempts { get; set; }
 }
 
+public sealed record RuTrackerTopicMetadata(
+    ParsedAudiobookTitle ParsedTitle,
+    long? DurationSeconds,
+    string[] Genres,
+    string? Publisher,
+    int? SampleRateHz,
+    string? AudioChannels,
+    string? BitrateMode,
+    string? EditionType,
+    string? EditionCategory,
+    string? Music,
+    int ParserVersion);
+
 public sealed record RuTrackerMagnetValue(
     string MagnetUri,
-    string InfoHash);
+    string InfoHash)
+{
+    public RuTrackerTopicMetadata? Metadata { get; init; }
+}
 
 public sealed record RuTrackerMagnetRunResult(
     int Requested,

@@ -459,19 +459,63 @@ public sealed class SourceCrawlRepository(
             AND BTRIM(magnet_uri) <> ''
         ), updated AS (
           UPDATE audiobook_releases release
-          SET title = @Title,
-              normalized_title = @NormalizedTitle,
-              author = @Author,
-              normalized_author = @NormalizedAuthor,
-              series = COALESCE(@Series, release.series),
-              series_position = COALESCE(@SeriesPosition, release.series_position),
-              narrators = CASE WHEN cardinality(@Narrators) > 0 THEN @Narrators ELSE release.narrators END,
-              language = COALESCE(@Language, release.language),
-              release_year = COALESCE(@ReleaseYear, release.release_year),
-              audio_format = COALESCE(@AudioFormat, release.audio_format),
-              bitrate_kbps = COALESCE(@BitrateKbps, release.bitrate_kbps),
-              is_abridged = COALESCE(@IsAbridged, release.is_abridged),
-              is_dramatized = COALESCE(@IsDramatized, release.is_dramatized),
+          SET title = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.title
+                ELSE @Title
+              END,
+              normalized_title = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.normalized_title
+                ELSE @NormalizedTitle
+              END,
+              author = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.author
+                ELSE @Author
+              END,
+              normalized_author = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.normalized_author
+                ELSE @NormalizedAuthor
+              END,
+              series = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.series
+                ELSE COALESCE(@Series, release.series)
+              END,
+              normalized_series = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.normalized_series
+                ELSE COALESCE(@NormalizedSeries, release.normalized_series)
+              END,
+              series_position = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.series_position
+                ELSE COALESCE(@SeriesPosition, release.series_position)
+              END,
+              narrators = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.narrators
+                WHEN cardinality(@Narrators) > 0 THEN @Narrators
+                ELSE release.narrators
+              END,
+              language = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.language
+                ELSE COALESCE(@Language, release.language)
+              END,
+              release_year = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.release_year
+                ELSE COALESCE(@ReleaseYear, release.release_year)
+              END,
+              audio_format = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.audio_format
+                ELSE COALESCE(@AudioFormat, release.audio_format)
+              END,
+              bitrate_kbps = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.bitrate_kbps
+                ELSE COALESCE(@BitrateKbps, release.bitrate_kbps)
+              END,
+              is_abridged = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.is_abridged
+                ELSE COALESCE(@IsAbridged, release.is_abridged)
+              END,
+              is_dramatized = CASE
+                WHEN release.metadata_parser_version > 0 THEN release.is_dramatized
+                ELSE COALESCE(@IsDramatized, release.is_dramatized)
+              END,
               source_url = @SourceUrl,
               size_bytes = @SizeBytes,
               seeders = @Seeders,
@@ -495,15 +539,42 @@ public sealed class SourceCrawlRepository(
         await using var db = new NpgsqlConnection(ConnectionString);
         return await db.QuerySingleOrDefaultAsync<CrawlUpsertResult>(new CommandDefinition(
             sql,
-            ListingArguments(item, categoryId, parsed, null, null, listingFingerprint, detailFingerprintBackfill),
+            ListingArguments(
+                item,
+                categoryId,
+                parsed,
+                null,
+                null,
+                null,
+                listingFingerprint,
+                detailFingerprintBackfill),
             cancellationToken: ct));
     }
 
-    public async Task<CrawlUpsertResult> UpsertListingWithMagnetAsync(
+    public Task<CrawlUpsertResult> UpsertListingWithMagnetAsync(
         RuTrackerSearchItem item,
         int categoryId,
         string infoHash,
         string magnetUri,
+        string listingFingerprint,
+        string detailFingerprint,
+        CancellationToken ct) =>
+        UpsertListingWithTopicMetadataAsync(
+            item,
+            categoryId,
+            infoHash,
+            magnetUri,
+            null,
+            listingFingerprint,
+            detailFingerprint,
+            ct);
+
+    public async Task<CrawlUpsertResult> UpsertListingWithTopicMetadataAsync(
+        RuTrackerSearchItem item,
+        int categoryId,
+        string infoHash,
+        string magnetUri,
+        RuTrackerTopicMetadata? metadata,
         string listingFingerprint,
         string detailFingerprint,
         CancellationToken ct)
@@ -511,38 +582,170 @@ public sealed class SourceCrawlRepository(
         if (string.IsNullOrWhiteSpace(magnetUri))
             throw new ArgumentException("Magnet-ссылка обязательна.", nameof(magnetUri));
 
-        var parsed = normalizer.Parse(item.Title);
+        var parsed = metadata?.ParsedTitle ?? normalizer.Parse(item.Title);
         const string sql = """
         INSERT INTO audiobook_releases (
-          title, normalized_title, author, normalized_author, series, series_position,
-          narrators, language, release_year, audio_format, bitrate_kbps,
+          title, normalized_title, author, normalized_author, series, normalized_series, series_position,
+          narrators, language, release_year, duration_seconds, audio_format, bitrate_kbps,
+          genres, publisher, sample_rate_hz, audio_channels, bitrate_mode,
+          edition_type, edition_category, music, metadata_parser_version, metadata_parsed_at,
           is_abridged, is_dramatized, source, source_id, source_url,
           info_hash, magnet_uri, size_bytes, seeders, leechers, raw_title,
           source_category_id, listing_fingerprint, detail_fingerprint, last_seen_at, last_listing_check_at,
           magnet_attempts, magnet_attempted_at, magnet_error)
         VALUES (
-          @Title, @NormalizedTitle, @Author, @NormalizedAuthor, @Series, @SeriesPosition,
-          @Narrators, @Language, @ReleaseYear, @AudioFormat, @BitrateKbps,
+          @Title, @NormalizedTitle, @Author, @NormalizedAuthor, @Series, @NormalizedSeries, @SeriesPosition,
+          @Narrators, @Language, @ReleaseYear, @DurationSeconds, @AudioFormat, @BitrateKbps,
+          @Genres, @Publisher, @SampleRateHz, @AudioChannels, @BitrateMode,
+          @EditionType, @EditionCategory, @Music, @MetadataParserVersion,
+          CASE WHEN @MetadataParserVersion > 0 THEN NOW() ELSE NULL END,
           @IsAbridged, @IsDramatized, @Source, @SourceId, @SourceUrl,
           @InfoHash, @MagnetUri, @SizeBytes, @Seeders, @Leechers, @RawTitle,
           @CategoryId, @ListingFingerprint, @DetailFingerprint, NOW(), NOW(), 0, NOW(), NULL)
         ON CONFLICT (source, source_id) DO UPDATE SET
-          title = EXCLUDED.title,
-          normalized_title = EXCLUDED.normalized_title,
-          author = EXCLUDED.author,
-          normalized_author = EXCLUDED.normalized_author,
-          series = COALESCE(EXCLUDED.series, audiobook_releases.series),
-          series_position = COALESCE(EXCLUDED.series_position, audiobook_releases.series_position),
+          title = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0 THEN EXCLUDED.title
+            WHEN audiobook_releases.metadata_parser_version > 0 THEN audiobook_releases.title
+            ELSE EXCLUDED.title
+          END,
+          normalized_title = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0 THEN EXCLUDED.normalized_title
+            WHEN audiobook_releases.metadata_parser_version > 0 THEN audiobook_releases.normalized_title
+            ELSE EXCLUDED.normalized_title
+          END,
+          author = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0 THEN EXCLUDED.author
+            WHEN audiobook_releases.metadata_parser_version > 0 THEN audiobook_releases.author
+            ELSE EXCLUDED.author
+          END,
+          normalized_author = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0 THEN EXCLUDED.normalized_author
+            WHEN audiobook_releases.metadata_parser_version > 0 THEN audiobook_releases.normalized_author
+            ELSE EXCLUDED.normalized_author
+          END,
+          series = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.series, audiobook_releases.series)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.series
+            ELSE COALESCE(EXCLUDED.series, audiobook_releases.series)
+          END,
+          normalized_series = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.normalized_series, audiobook_releases.normalized_series)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.normalized_series
+            ELSE COALESCE(EXCLUDED.normalized_series, audiobook_releases.normalized_series)
+          END,
+          series_position = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.series_position, audiobook_releases.series_position)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.series_position
+            ELSE COALESCE(EXCLUDED.series_position, audiobook_releases.series_position)
+          END,
           narrators = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+                 AND cardinality(EXCLUDED.narrators) > 0 THEN EXCLUDED.narrators
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.narrators
             WHEN cardinality(EXCLUDED.narrators) > 0 THEN EXCLUDED.narrators
             ELSE audiobook_releases.narrators
           END,
-          language = COALESCE(EXCLUDED.language, audiobook_releases.language),
-          release_year = COALESCE(EXCLUDED.release_year, audiobook_releases.release_year),
-          audio_format = COALESCE(EXCLUDED.audio_format, audiobook_releases.audio_format),
-          bitrate_kbps = COALESCE(EXCLUDED.bitrate_kbps, audiobook_releases.bitrate_kbps),
-          is_abridged = COALESCE(EXCLUDED.is_abridged, audiobook_releases.is_abridged),
-          is_dramatized = COALESCE(EXCLUDED.is_dramatized, audiobook_releases.is_dramatized),
+          language = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.language, audiobook_releases.language)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.language
+            ELSE COALESCE(EXCLUDED.language, audiobook_releases.language)
+          END,
+          release_year = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.release_year, audiobook_releases.release_year)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.release_year
+            ELSE COALESCE(EXCLUDED.release_year, audiobook_releases.release_year)
+          END,
+          duration_seconds = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.duration_seconds, audiobook_releases.duration_seconds)
+            ELSE audiobook_releases.duration_seconds
+          END,
+          audio_format = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.audio_format, audiobook_releases.audio_format)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.audio_format
+            ELSE COALESCE(EXCLUDED.audio_format, audiobook_releases.audio_format)
+          END,
+          bitrate_kbps = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.bitrate_kbps, audiobook_releases.bitrate_kbps)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.bitrate_kbps
+            ELSE COALESCE(EXCLUDED.bitrate_kbps, audiobook_releases.bitrate_kbps)
+          END,
+          genres = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+                 AND cardinality(EXCLUDED.genres) > 0 THEN EXCLUDED.genres
+            ELSE audiobook_releases.genres
+          END,
+          publisher = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.publisher, audiobook_releases.publisher)
+            ELSE audiobook_releases.publisher
+          END,
+          sample_rate_hz = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.sample_rate_hz, audiobook_releases.sample_rate_hz)
+            ELSE audiobook_releases.sample_rate_hz
+          END,
+          audio_channels = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.audio_channels, audiobook_releases.audio_channels)
+            ELSE audiobook_releases.audio_channels
+          END,
+          bitrate_mode = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.bitrate_mode, audiobook_releases.bitrate_mode)
+            ELSE audiobook_releases.bitrate_mode
+          END,
+          edition_type = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.edition_type, audiobook_releases.edition_type)
+            ELSE audiobook_releases.edition_type
+          END,
+          edition_category = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.edition_category, audiobook_releases.edition_category)
+            ELSE audiobook_releases.edition_category
+          END,
+          music = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.music, audiobook_releases.music)
+            ELSE audiobook_releases.music
+          END,
+          metadata_parser_version = GREATEST(
+            audiobook_releases.metadata_parser_version,
+            EXCLUDED.metadata_parser_version),
+          metadata_parsed_at = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0 THEN EXCLUDED.metadata_parsed_at
+            ELSE audiobook_releases.metadata_parsed_at
+          END,
+          is_abridged = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.is_abridged, audiobook_releases.is_abridged)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.is_abridged
+            ELSE COALESCE(EXCLUDED.is_abridged, audiobook_releases.is_abridged)
+          END,
+          is_dramatized = CASE
+            WHEN EXCLUDED.metadata_parser_version > 0
+              THEN COALESCE(EXCLUDED.is_dramatized, audiobook_releases.is_dramatized)
+            WHEN audiobook_releases.metadata_parser_version > 0
+              THEN audiobook_releases.is_dramatized
+            ELSE COALESCE(EXCLUDED.is_dramatized, audiobook_releases.is_dramatized)
+          END,
           source_url = EXCLUDED.source_url,
           info_hash = EXCLUDED.info_hash,
           magnet_uri = EXCLUDED.magnet_uri,
@@ -569,6 +772,29 @@ public sealed class SourceCrawlRepository(
            OR audiobook_releases.source_category_id IS DISTINCT FROM EXCLUDED.source_category_id
            OR audiobook_releases.listing_fingerprint IS DISTINCT FROM EXCLUDED.listing_fingerprint
            OR audiobook_releases.detail_fingerprint IS DISTINCT FROM EXCLUDED.detail_fingerprint
+           OR (
+             EXCLUDED.metadata_parser_version > 0
+             AND (
+               audiobook_releases.title IS DISTINCT FROM EXCLUDED.title
+               OR audiobook_releases.author IS DISTINCT FROM EXCLUDED.author
+               OR audiobook_releases.series IS DISTINCT FROM EXCLUDED.series
+               OR audiobook_releases.series_position IS DISTINCT FROM EXCLUDED.series_position
+               OR audiobook_releases.narrators IS DISTINCT FROM EXCLUDED.narrators
+               OR audiobook_releases.release_year IS DISTINCT FROM EXCLUDED.release_year
+               OR audiobook_releases.duration_seconds IS DISTINCT FROM EXCLUDED.duration_seconds
+               OR audiobook_releases.audio_format IS DISTINCT FROM EXCLUDED.audio_format
+               OR audiobook_releases.bitrate_kbps IS DISTINCT FROM EXCLUDED.bitrate_kbps
+               OR audiobook_releases.genres IS DISTINCT FROM EXCLUDED.genres
+               OR audiobook_releases.publisher IS DISTINCT FROM EXCLUDED.publisher
+               OR audiobook_releases.sample_rate_hz IS DISTINCT FROM EXCLUDED.sample_rate_hz
+               OR audiobook_releases.audio_channels IS DISTINCT FROM EXCLUDED.audio_channels
+               OR audiobook_releases.bitrate_mode IS DISTINCT FROM EXCLUDED.bitrate_mode
+               OR audiobook_releases.edition_type IS DISTINCT FROM EXCLUDED.edition_type
+               OR audiobook_releases.edition_category IS DISTINCT FROM EXCLUDED.edition_category
+               OR audiobook_releases.music IS DISTINCT FROM EXCLUDED.music
+               OR audiobook_releases.metadata_parser_version < EXCLUDED.metadata_parser_version
+             )
+           )
         RETURNING id AS Id, (xmax = 0) AS Inserted, TRUE AS Changed;
         """;
 
@@ -577,6 +803,7 @@ public sealed class SourceCrawlRepository(
             item,
             categoryId,
             parsed,
+            metadata,
             infoHash.ToLowerInvariant(),
             magnetUri,
             listingFingerprint,
@@ -607,6 +834,7 @@ public sealed class SourceCrawlRepository(
         RuTrackerSearchItem item,
         int categoryId,
         ParsedAudiobookTitle parsed,
+        RuTrackerTopicMetadata? metadata,
         string? infoHash,
         string? magnetUri,
         string? listingFingerprint,
@@ -617,12 +845,25 @@ public sealed class SourceCrawlRepository(
         parsed.Author,
         NormalizedAuthor = normalizer.Normalize(parsed.Author),
         parsed.Series,
+        NormalizedSeries = parsed.Series is null
+            ? null
+            : normalizer.Normalize(parsed.Series),
         parsed.SeriesPosition,
         parsed.Narrators,
         parsed.Language,
         parsed.ReleaseYear,
+        DurationSeconds = metadata?.DurationSeconds,
         parsed.AudioFormat,
         parsed.BitrateKbps,
+        Genres = metadata?.Genres ?? [],
+        Publisher = metadata?.Publisher,
+        SampleRateHz = metadata?.SampleRateHz,
+        AudioChannels = metadata?.AudioChannels,
+        BitrateMode = metadata?.BitrateMode,
+        EditionType = metadata?.EditionType,
+        EditionCategory = metadata?.EditionCategory,
+        Music = metadata?.Music,
+        MetadataParserVersion = metadata?.ParserVersion ?? 0,
         parsed.IsAbridged,
         parsed.IsDramatized,
         Source = RuTrackerSourceDefinition.Key,

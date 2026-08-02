@@ -38,6 +38,7 @@ builder.Services.AddSingleton<StatisticsRepository>();
 builder.Services.AddSingleton<RuTrackerTransport>();
 builder.Services.AddSingleton<RuTrackerClient>();
 builder.Services.AddSingleton<RuTrackerHtmlParser>();
+builder.Services.AddSingleton<RuTrackerTopicMetadataParser>();
 builder.Services.AddSingleton<RuTrackerAtomClient>();
 builder.Services.AddSingleton<RuTrackerAtomState>();
 builder.Services.AddSingleton<RuTrackerAtomImporter>();

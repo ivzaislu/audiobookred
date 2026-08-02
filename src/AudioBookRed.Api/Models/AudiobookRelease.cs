@@ -15,6 +15,16 @@ public sealed class AudiobookRelease
     public long? DurationSeconds { get; set; }
     public string? AudioFormat { get; set; }
     public int? BitrateKbps { get; set; }
+    public string[] Genres { get; set; } = [];
+    public string? Publisher { get; set; }
+    public int? SampleRateHz { get; set; }
+    public string? AudioChannels { get; set; }
+    public string? BitrateMode { get; set; }
+    public string? EditionType { get; set; }
+    public string? EditionCategory { get; set; }
+    public string? Music { get; set; }
+    public int MetadataParserVersion { get; set; }
+    public DateTime? MetadataParsedAt { get; set; }
     public bool? IsAbridged { get; set; }
     public bool? IsDramatized { get; set; }
     public string Source { get; set; } = "";
