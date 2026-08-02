@@ -232,6 +232,8 @@ public sealed class SourceJobRepository(IConfiguration configuration)
         string runKey,
         CancellationToken ct)
     {
+        var pageLimit = Math.Clamp(pages, 1, 10);
+
         const string runSql = """
         INSERT INTO source_crawl_runs(source, mode, run_key, status, started_at)
         VALUES (@Source, 'incremental', @RunKey, 'running', NOW())
@@ -260,24 +262,59 @@ public sealed class SourceJobRepository(IConfiguration configuration)
           last_error AS LastError;
         """;
 
+        const string reviveSql = """
+        UPDATE source_crawl_jobs job
+        SET status = 'retry',
+            attempts = 0,
+            next_attempt_at = NOW(),
+            lease_until = NULL,
+            last_error = NULL,
+            completed_at = NULL,
+            updated_at = NOW()
+        WHERE job.run_id = @RunId
+          AND job.status = 'failed'
+          AND job.page <= COALESCE((
+            SELECT LEAST(
+              @PageLimit,
+              GREATEST(1, COALESCE(state.bootstrap_last_page, 1)))
+            FROM source_crawl_state state
+            WHERE state.source = job.source
+              AND state.category_id = job.category_id
+          ), 1)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM source_crawl_jobs active
+            WHERE active.id <> job.id
+              AND active.source = job.source
+              AND active.mode = job.mode
+              AND active.category_id = job.category_id
+              AND active.page = job.page
+              AND active.status IN ('pending', 'running', 'retry')
+          );
+        """;
+
         const string jobsSql = """
         INSERT INTO source_crawl_jobs(
           run_id, source, mode, category_id, page, priority, status)
         SELECT @RunId,
           @Source,
           'incremental',
-          category_id,
-          page,
-          10 + page,
+          state.category_id,
+          1,
+          11,
           'pending'
         FROM source_crawl_state AS state
-        CROSS JOIN LATERAL generate_series(
-          1,
-          LEAST(
-            @Pages,
-            GREATEST(1, COALESCE(state.bootstrap_last_page, @Pages)))) AS p(page)
         WHERE state.source = @Source
           AND state.category_id = ANY(CAST(@Categories AS integer[]))
+          AND NOT EXISTS (
+            SELECT 1
+            FROM source_crawl_jobs active
+            WHERE active.source = @Source
+              AND active.mode = 'incremental'
+              AND active.category_id = state.category_id
+              AND active.page = 1
+              AND active.status IN ('pending', 'running', 'retry')
+          )
         ON CONFLICT (run_id, category_id, page) DO NOTHING
         RETURNING id;
         """;
@@ -300,20 +337,9 @@ public sealed class SourceJobRepository(IConfiguration configuration)
             tx,
             cancellationToken: ct));
 
-        const string reviveSql = """
-        UPDATE source_crawl_jobs
-        SET status = 'retry',
-            attempts = 0,
-            next_attempt_at = NOW(),
-            lease_until = NULL,
-            last_error = NULL,
-            completed_at = NULL,
-            updated_at = NOW()
-        WHERE run_id = @RunId AND status = 'failed';
-        """;
         var revived = await db.ExecuteAsync(new CommandDefinition(
             reviveSql,
-            new { RunId = run.Id },
+            new { RunId = run.Id, PageLimit = pageLimit },
             tx,
             cancellationToken: ct));
 
@@ -323,8 +349,7 @@ public sealed class SourceJobRepository(IConfiguration configuration)
             {
                 Source = source,
                 RunId = run.Id,
-                Categories = categories.ToArray(),
-                Pages = Math.Clamp(pages, 1, 10)
+                Categories = categories.ToArray()
             },
             tx,
             cancellationToken: ct));
@@ -337,8 +362,23 @@ public sealed class SourceJobRepository(IConfiguration configuration)
                 new { Source = source },
                 tx,
                 cancellationToken: ct));
+
+            await db.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO source_job_events(source, run_id, event_type, mode, message)
+                VALUES (@Source, @RunId, 'enqueued', 'incremental', @Message);
+                """,
+                new
+                {
+                    Source = source,
+                    RunId = run.Id,
+                    Message = $"Добавлено или возвращено заданий: {added}; предел на категорию: {pageLimit}."
+                },
+                tx,
+                cancellationToken: ct));
         }
 
+        await RefreshRunStateAsync(db, tx, run.Id, source, "incremental", null, ct);
         await tx.CommitAsync(ct);
         return (run, added);
     }
@@ -533,12 +573,133 @@ public sealed class SourceJobRepository(IConfiguration configuration)
         return rows;
     }
 
+    public async Task<int?> GetKnownLastPageAsync(
+        string source,
+        int categoryId,
+        CancellationToken ct)
+    {
+        const string sql = """
+        SELECT bootstrap_last_page
+        FROM source_crawl_state
+        WHERE source = @Source AND category_id = @CategoryId;
+        """;
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        return await db.ExecuteScalarAsync<int?>(new CommandDefinition(
+            sql,
+            new { Source = source, CategoryId = categoryId },
+            cancellationToken: ct));
+    }
+
+    public async Task CompleteOutOfRangeJobAsync(
+        SourceCrawlJob job,
+        int lastPage,
+        CancellationToken ct)
+    {
+        if (lastPage < 1 || job.Page <= lastPage)
+            throw new ArgumentOutOfRangeException(
+                nameof(lastPage),
+                "Known catalog boundary must be smaller than the job page.");
+
+        const string jobSql = """
+        UPDATE source_crawl_jobs
+        SET status = 'completed',
+            lease_until = NULL,
+            next_attempt_at = NOW(),
+            received = 0,
+            inserted = 0,
+            changed = 0,
+            last_error = NULL,
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = @JobId
+          AND status = 'running';
+        """;
+
+        const string stateSql = """
+        UPDATE source_crawl_state
+        SET last_error = NULL,
+            updated_at = NOW()
+        WHERE source = @Source AND category_id = @CategoryId;
+        """;
+
+        const string eventSql = """
+        INSERT INTO source_job_events(
+          source, run_id, job_id, event_type, mode, category_id, page, message)
+        VALUES (
+          @Source, @RunId, @JobId, 'end_of_catalog', @Mode, @CategoryId, @Page, @Message);
+        """;
+
+        const string bootstrapStateSql = """
+        UPDATE source_crawl_state state
+        SET bootstrap_next_page = COALESCE((
+              SELECT MIN(pending.page)
+              FROM source_crawl_jobs pending
+              WHERE pending.run_id = @RunId
+                AND pending.category_id = @CategoryId
+                AND pending.status <> 'completed'
+            ), COALESCE(state.bootstrap_last_page, @LastPage) + 1),
+            bootstrap_completed = NOT EXISTS (
+              SELECT 1
+              FROM source_crawl_jobs pending
+              WHERE pending.run_id = @RunId
+                AND pending.category_id = @CategoryId
+                AND pending.status <> 'completed'
+            ),
+            updated_at = NOW()
+        WHERE state.source = @Source AND state.category_id = @CategoryId;
+        """;
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        await db.OpenAsync(ct);
+        await using var tx = await db.BeginTransactionAsync(ct);
+
+        var args = new
+        {
+            JobId = job.Id,
+            job.RunId,
+            Source = job.Source,
+            job.Mode,
+            job.CategoryId,
+            job.Page,
+            LastPage = lastPage,
+            Message = $"Страница {job.Page} выше известной границы каталога {lastPage}; задание завершено без повторов."
+        };
+
+        var updated = await db.ExecuteAsync(new CommandDefinition(
+            jobSql,
+            args,
+            tx,
+            cancellationToken: ct));
+        if (updated > 0)
+        {
+            await db.ExecuteAsync(new CommandDefinition(stateSql, args, tx, cancellationToken: ct));
+            await db.ExecuteAsync(new CommandDefinition(eventSql, args, tx, cancellationToken: ct));
+            if (string.Equals(job.Mode, "bootstrap", StringComparison.OrdinalIgnoreCase))
+            {
+                await db.ExecuteAsync(new CommandDefinition(
+                    bootstrapStateSql,
+                    args,
+                    tx,
+                    cancellationToken: ct));
+            }
+        }
+
+        await RefreshRunStateAsync(db, tx, job.RunId, job.Source, job.Mode, null, ct);
+        await tx.CommitAsync(ct);
+    }
+
     public async Task CompleteJobAsync(
         SourceCrawlJob job,
         RuTrackerListingPage listing,
         ListingImportSummary imported,
+        int incrementalPageLimit,
         CancellationToken ct)
     {
+        var plannedPages = CatalogPageWindow.EffectiveIncrementalPages(
+            incrementalPageLimit,
+            listing.TotalPages);
+
         const string jobSql = """
         UPDATE source_crawl_jobs
         SET status = 'completed',
@@ -608,6 +769,115 @@ public sealed class SourceJobRepository(IConfiguration configuration)
         WHERE source = @Source AND category_id = @CategoryId;
         """;
 
+        const string boundaryStateSql = """
+        UPDATE source_crawl_state
+        SET bootstrap_last_page = @TotalPages,
+            last_error = NULL,
+            updated_at = NOW()
+        WHERE source = @Source
+          AND category_id = @CategoryId
+          AND @Page = 1;
+        """;
+
+        const string affectedRunsSql = """
+        SELECT DISTINCT run_id AS RunId, mode AS Mode
+        FROM source_crawl_jobs
+        WHERE source = @Source
+          AND mode = 'incremental'
+          AND category_id = @CategoryId
+          AND page > @TotalPages
+          AND status IN ('pending', 'retry', 'failed');
+        """;
+
+        const string closeOutOfRangeSql = """
+        WITH closed AS (
+          UPDATE source_crawl_jobs
+          SET status = 'completed',
+              lease_until = NULL,
+              next_attempt_at = NOW(),
+              received = 0,
+              inserted = 0,
+              changed = 0,
+              last_error = NULL,
+              completed_at = NOW(),
+              updated_at = NOW()
+          WHERE source = @Source
+            AND mode = 'incremental'
+            AND category_id = @CategoryId
+            AND page > @TotalPages
+            AND status IN ('pending', 'retry', 'failed')
+          RETURNING id, run_id, source, mode, category_id, page
+        )
+        INSERT INTO source_job_events(
+          source, run_id, job_id, event_type, mode, category_id, page, message)
+        SELECT source,
+          run_id,
+          id,
+          'end_of_catalog',
+          mode,
+          category_id,
+          page,
+          'Страница ' || CAST(page AS text) || ' выше обнаруженной границы каталога ' ||
+            CAST(@TotalPages AS text) || '; задание завершено без повторов.'
+        FROM closed;
+        """;
+
+        const string reviveDiscoveredPagesSql = """
+        UPDATE source_crawl_jobs job
+        SET status = 'retry',
+            attempts = 0,
+            next_attempt_at = NOW(),
+            lease_until = NULL,
+            last_error = NULL,
+            completed_at = NULL,
+            updated_at = NOW()
+        WHERE job.run_id = @RunId
+          AND job.mode = 'incremental'
+          AND job.category_id = @CategoryId
+          AND job.page BETWEEN 2 AND @PlannedPages
+          AND job.status = 'failed'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM source_crawl_jobs active
+            WHERE active.id <> job.id
+              AND active.source = job.source
+              AND active.mode = job.mode
+              AND active.category_id = job.category_id
+              AND active.page = job.page
+              AND active.status IN ('pending', 'running', 'retry')
+          );
+        """;
+
+        const string enqueueDiscoveredPagesSql = """
+        INSERT INTO source_crawl_jobs(
+          run_id, source, mode, category_id, page, priority, status)
+        SELECT @RunId,
+          @Source,
+          'incremental',
+          @CategoryId,
+          pages.page,
+          10 + pages.page,
+          'pending'
+        FROM generate_series(2, @PlannedPages) AS pages(page)
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM source_crawl_jobs active
+          WHERE active.source = @Source
+            AND active.mode = 'incremental'
+            AND active.category_id = @CategoryId
+            AND active.page = pages.page
+            AND active.status IN ('pending', 'running', 'retry')
+        )
+        ON CONFLICT (run_id, category_id, page) DO NOTHING;
+        """;
+
+        const string pageDiscoveryEventSql = """
+        INSERT INTO source_job_events(
+          source, run_id, event_type, mode, category_id, page, message)
+        VALUES (
+          @Source, @RunId, 'pages_discovered', 'incremental', @CategoryId, @Page, @Message);
+        """;
+
         const string eventSql = """
         INSERT INTO source_job_events(
           source, run_id, job_id, event_type, mode, category_id, page, message)
@@ -628,6 +898,7 @@ public sealed class SourceJobRepository(IConfiguration configuration)
             job.CategoryId,
             job.Page,
             TotalPages = listing.TotalPages,
+            PlannedPages = plannedPages,
             Received = listing.Items.Count,
             imported.Inserted,
             imported.Changed,
@@ -650,8 +921,75 @@ public sealed class SourceJobRepository(IConfiguration configuration)
             await db.ExecuteAsync(new CommandDefinition(reconcileStateSql, args, tx, cancellationToken: ct));
         }
 
+        var affectedRuns = new List<RunReference>();
+        if (job.Page == 1)
+        {
+            await db.ExecuteAsync(new CommandDefinition(boundaryStateSql, args, tx, cancellationToken: ct));
+            affectedRuns.AddRange(await db.QueryAsync<RunReference>(new CommandDefinition(
+                affectedRunsSql,
+                args,
+                tx,
+                cancellationToken: ct)));
+            await db.ExecuteAsync(new CommandDefinition(
+                closeOutOfRangeSql,
+                args,
+                tx,
+                cancellationToken: ct));
+
+            if (string.Equals(job.Mode, "bootstrap", StringComparison.OrdinalIgnoreCase))
+            {
+                await db.ExecuteAsync(new CommandDefinition(
+                    recalculateStateSql,
+                    args,
+                    tx,
+                    cancellationToken: ct));
+            }
+
+            if (string.Equals(job.Mode, "incremental", StringComparison.OrdinalIgnoreCase))
+            {
+                await db.ExecuteAsync(new CommandDefinition(
+                    reviveDiscoveredPagesSql,
+                    args,
+                    tx,
+                    cancellationToken: ct));
+                await db.ExecuteAsync(new CommandDefinition(
+                    enqueueDiscoveredPagesSql,
+                    args,
+                    tx,
+                    cancellationToken: ct));
+                await db.ExecuteAsync(new CommandDefinition(
+                    pageDiscoveryEventSql,
+                    new
+                    {
+                        args.Source,
+                        args.RunId,
+                        args.CategoryId,
+                        args.Page,
+                        Message = $"Каталог сообщает {listing.TotalPages} страниц; incremental запланировал {plannedPages}."
+                    },
+                    tx,
+                    cancellationToken: ct));
+            }
+        }
+
         await db.ExecuteAsync(new CommandDefinition(eventSql, args, tx, cancellationToken: ct));
         await RefreshRunStateAsync(db, tx, job.RunId, job.Source, job.Mode, null, ct);
+
+        foreach (var affectedRun in affectedRuns
+                     .Where(run => run.RunId != job.RunId)
+                     .GroupBy(run => run.RunId)
+                     .Select(group => group.First()))
+        {
+            await RefreshRunStateAsync(
+                db,
+                tx,
+                affectedRun.RunId,
+                job.Source,
+                affectedRun.Mode,
+                null,
+                ct);
+        }
+
         await tx.CommitAsync(ct);
     }
 
@@ -1035,6 +1373,12 @@ public sealed class SourceJobRepository(IConfiguration configuration)
                 tx,
                 cancellationToken: ct));
         }
+    }
+
+    private sealed class RunReference
+    {
+        public long RunId { get; set; }
+        public string Mode { get; set; } = string.Empty;
     }
 
     private sealed class QueueCounts

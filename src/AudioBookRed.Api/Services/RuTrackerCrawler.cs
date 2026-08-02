@@ -174,6 +174,13 @@ public sealed class RuTrackerCrawler(
         SourceRuntimeSettings settings,
         CancellationToken ct)
     {
+        if (job.Page > 1)
+        {
+            var completedBoundaryJob = await TryCompleteKnownOutOfRangeAsync(job, ct);
+            if (completedBoundaryJob is not null)
+                return completedBoundaryJob;
+        }
+
         try
         {
             resourceGuard.EnsureEnoughDiskSpace();
@@ -184,7 +191,12 @@ public sealed class RuTrackerCrawler(
                 job.Page,
                 ct);
 
-            await jobRepository.CompleteJobAsync(job, listing, imported, ct);
+            await jobRepository.CompleteJobAsync(
+                job,
+                listing,
+                imported,
+                settings.IncrementalPages,
+                ct);
             logger.LogInformation(
                 "RuTracker {Mode} job {JobId}: category {CategoryId}, page {Page}, received {Received}, inserted {Inserted}, topic failed {Failed}",
                 job.Mode,
@@ -213,31 +225,81 @@ public sealed class RuTrackerCrawler(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(
-                ex,
-                "RuTracker {Mode} job {JobId} failed: category {CategoryId}, page {Page}",
-                job.Mode,
-                job.Id,
-                job.CategoryId,
-                job.Page);
-            var status = await jobRepository.FailJobAsync(
-                job,
-                ex.Message,
-                settings.MaximumAttempts,
-                ct);
+            if (job.Page > 1)
+            {
+                var completedBoundaryJob = await TryCompleteKnownOutOfRangeAsync(job, ct);
+                if (completedBoundaryJob is not null)
+                    return completedBoundaryJob;
+            }
 
-            return new SourceJobResult(
-                job.Id,
-                job.Mode,
-                job.CategoryId,
-                job.Page,
-                status,
-                0,
-                0,
-                0,
-                EmptyDetails(),
-                ex.Message);
+            return await RecordJobFailureAsync(job, settings, ex, ct);
         }
+    }
+
+    private async Task<SourceJobResult?> TryCompleteKnownOutOfRangeAsync(
+        SourceCrawlJob job,
+        CancellationToken ct)
+    {
+        var knownLastPage = await jobRepository.GetKnownLastPageAsync(
+            job.Source,
+            job.CategoryId,
+            ct);
+        if (!CatalogPageWindow.IsOutOfRange(job.Page, knownLastPage))
+            return null;
+
+        var lastPage = knownLastPage.GetValueOrDefault();
+        await jobRepository.CompleteOutOfRangeJobAsync(job, lastPage, ct);
+        logger.LogInformation(
+            "RuTracker {Mode} job {JobId}: category {CategoryId}, page {Page} is outside known catalog boundary {LastPage}",
+            job.Mode,
+            job.Id,
+            job.CategoryId,
+            job.Page,
+            lastPage);
+
+        return new SourceJobResult(
+            job.Id,
+            job.Mode,
+            job.CategoryId,
+            job.Page,
+            "completed",
+            0,
+            0,
+            0,
+            EmptyDetails(),
+            null);
+    }
+
+    private async Task<SourceJobResult> RecordJobFailureAsync(
+        SourceCrawlJob job,
+        SourceRuntimeSettings settings,
+        Exception exception,
+        CancellationToken ct)
+    {
+        logger.LogWarning(
+            exception,
+            "RuTracker {Mode} job {JobId} failed: category {CategoryId}, page {Page}",
+            job.Mode,
+            job.Id,
+            job.CategoryId,
+            job.Page);
+        var status = await jobRepository.FailJobAsync(
+            job,
+            exception.Message,
+            settings.MaximumAttempts,
+            ct);
+
+        return new SourceJobResult(
+            job.Id,
+            job.Mode,
+            job.CategoryId,
+            job.Page,
+            status,
+            0,
+            0,
+            0,
+            EmptyDetails(),
+            exception.Message);
     }
 
     public async Task PauseBootstrapAsync(CancellationToken ct)

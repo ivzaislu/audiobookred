@@ -35,8 +35,7 @@ public sealed partial class RuTrackerListingClient(
         if (listingTable is null)
         {
             var title = CleanText(document.Title ?? string.Empty);
-            throw new InvalidDataException(
-                $"RuTracker вернул HTML без таблицы каталога для категории {categoryId}, страницы {page}. Заголовок: {title}.");
+            throw new RuTrackerListingTableMissingException(categoryId, page, title);
         }
 
         var items = new List<RuTrackerSearchItem>();
