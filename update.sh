@@ -105,7 +105,7 @@ wait_for_api() {
   while (( SECONDS < deadline )); do
     if curl --fail --silent --show-error \
       --connect-timeout 3 --max-time 10 \
-      "http://127.0.0.1:$port/health" >"$health_file" 2>/dev/null; then
+      "http://127.0.0.1:$port/health/ready" >"$health_file" 2>/dev/null; then
 
       read -r status actual_version < <(
         python3 - "$health_file" <<'PY'

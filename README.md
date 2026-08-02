@@ -133,6 +133,18 @@ sudo bash update.sh
 
 Перед обновлением создаётся резервная копия базы, затем выполняется `git pull --ff-only`, пересборка и health check.
 
+## Проверка изменений
+
+Для каждого push и pull request GitHub Actions выполняет сборку .NET 9,
+модульные тесты, проверку Bash-синтаксиса, `docker compose config` и сборку
+Docker-образа.
+
+Локально:
+
+```bash
+dotnet test tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj -c Release
+```
+
 ## Документация
 
 - [Эксплуатация, резервное копирование и восстановление](docs/operations.md)
@@ -159,7 +171,7 @@ audiobookred/
 └── uninstall.sh
 ```
 
-<!-- patch-06-atom-dedup -->
+
 ### Быстрое Atom-обнаружение
 
 Atom feed проверяется часто, но постоянная дедупликация в PostgreSQL не даёт
@@ -167,7 +179,7 @@ Atom feed проверяется часто, но постоянная деду�
 суточным двухстраничным обходом категорий; новые/изменившиеся темы проходят
 через общую очередь `source_topic_jobs`.
 
-<!-- patch-07-startup-migrations -->
+
 ### Надёжный запуск и одноразовые миграции
 
 Начиная с версии 0.20.1 обычный перезапуск выполняет только быструю проверку

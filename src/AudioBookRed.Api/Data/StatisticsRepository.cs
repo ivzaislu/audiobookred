@@ -44,13 +44,21 @@ public sealed class StatisticsRepository(IConfiguration configuration)
           FROM audiobook_releases
           WHERE magnet_uri IS NOT NULL AND BTRIM(magnet_uri) <> ''
           GROUP BY source
-        ), queue_stats AS (
+        ), page_queue_stats AS (
           SELECT source,
             COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_jobs,
             COUNT(*) FILTER (WHERE status = 'running')::int AS running_jobs,
             COUNT(*) FILTER (WHERE status = 'retry')::int AS retry_jobs,
             COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_jobs
           FROM source_crawl_jobs
+          GROUP BY source
+        ), topic_queue_stats AS (
+          SELECT source,
+            COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_jobs,
+            COUNT(*) FILTER (WHERE status = 'running')::int AS running_jobs,
+            COUNT(*) FILTER (WHERE status = 'retry')::int AS retry_jobs,
+            COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_jobs
+          FROM source_topic_jobs
           GROUP BY source
         ), run_stats AS (
           SELECT source,
@@ -59,7 +67,8 @@ public sealed class StatisticsRepository(IConfiguration configuration)
           GROUP BY source
         ), all_sources AS (
           SELECT source FROM release_stats
-          UNION SELECT source FROM queue_stats
+          UNION SELECT source FROM page_queue_stats
+          UNION SELECT source FROM topic_queue_stats
           UNION SELECT source FROM run_stats
           UNION SELECT source FROM source_runtime_settings
         )
@@ -74,15 +83,16 @@ public sealed class StatisticsRepository(IConfiguration configuration)
           COALESCE(release.updated_last_24_hours, 0),
           release.last_discovered_at,
           release.last_updated_at,
-          COALESCE(queue.pending_jobs, 0),
-          COALESCE(queue.running_jobs, 0),
-          COALESCE(queue.retry_jobs, 0),
-          COALESCE(queue.failed_jobs, 0),
+          COALESCE(page_queue.pending_jobs, 0) + COALESCE(topic_queue.pending_jobs, 0),
+          COALESCE(page_queue.running_jobs, 0) + COALESCE(topic_queue.running_jobs, 0),
+          COALESCE(page_queue.retry_jobs, 0) + COALESCE(topic_queue.retry_jobs, 0),
+          COALESCE(page_queue.failed_jobs, 0) + COALESCE(topic_queue.failed_jobs, 0),
           runs.last_successful_crawl_at,
           NOW()
         FROM all_sources source
         LEFT JOIN release_stats release ON release.source = source.source
-        LEFT JOIN queue_stats queue ON queue.source = source.source
+        LEFT JOIN page_queue_stats page_queue ON page_queue.source = source.source
+        LEFT JOIN topic_queue_stats topic_queue ON topic_queue.source = source.source
         LEFT JOIN run_stats runs ON runs.source = source.source
         ON CONFLICT (source) DO UPDATE SET
           release_count = EXCLUDED.release_count,
@@ -99,7 +109,10 @@ public sealed class StatisticsRepository(IConfiguration configuration)
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);
-        await db.ExecuteAsync(new CommandDefinition(refreshSql, cancellationToken: ct));
+        await db.ExecuteAsync(new CommandDefinition(
+            refreshSql,
+            commandTimeout: 120,
+            cancellationToken: ct));
         return await ReadAsync(db, ct);
     }
 
@@ -109,6 +122,7 @@ public sealed class StatisticsRepository(IConfiguration configuration)
         await db.OpenAsync(ct);
         var refreshedAt = await db.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
             "SELECT MAX(refreshed_at) FROM source_statistics;",
+            commandTimeout: 10,
             cancellationToken: ct));
         if (refreshedAt is null || ToUtcDateTime(refreshedAt.Value) < DateTime.UtcNow.AddMinutes(-10))
             return await RefreshAsync(ct);
@@ -140,7 +154,10 @@ public sealed class StatisticsRepository(IConfiguration configuration)
         ORDER BY release_count DESC, source;
         """;
 
-        using var result = await db.QueryMultipleAsync(new CommandDefinition(sql, cancellationToken: ct));
+        using var result = await db.QueryMultipleAsync(new CommandDefinition(
+            sql,
+            commandTimeout: 30,
+            cancellationToken: ct));
         var summary = await result.ReadSingleAsync<SummaryDbRow>();
         var dbSources = (await result.ReadAsync<SourceDbRow>()).AsList();
         var sources = dbSources.Select(row => new DatabaseSourceStatistics

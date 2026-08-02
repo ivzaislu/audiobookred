@@ -493,7 +493,7 @@ public sealed class SourceJobRepository(IConfiguration configuration)
         var parameters = new
         {
             Source = source,
-            Limit = Math.Clamp(limit, 1, 8),
+            Limit = Math.Clamp(limit, 1, 16),
             LeaseMinutes = Math.Clamp(leaseMinutes, 2, 60)
         };
 
@@ -690,7 +690,7 @@ public sealed class SourceJobRepository(IConfiguration configuration)
         await db.OpenAsync(ct);
         await using var tx = await db.BeginTransactionAsync(ct);
 
-        var status = await db.ExecuteScalarAsync<string>(new CommandDefinition(
+        var status = await db.ExecuteScalarAsync<string?>(new CommandDefinition(
             jobSql,
             new
             {
@@ -700,6 +700,10 @@ public sealed class SourceJobRepository(IConfiguration configuration)
             },
             tx,
             cancellationToken: ct));
+
+        if (status is null)
+            throw new InvalidOperationException(
+                $"Page job {job.Id} was not found while recording a failure.");
 
         await db.ExecuteAsync(new CommandDefinition(
             stateSql,

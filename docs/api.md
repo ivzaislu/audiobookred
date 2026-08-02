@@ -12,12 +12,18 @@ Torznab API использует отдельные правила автори�
 
 ```text
 GET /health
+GET /health/live
+GET /health/ready
 ```
+
+`/health/live` проверяет, что процесс отвечает. `/health/ready` дополнительно
+проверяет PostgreSQL и обязательные ключи `app_migrations`; Docker healthcheck
+использует readiness endpoint.
 
 Пример:
 
 ```bash
-curl -fsS http://127.0.0.1:9117/health
+curl -fsS http://127.0.0.1:9117/health/ready
 ```
 
 ## Каталог
@@ -106,3 +112,19 @@ PUT /api/v1/sources/rutracker/settings
 ```
 
 со статусом `401 Unauthorized`.
+## Удалённые legacy endpoints
+
+Начиная с версии 0.20.2 старые metadata-only и отдельные Magnet endpoints
+возвращают `410 Gone`, потому что они не создавали полноценные записи либо
+дублировали основной pipeline:
+
+```text
+POST /api/v1/sources/rutracker/import
+POST /api/v1/sources/rutracker/import-html
+GET  /api/v1/sources/rutracker/magnets/status
+POST /api/v1/sources/rutracker/magnets/import
+POST /api/v1/sources/rutracker/magnets/reset-failures
+```
+
+Используйте `incremental/enqueue`, `bootstrap/discover`, `work` и
+`topics/retry-failed`.

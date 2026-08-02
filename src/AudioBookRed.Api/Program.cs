@@ -10,6 +10,7 @@ builder.Services.AddSingleton<TitleNormalizer>();
 builder.Services.AddSingleton<PersonNameParser>();
 builder.Services.AddSingleton<CanonicalFacetRepository>();
 builder.Services.AddSingleton<DatabaseMigrationRunner>();
+builder.Services.AddSingleton<DatabaseReadinessProbe>();
 builder.Services.AddSingleton<AudiobookRepository>();
 builder.Services.AddSingleton<SourceCrawlRepository>();
 builder.Services.AddSingleton<SourceJobRepository>();
@@ -93,7 +94,6 @@ var sourceSettingsRepository = app.Services.GetRequiredService<SourceSettingsRep
 await sourceSettingsRepository.InitializeAsync(CancellationToken.None);
 var statisticsRepository = app.Services.GetRequiredService<StatisticsRepository>();
 await statisticsRepository.InitializeAsync(CancellationToken.None);
-await statisticsRepository.RefreshAsync(CancellationToken.None);
 
 app.MapGet("/health", () => Results.Ok(new
 {
@@ -101,6 +101,34 @@ app.MapGet("/health", () => Results.Ok(new
     service = "audiobookred",
     version = ApplicationVersion.Value
 }));
+
+app.MapGet("/health/live", () => Results.Ok(new
+{
+    status = "ok",
+    service = "audiobookred",
+    version = ApplicationVersion.Value
+}));
+
+app.MapGet("/health/ready", async (
+    DatabaseReadinessProbe readinessProbe,
+    CancellationToken ct) =>
+{
+    var readiness = await readinessProbe.CheckAsync(ct);
+    return Results.Json(
+        new
+        {
+            status = readiness.Ready ? "ok" : "not_ready",
+            service = "audiobookred",
+            version = ApplicationVersion.Value,
+            database = readiness.Ready ? "ok" : "unavailable",
+            missingMigrations = readiness.MissingMigrations,
+            durationMilliseconds = readiness.DurationMilliseconds,
+            error = readiness.Error
+        },
+        statusCode: readiness.Ready
+            ? StatusCodes.Status200OK
+            : StatusCodes.Status503ServiceUnavailable);
+});
 
 app.MapAudioBookRedTorznab();
 
@@ -357,62 +385,25 @@ app.MapPost("/api/v1/sources/rutracker/jobs/retry-failed", async (
     }
 });
 
-app.MapPost("/api/v1/sources/rutracker/import", async (
-    RuTrackerImportRequest request,
-    RuTrackerClient client,
-    AudiobookRepository repo,
-    CancellationToken ct) =>
-{
-    var forumId = request.ForumId ?? client.DefaultForumId;
-    var page = Math.Max(1, request.Page);
-    var maxResults = Math.Clamp(request.MaxResults, 1, 50);
+app.MapPost("/api/v1/sources/rutracker/import", () =>
+    Results.Json(
+        new
+        {
+            error = "legacy_endpoint_removed",
+            replacement = "/api/v1/sources/rutracker/incremental/enqueue",
+            message = "Прямой metadata-only import отключён. Используйте очередь crawler."
+        },
+        statusCode: StatusCodes.Status410Gone));
 
-    try
-    {
-        var rows = await client.SearchAsync(request.Query, forumId, page, maxResults, ct);
-        var result = await ImportRowsAsync(rows, maxResults, page, forumId, request.Query, repo, ct);
-        return Results.Ok(result);
-    }
-    catch (RuTrackerAuthenticationException ex)
-    {
-        return Results.Json(
-            new { error = "rutracker_auth_failed", message = ex.Message },
-            statusCode: StatusCodes.Status502BadGateway);
-    }
-    catch (HttpRequestException ex)
-    {
-        return Results.Json(
-            new { error = "rutracker_http_error", message = ex.Message },
-            statusCode: StatusCodes.Status502BadGateway);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { error = "invalid_request", message = ex.Message });
-    }
-});
-
-app.MapPost("/api/v1/sources/rutracker/import-html", async (
-    HttpRequest request,
-    RuTrackerHtmlParser parser,
-    AudiobookRepository repo,
-    CancellationToken ct) =>
-{
-    try
-    {
-        var maxResults = 50;
-        if (request.Query.TryGetValue("maxResults", out var rawLimit) &&
-            int.TryParse(rawLimit, out var parsedLimit))
-            maxResults = Math.Clamp(parsedLimit, 1, 200);
-
-        var rows = await parser.ParseAsync(request.Body, request.ContentType, maxResults, ct);
-        var result = await ImportRowsAsync(rows, maxResults, 1, 0, "html-upload", repo, ct);
-        return Results.Ok(result);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { error = "invalid_html", message = ex.Message });
-    }
-});
+app.MapPost("/api/v1/sources/rutracker/import-html", () =>
+    Results.Json(
+        new
+        {
+            error = "legacy_endpoint_removed",
+            replacement = "/api/v1/sources/rutracker/bootstrap/discover",
+            message = "HTML import отключён: он не создавал полноценные записи без magnet."
+        },
+        statusCode: StatusCodes.Status410Gone));
 
 app.MapGet("/api/v1/sources/rutracker/atom/status", (
     RuTrackerAtomClient client,
@@ -452,98 +443,36 @@ app.MapPost("/api/v1/sources/rutracker/atom/import", async (
     }
 });
 
-app.MapGet("/api/v1/sources/rutracker/magnets/status", (
-    RuTrackerMagnetClient client,
-    RuTrackerMagnetState state) => Results.Ok(state.Snapshot(client)));
+app.MapGet("/api/v1/sources/rutracker/magnets/status", () =>
+    Results.Json(
+        new
+        {
+            error = "legacy_endpoint_removed",
+            replacement = "/api/v1/sources/rutracker/crawl/status",
+            message = "Legacy Magnet worker не используется. Magnet получает основной topic pipeline."
+        },
+        statusCode: StatusCodes.Status410Gone));
 
-app.MapPost("/api/v1/sources/rutracker/magnets/import", async (
-    RuTrackerMagnetRunRequest request,
-    RuTrackerMagnetClient client,
-    RuTrackerMagnetEnricher enricher,
-    CancellationToken ct) =>
-{
-    var limit = Math.Clamp(request.Limit ?? client.BatchSize, 1, 100);
-    try
-    {
-        return Results.Ok(await enricher.RunAsync(limit, ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Conflict(new { error = "rutracker_magnet_busy", message = ex.Message });
-    }
-    catch (HttpRequestException ex)
-    {
-        return Results.Json(
-            new { error = "rutracker_magnet_http_error", message = ex.Message },
-            statusCode: StatusCodes.Status502BadGateway);
-    }
-});
+app.MapPost("/api/v1/sources/rutracker/magnets/import", () =>
+    Results.Json(
+        new
+        {
+            error = "legacy_endpoint_removed",
+            replacement = "/api/v1/sources/rutracker/work",
+            message = "Legacy Magnet import отключён. Используйте основной worker очереди."
+        },
+        statusCode: StatusCodes.Status410Gone));
 
-app.MapPost("/api/v1/sources/rutracker/magnets/reset-failures", async (
-    AudiobookRepository repo,
-    CancellationToken ct) =>
-{
-    var reset = await repo.ResetMagnetFailuresAsync(ct);
-    return Results.Ok(new { reset });
-});
+app.MapPost("/api/v1/sources/rutracker/magnets/reset-failures", () =>
+    Results.Json(
+        new
+        {
+            error = "legacy_endpoint_removed",
+            replacement = "/api/v1/sources/rutracker/topics/retry-failed",
+            message = "Повтор ошибок magnet выполняется через очередь тем."
+        },
+        statusCode: StatusCodes.Status410Gone));
 
 app.Run();
-
-static async Task<RuTrackerImportResult> ImportRowsAsync(
-    IReadOnlyList<RuTrackerSearchItem> rows,
-    int requested,
-    int page,
-    int forumId,
-    string? query,
-    AudiobookRepository repo,
-    CancellationToken ct)
-{
-    var imported = 0;
-    var failed = 0;
-    var errors = new List<string>();
-
-    foreach (var row in rows)
-    {
-        try
-        {
-            var id = await repo.UpsertAsync(new CreateAudiobookRelease(
-                row.Title,
-                RuTrackerSourceDefinition.Key,
-                row.TopicId.ToString(),
-                row.TopicUrl,
-                null,
-                null,
-                row.SizeBytes,
-                row.Seeders,
-                row.Leechers), ct);
-
-            if (id is null)
-            {
-                failed++;
-                if (errors.Count < 10)
-                    errors.Add($"topic {row.TopicId}: magnet отсутствует, запись пропущена");
-                continue;
-            }
-
-            imported++;
-        }
-        catch (Exception ex)
-        {
-            failed++;
-            if (errors.Count < 10)
-                errors.Add($"topic {row.TopicId}: {ex.Message}");
-        }
-    }
-
-    return new RuTrackerImportResult(
-        requested,
-        rows.Count,
-        imported,
-        failed,
-        page,
-        forumId,
-        query,
-        errors);
-}
 
 public sealed record ParseTitleRequest(string RawTitle);

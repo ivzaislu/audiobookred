@@ -40,7 +40,7 @@ sudo audiobookred-source rutracker set detailConcurrency 4
 sudo audiobookred-source rutracker set requestDelayMilliseconds 150
 ```
 
-Значение `work N` в `/etc/cron.d/audiobookred` должно соответствовать `workerJobLimit`.
+Cron запускает `work` без числа: фактический лимит берётся из `workerJobLimit` в runtime-настройках.
 
 ## Atom discovery worker
 
@@ -150,7 +150,7 @@ sudo bash restore-db.sh backups/audiobookred-YYYYMMDD-HHMMSS.dump --yes
 `install.sh` устанавливает `/etc/cron.d/audiobookred`:
 
 - worker очереди — каждую минуту;
-- получение новых раздач — каждый час;
+- контрольный обход первых двух страниц — ежедневно в 04:17;
 - обновление статистики — каждые 10 минут;
 - повтор упавших страниц — каждый час;
 - обслуживание — ежедневно.
@@ -212,7 +212,7 @@ sudo bash uninstall.sh --purge-data --remove-code
 
 Перед удалением данных обязательно создайте и сохраните резервную копию.
 
-<!-- patch-06-atom-dedup -->
+
 ## Atom discovery без лишних запросов к Worker
 
 Начиная с версии 0.20.0 Atom-проход только обнаруживает темы. Состояние
@@ -234,7 +234,7 @@ RUTRACKER_MAGNET_ENABLED=false
 первые страницы каждой категории. Он обновляет сиды и личи из `viewforum.php`
 без detail-запроса для каждой темы.
 
-<!-- patch-07-startup-migrations -->
+
 ## Одноразовые миграции базы
 
 Версия 0.20.1 отделяет быструю инициализацию схемы от операций по всему каталогу.

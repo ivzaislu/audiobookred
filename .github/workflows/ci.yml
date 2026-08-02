@@ -1,0 +1,50 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj
+
+      - name: Build
+        run: dotnet build tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test tests/AudioBookRed.Api.Tests/AudioBookRed.Api.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
+
+      - name: Validate shell syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          while IFS= read -r -d '' file; do
+            bash -n "$file"
+          done < <(find . -type f -name '*.sh' -print0)
+          bash -n scripts/audiobookred-source
+
+      - name: Validate Compose
+        shell: bash
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env config >/dev/null
+
+      - name: Build container
+        run: docker build -t audiobookred-ci .

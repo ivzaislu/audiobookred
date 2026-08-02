@@ -232,7 +232,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
 
   if command -v curl >/dev/null 2>&1 && curl --fail --silent --show-error \
     --connect-timeout 3 --max-time 10 \
-    "http://127.0.0.1:$port/health" >"$health_file" 2>/dev/null; then
+    "http://127.0.0.1:$port/health/ready" >"$health_file" 2>/dev/null; then
     ok "API health endpoint на порту $port"
     if command -v python3 >/dev/null 2>&1; then
       python3 -m json.tool "$health_file" 2>/dev/null || {
@@ -243,7 +243,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
       cat "$health_file"
     fi
   else
-    err "API не отвечает на http://127.0.0.1:$port/health"
+    err "API не отвечает на http://127.0.0.1:$port/health/ready"
   fi
 
   # Определяем фактически подключённый volume через контейнер БД.
@@ -310,6 +310,14 @@ if [[ -f /etc/cron.d/audiobookred ]]; then
     warn "rutracker latest использует другое расписание; рекомендуется ежедневно в 04:17"
   else
     warn "cron-задача rutracker latest не найдена"
+  fi
+
+  if grep -Eq 'audiobookred-source rutracker work[[:space:]]*>>' /etc/cron.d/audiobookred; then
+    ok "rutracker worker использует runtime workerJobLimit"
+  elif grep -Eq 'audiobookred-source rutracker work[[:space:]]+[0-9]+' /etc/cron.d/audiobookred; then
+    warn "rutracker worker фиксирует limit в cron; рекомендуется команда work без числа"
+  else
+    warn "cron-задача rutracker worker не найдена"
   fi
 else
   warn "cron не установлен"

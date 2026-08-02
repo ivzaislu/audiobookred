@@ -39,7 +39,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - curl --fail --silent --show-error --max-time 5 http://127.0.0.1:9117/health >/dev/null
+        - curl --fail --silent --show-error --max-time 5 http://127.0.0.1:9117/health/ready >/dev/null
       interval: 10s
       timeout: 6s
       retries: 18

@@ -39,6 +39,8 @@ usage() {
   detailConcurrency 1..16
   requestDelayMilliseconds 0..10000
   maximumAttempts 1..20
+
+Без аргумента N команда work использует workerJobLimit из runtime-настроек.
 TXT
 }
 
@@ -79,11 +81,15 @@ case "$COMMAND" in
     request POST "$base/bootstrap/discover" 300 | pretty
     ;;
   work)
-    limit="${ARG:-3}"
-    [[ "$limit" =~ ^[0-9]+$ ]] && (( limit >= 1 && limit <= 16 )) || {
-      echo "limit должен быть 1..16" >&2; exit 2;
-    }
-    request POST "$base/work?limit=$limit" 540 | pretty
+    if [[ -n "$ARG" ]]; then
+      limit="$ARG"
+      [[ "$limit" =~ ^[0-9]+$ ]] && (( limit >= 1 && limit <= 16 )) || {
+        echo "limit должен быть 1..16" >&2; exit 2;
+      }
+      request POST "$base/work?limit=$limit" 540 | pretty
+    else
+      request POST "$base/work" 540 | pretty
+    fi
     ;;
   latest|incremental|incremental-enqueue)
     request POST "$base/incremental/enqueue" 120 | pretty

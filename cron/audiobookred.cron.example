@@ -10,9 +10,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # RuTracker
 # -----------------------------------------------------------------------------
 
-# Постоянный короткий worker. Берёт до 3 страниц/тем из общей очереди.
+# Постоянный короткий worker. Лимит берётся из source_runtime_settings.
 # flock не позволяет наложиться двум экземплярам одного worker.
-* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work 3 >> /var/log/audiobookred-rutracker-worker.log 2>&1
+* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work >> /var/log/audiobookred-rutracker-worker.log 2>&1
 
 # Контрольный обход первых двух страниц всех категорий раз в сутки.
 # Сиды и личи обновляются из viewforum.php без открытия каждой темы.
@@ -36,5 +36,5 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # -----------------------------------------------------------------------------
 # Для нового источника добавляется такой же набор строк, но со своим именем,
 # lock-файлами и смещёнными минутами. Пример:
-# * * * * * root /usr/bin/flock -n /run/lock/audiobookred-source2-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source source2 work 3 >> /var/log/audiobookred-source2-worker.log 2>&1
+# * * * * * root /usr/bin/flock -n /run/lock/audiobookred-source2-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source source2 work >> /var/log/audiobookred-source2-worker.log 2>&1
 # 47 */12 * * * root /usr/bin/flock -n /run/lock/audiobookred-source2-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source source2 latest >> /var/log/audiobookred-source2-latest.log 2>&1

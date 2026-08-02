@@ -106,7 +106,7 @@ docker compose --env-file .env up -d api >/dev/null
 port="$(sed -n 's/^AUDIOBOOKRED_PORT=//p' .env | tail -n 1 | tr -d '\r\n')"
 port="${port:-9117}"
 for _ in $(seq 1 90); do
-  if curl -fsS "http://127.0.0.1:$port/health" >/tmp/audiobookred-restore-health.json 2>/dev/null; then
+  if curl -fsS "http://127.0.0.1:$port/health/ready" >/tmp/audiobookred-restore-health.json 2>/dev/null; then
     python3 -m json.tool /tmp/audiobookred-restore-health.json
     rm -f /tmp/audiobookred-restore-health.json
     echo "База восстановлена, API запущен."
