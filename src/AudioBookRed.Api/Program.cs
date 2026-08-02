@@ -61,6 +61,9 @@ builder.Services.AddSingleton<SourceRegistry>();
 
 var app = builder.Build();
 
+// Validate module/crawler registrations before the process starts listening.
+_ = app.Services.ValidateSourceRegistry();
+
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
 // Browser UI from wwwroot (/ui/).

@@ -1,0 +1,4 @@
+ docs/source-module-contract.md               | 8 [32m++++++[m[31m--[m
+ src/AudioBookRed.Api/AudioBookRed.Api.csproj | 2 [32m+[m[31m-[m
+ src/AudioBookRed.Api/Program.cs              | 3 [32m+++[m
+ 3 files changed, 10 insertions(+), 3 deletions(-)
