@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 7;
+    public const int CurrentParserVersion = 8;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -188,24 +188,49 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         if (fields.Count == 0)
             return Empty(fallback);
 
-        var series = CleanSeries(Value(fields, TopicField.Series));
-        var seriesPositionValue = Value(fields, TopicField.SeriesPosition);
+        var directSeriesValue = FindDirectFieldValue(
+            authorBody,
+            TopicField.Series);
+        var series = CleanSeries(
+            directSeriesValue ?? Value(fields, TopicField.Series));
+        var seriesPositionValue =
+            FindDirectFieldValue(authorBody, TopicField.SeriesPosition) ??
+            Value(fields, TopicField.SeriesPosition);
         var seriesPosition = ParseSeriesPosition(seriesPositionValue);
+        var fallbackSeriesConflicts =
+            string.IsNullOrWhiteSpace(seriesPositionValue) &&
+            fallback.SeriesPosition is not null &&
+            !string.IsNullOrWhiteSpace(series) &&
+            !string.IsNullOrWhiteSpace(fallback.Series) &&
+            !NormalizeLabel(series).Equals(
+                NormalizeLabel(fallback.Series),
+                StringComparison.Ordinal);
         var clearSeriesPosition =
-            !string.IsNullOrWhiteSpace(seriesPositionValue) &&
-            seriesPosition is null;
+            (!string.IsNullOrWhiteSpace(seriesPositionValue) &&
+             seriesPosition is null) ||
+            fallbackSeriesConflicts;
         var resolvedSeriesPosition = string.IsNullOrWhiteSpace(seriesPositionValue)
             ? string.IsNullOrWhiteSpace(series)
                 ? fallback.SeriesPosition
                 : null
             : seriesPosition;
+        var explicitTitle = CleanOptional(Value(fields, TopicField.Title));
         var selectedTitle =
-            CleanOptional(Value(fields, TopicField.Title)) ??
+            explicitTitle ??
             SelectTitle(
                 lines.Take(firstFieldIndex).ToArray(),
                 series,
                 seriesPosition,
                 fallback.Title);
+        var primaryHeading = FindPrimaryHeading(authorBody);
+        if (explicitTitle is null &&
+            primaryHeading is not null &&
+            NormalizeLabel(selectedTitle).Equals(
+                NormalizeLabel(fallback.Title),
+                StringComparison.Ordinal))
+        {
+            selectedTitle = primaryHeading;
+        }
 
         var author = BuildAuthor(fields, fallback.Author);
         var title = RemoveKnownAuthorPrefix(selectedTitle, author);
@@ -351,6 +376,81 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             if (block)
                 AppendLineBreak(output);
         }
+    }
+
+    private static string? FindPrimaryHeading(IElement body)
+    {
+        string? selected = null;
+        foreach (var element in body.QuerySelectorAll("*"))
+        {
+            if (IsKnownFieldLabelElement(element))
+                break;
+
+            if (element.TagName != "SPAN")
+                continue;
+
+            var style = element.GetAttribute("style");
+            if (string.IsNullOrWhiteSpace(style) ||
+                !style.Replace(" ", string.Empty).Contains(
+                    "font-size:24px",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var candidate = CleanOptional(element.TextContent);
+            if (candidate is not null &&
+                candidate.Count(char.IsLetterOrDigit) >= 2)
+            {
+                selected = candidate;
+            }
+        }
+
+        return selected;
+    }
+
+    private static string? FindDirectFieldValue(
+        IElement body,
+        TopicField expectedField)
+    {
+        foreach (var labelElement in body.QuerySelectorAll(".post-b"))
+        {
+            var label = NormalizeLabel(labelElement.TextContent);
+            if (!KnownFields.TryGetValue(label, out var field) ||
+                field != expectedField)
+            {
+                continue;
+            }
+
+            var value = new StringBuilder();
+            for (var sibling = labelElement.NextSibling;
+                 sibling is not null;
+                 sibling = sibling.NextSibling)
+            {
+                if (sibling is IElement siblingElement &&
+                    (siblingElement.TagName is "BR" or "HR" ||
+                     siblingElement.QuerySelector("br, hr") is not null ||
+                     IsKnownFieldLabelElement(siblingElement)))
+                {
+                    break;
+                }
+
+                if (sibling is IElement skippedElement &&
+                    skippedElement.TagName is
+                        "VAR" or "IMG" or "SCRIPT" or "STYLE" or "NOSCRIPT")
+                {
+                    continue;
+                }
+
+                value.Append(sibling.TextContent);
+            }
+
+            var cleaned = CleanText(value.ToString()).TrimStart();
+            cleaned = cleaned.TrimStart(':').TrimStart();
+            return CleanOptional(cleaned);
+        }
+
+        return null;
     }
 
     private static void AppendLineBreak(StringBuilder output)
