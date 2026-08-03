@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 8;
+    public const int CurrentParserVersion = 9;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -157,16 +157,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             : fallbackTitle;
         var fallback = titleNormalizer.Parse(safeFallbackTitle);
 
-        var authorBody = document.QuerySelectorAll("tbody")
-            .Select(container => new
-            {
-                Container = container,
-                Body = container.QuerySelector(".post_body")
-            })
-            .FirstOrDefault(candidate =>
-                candidate.Container.QuerySelector(".nick-author") is not null &&
-                candidate.Body is not null)
-            ?.Body;
+        var authorBody = FindAuthorPostBody(document);
 
         if (authorBody is null)
             return Empty(fallback);
@@ -376,6 +367,22 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             if (block)
                 AppendLineBreak(output);
         }
+    }
+
+    private static IElement? FindAuthorPostBody(IDocument document)
+    {
+        foreach (var marker in document.QuerySelectorAll(".nick-author"))
+        {
+            var container = marker.ParentElement;
+            while (container is not null && container.TagName != "TBODY")
+                container = container.ParentElement;
+
+            var body = container?.QuerySelector(".post_body");
+            if (body is not null)
+                return body;
+        }
+
+        return null;
     }
 
     private static string? FindPrimaryHeading(IElement body)
