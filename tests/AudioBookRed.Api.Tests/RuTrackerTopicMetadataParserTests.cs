@@ -29,7 +29,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сластин Артем Вячеславич, ПолуЁж - Мастер Рун 7 [MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Мастер Рун. Книга 7", result.ParsedTitle.Title);
         Assert.Equal(
             "Сластин Артем Вячеславич, ПолуЁж",
@@ -175,7 +175,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Нэппер Т. Р. - Призрак неонового бога [Игорь Князев, 2026, 128 kbps, MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Призрак неонового бога", result.ParsedTitle.Title);
         Assert.Equal("Нэппер Т. Р.", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Игорь Князев" }, result.ParsedTitle.Narrators);
@@ -215,7 +215,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Тыркова-Вильямс Ариадна - Жизнь Пушкина (том 1) [Терновский Евгений, 2013 г., 96 kbps, MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Жизнь Пушкина (том 1)", result.ParsedTitle.Title);
         Assert.Equal("Тыркова-Вильямс Ариадна", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Терновский Евгений" }, result.ParsedTitle.Narrators);
@@ -257,7 +257,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Ардаматский Василий - \"Сатурн\" почти не виден [Герасимов Вячеслав, 2010 г., 96 kbps, 44 kHz, Mono, MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("\"Сатурн\" почти не виден", result.ParsedTitle.Title);
         Assert.Equal("Ардаматский Василий", result.ParsedTitle.Author);
         Assert.Equal("Сатурн почти не виден", result.ParsedTitle.Series);
@@ -289,7 +289,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Постановка - В.Смехов - Али-баба и 40 разбойников [О.Табаков, 1981, 256 kbps]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Али-баба и 40 разбойников", result.ParsedTitle.Title);
         Assert.Equal("Постановка - В.Смехов", result.ParsedTitle.Author);
         Assert.Equal(1981, result.ParsedTitle.ReleaseYear);
@@ -315,7 +315,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Михалкова Елена - Черный пудель, рыжий кот, или Свадьба с препятствиями [MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Аудиокнига", result.Publisher);
         Assert.False(result.ClearPublisher);
     }
@@ -339,7 +339,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Безрукова Елена - Архип+Снежинка #2. Девочка, я тебя присвою 2 [MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Девочка, я тебя присвою 2", result.ParsedTitle.Title);
         Assert.Null(result.Publisher);
         Assert.True(result.ClearPublisher);
@@ -364,7 +364,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Щерба Наталья - Цикл \"Часодеи\" [Наталья Терешкова, 2024, MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Цикл \"Часодеи\"", result.ParsedTitle.Title);
         Assert.Equal("Часодеи", result.ParsedTitle.Series);
         Assert.Null(result.ParsedTitle.SeriesPosition);
@@ -389,7 +389,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Андрей Вознесенский читает свои стихи [А.Вознесенский, 1978-1987, 128-192 kbps]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal(
             "Андрей Вознесенский читает свои стихи",
             result.ParsedTitle.Title);
@@ -411,7 +411,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Чопра Дипак - Семь духовных законов успеха [MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("София Медиа", result.Publisher);
         Assert.False(result.ClearPublisher);
     }
@@ -430,7 +430,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Зеланд Вадим - Тафти жрица. Жрица Итфат [MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Жрица Итфат", result.ParsedTitle.Title);
         Assert.Equal("Тафти жрица", result.ParsedTitle.Series);
     }
@@ -448,7 +448,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Карлос Кастанеда. Полное собрание сочинений. [Илья Бобылев, 64 kbps]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
         Assert.Equal(64, result.ParsedTitle.BitrateKbps);
     }
@@ -466,7 +466,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сергей Есенин - Стихотворения [Валерий Золотухин, 192 кбит/с]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Сергей Есенин", result.ParsedTitle.Author);
         Assert.Equal("Стихотворения и поэмы", result.ParsedTitle.Title);
     }
@@ -487,7 +487,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Воронова Мария - Станция «Звездная» [Кирилл Петров, MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Воронова Мария", result.ParsedTitle.Author);
         Assert.Equal("Станция «Звездная»", result.ParsedTitle.Title);
     }
@@ -504,9 +504,237 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Пушкин А.С. - Евгений Онегин [Иннокентий Смоктуновский, MP3]");
 
-        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(7, result.ParserVersion);
         Assert.Equal("Пушкин А.С.", result.ParsedTitle.Author);
         Assert.Equal("Пушкин А.С. Евгений Онегин", result.ParsedTitle.Title);
+    }
+
+    [Fact]
+    public void Uses_publisher_alias_as_title_boundary()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Библия Аудиокнига - Ветхий Завет и Новый Завет</span><br>
+                <span class="post-b">Издатель</span>: Российское Библейское Общество<br>
+                (Основано в 1813 году. Подробности ниже.)<br>
+                <span class="post-b">Год выпуска</span>: 2008<br>
+                <span class="post-b">Аудио кодек</span>: MP3
+                """),
+            "Библия Аудиокнига - Ветхий Завет и Новый Завет [2008, MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal(
+            "Ветхий Завет и Новый Завет",
+            result.ParsedTitle.Title);
+        Assert.Equal("Библия Аудиокнига", result.ParsedTitle.Author);
+        Assert.Equal("Российское Библейское Общество", result.Publisher);
+        Assert.Equal(2008, result.ParsedTitle.ReleaseYear);
+    }
+
+    [Fact]
+    public void Ignores_legacy_image_markup_when_selecting_title()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Питер Кэлдер. Око возрождения.</span><br>
+                [img=right] http://ipicture.ru/]<br>
+                <span class="post-b">Автор</span>: Питер Кэлдер<br>
+                <span class="post-b">Аудио кодек</span>: MP3
+                """),
+            "Питер Кэлдер - Око возрождения [MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("Питер Кэлдер. Око возрождения.", result.ParsedTitle.Title);
+        Assert.Equal("Питер Кэлдер", result.ParsedTitle.Author);
+    }
+
+    [Fact]
+    public void Uses_explicit_title_field()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">О рае и аде</span><br>
+                <span class="post-b">Название</span>: О рае и аде<br>
+                <span class="post-b">Год выпуска</span>: 2009<br>
+                <span class="post-b">Автор</span>: митрополит Иерофей (Влахос)<br>
+                <span class="post-b">Аудио кодек</span>: MP3
+                """),
+            "Иерофей (Влахос), митрополит - О рае и аде [2009, MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("О рае и аде", result.ParsedTitle.Title);
+        Assert.Equal("митрополит Иерофей (Влахос)", result.ParsedTitle.Author);
+    }
+
+    [Fact]
+    public void Uses_record_type_as_boundary_and_extracts_country_publisher()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Аудиокнига. Личность мусульманки</span><br>
+                <span class="post-b">Тип записи</span>: Религия (Ислам)<br>
+                <span class="post-b">Страна (Издательство)</span>: Россия (Издательский Центр "РИСАЛЯ")<br>
+                <span class="post-b">Автор</span>: Мухаммад Али аль-Хашими<br>
+                <span class="post-b">Год</span>: 2011<br>
+                <span class="post-b">Битрейт</span>: 128kbit
+                """),
+            "Аудиокнига. Личность мусульманки [2011, 128kbit]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("Аудиокнига. Личность мусульманки", result.ParsedTitle.Title);
+        Assert.Equal("Издательский Центр \"РИСАЛЯ\"", result.Publisher);
+        Assert.Equal(2011, result.ParsedTitle.ReleaseYear);
+        Assert.Equal(128, result.ParsedTitle.BitrateKbps);
+    }
+
+    [Fact]
+    public void Accepts_distribution_update_year_alias()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Библия Новый + Ветхий Завет и Книга Еноха</span><br>
+                <span class="post-b">Год обновления раздачи</span>: 2015 г.<br>
+                <span class="post-b">Имя автора</span>: Бог<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Библия Новый Завет + Ветхий Завет [2015, MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal(
+            "Библия Новый + Ветхий Завет и Книга Еноха",
+            result.ParsedTitle.Title);
+        Assert.Equal(2015, result.ParsedTitle.ReleaseYear);
+    }
+
+    [Fact]
+    public void Treats_language_as_title_boundary()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Священный Коран (полностью). Чтец Mohd Altablawi</span><br>
+                <span class="post-b">Язык</span>: Арабский.<br>
+                <span class="post-b">Год выпуска</span>: 2000 г.<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Священный Коран (полностью). Чтец Mohd Altablawi [2000, MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal(
+            "Священный Коран (полностью). Чтец Mohd Altablawi",
+            result.ParsedTitle.Title);
+        Assert.Equal(2000, result.ParsedTitle.ReleaseYear);
+    }
+
+    [Fact]
+    public void Ignores_content_warning_lines_when_selecting_title()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Хулиномика. Хулиганская экономика</span><br>
+                .... 18+ ....<br>
+                Внимание!<br>
+                Фонограмма содержит<br>
+                нецензурную брань.<br>
+                <span class="post-b">Год выпуска</span>: 2019<br>
+                <span class="post-b">Фамилия автора</span>: Марков<br>
+                <span class="post-b">Имя автора</span>: Алексей<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Марков Алексей – Хулиномика. Хулиганская экономика [MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("Хулиномика. Хулиганская экономика", result.ParsedTitle.Title);
+        Assert.Equal("Марков Алексей", result.ParsedTitle.Author);
+    }
+
+    [Fact]
+    public void Cleans_leading_colon_from_direct_authors()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Мила Реброва, Злата Романова – Нелюбимая жена</span><br>
+                <span class="post-b">Авторы</span>: : Романова Злата, Реброва Мила<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Романова Злата, Реброва Мила - Нелюбимая жена [MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("Романова Злата, Реброва Мила", result.ParsedTitle.Author);
+    }
+
+    [Fact]
+    public void Ignores_numeric_author_surname_placeholder()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Гладь, люби, хвали 2: срочное руководство</span><br>
+                <span class="post-b">Фамилия автора</span>: 1<br>
+                <span class="post-b">Имя автора</span>: Бобкова Анастасия, Пронина Екатерина, Пигарева Надежда<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Бобкова Анастасия, Пронина Екатерина, Пигарева Надежда - Гладь, люби, хвали 2 [MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal(
+            "Бобкова Анастасия, Пронина Екатерина, Пигарева Надежда",
+            result.ParsedTitle.Author);
+    }
+
+    [Fact]
+    public void Normalizes_mpeg_audio_as_mp3()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Песочные часы.</span><br>
+                <span class="post-b">Год выпуска</span>: 1974<br>
+                <span class="post-b">Автор</span>: Каверин В.<br>
+                <span class="post-b">Аудио кодек</span>: MPEG Audio<br>
+                <span class="post-b">Битрейт аудио</span>: MPEG Audio Layer 3 44100Hz stereo 256Kbps
+                """),
+            "Каверин В. - Песочные часы [1974, 256 кбит/с]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
+        Assert.Equal(256, result.ParsedTitle.BitrateKbps);
+        Assert.Equal(44_100, result.SampleRateHz);
+        Assert.Equal("Stereo", result.AudioChannels);
+    }
+
+    [Fact]
+    public void Removes_known_author_prefix_with_en_dash()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Дана Стар – Продана замуж</span><br>
+                <span class="post-b">Фамилия автора</span>: Стар<br>
+                <span class="post-b">Имя автора</span>: Дана<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Стар Дана - Продана замуж [MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("Стар Дана", result.ParsedTitle.Author);
+        Assert.Equal("Продана замуж", result.ParsedTitle.Title);
+    }
+
+    [Fact]
+    public void Does_not_inherit_fallback_position_for_explicit_page_series()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Бастард королевской крови Часть 1</span><br>
+                <span class="post-b">Год выпуска</span>: 2024<br>
+                <span class="post-b">Фамилия автора</span>: Зинина<br>
+                <span class="post-b">Имя автора</span>: Татьяна<br>
+                <span class="post-b">Цикл/серия</span>: Карильский цикл<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Зинина Татьяна - Карильский цикл. Бастард королевской крови Часть 1 [MP3]");
+
+        Assert.Equal(7, result.ParserVersion);
+        Assert.Equal("Бастард королевской крови Часть 1", result.ParsedTitle.Title);
+        Assert.Equal("Карильский цикл", result.ParsedTitle.Series);
+        Assert.Null(result.ParsedTitle.SeriesPosition);
     }
 
     [Fact]

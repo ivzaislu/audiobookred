@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 6;
+    public const int CurrentParserVersion = 7;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -23,11 +23,11 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         RegexOptions.CultureInvariant);
 
     private static readonly Regex FormatPattern = new(
-        @"\b(mp3|мп3|m4b|m4a|aac|flac|ogg|opus|ape|alac|wav|wavpack|wv)\b",
+        @"\b(mp3|мп3|mpeg\s+audio(?:\s+layer\s+3)?|m4b|m4a|aac|flac|ogg|opus|ape|alac|wav|wavpack|wv)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex BitratePattern = new(
-        @"\b(\d{2,4})\s*(?:kbps|кбит/?с|kb/s)\b",
+        @"\b(\d{2,4})\s*(?:kbps|kbit|кбит/?с|kb/s)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex SampleRatePattern = new(
@@ -70,11 +70,36 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant);
 
+    private static readonly Regex ImageMarkupPattern = new(
+        @"^\s*\[img(?:=[^\]]+)?\]",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
+
+    private static readonly Regex TitleWarningPattern = new(
+        @"^\s*(?:\.*\s*18\+\s*\.*|внимание!?|фонограмма\s+содержит|нецензурн\w*\s+бран\w*\.?)\s*$",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
+
+    private static readonly Regex CountryPublisherPattern = new(
+        @"^[^(]*\((?<publisher>.+)\)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NumericAuthorFragmentPattern = new(
+        @"^\d+$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly IReadOnlyDictionary<string, TopicField> KnownFields =
         new Dictionary<string, TopicField>(StringComparer.Ordinal)
         {
+            ["год"] = TopicField.ReleaseYear,
             ["год выпуска"] = TopicField.ReleaseYear,
             ["годы выпуска"] = TopicField.ReleaseYear,
+            ["год обновления раздачи"] = TopicField.ReleaseYear,
+            ["название"] = TopicField.Title,
+            ["тип записи"] = TopicField.RecordType,
+            ["язык"] = TopicField.Language,
             ["автор"] = TopicField.Authors,
             ["авторы"] = TopicField.Authors,
             ["фамилия автора"] = TopicField.AuthorSurname,
@@ -90,7 +115,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             ["номер в серии"] = TopicField.SeriesPosition,
             ["жанр"] = TopicField.Genres,
             ["жанры"] = TopicField.Genres,
+            ["издатель"] = TopicField.Publisher,
             ["издательство"] = TopicField.Publisher,
+            ["страна издательство"] = TopicField.CountryPublisher,
             ["аудиокодек"] = TopicField.AudioFormat,
             ["аудио кодек"] = TopicField.AudioFormat,
             ["формат"] = TopicField.AudioFormat,
@@ -102,7 +129,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             ["каналы"] = TopicField.AudioChannels,
             ["качество"] = TopicField.Quality,
             ["время звучания"] = TopicField.Duration,
+            ["общее время звучания"] = TopicField.Duration,
             ["длительность"] = TopicField.Duration,
+            ["продолжительность"] = TopicField.Duration,
             ["тип издания"] = TopicField.EditionType,
             ["тип"] = TopicField.EditionType,
             ["тип аудиокниги"] = TopicField.EditionType,
@@ -166,13 +195,17 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             !string.IsNullOrWhiteSpace(seriesPositionValue) &&
             seriesPosition is null;
         var resolvedSeriesPosition = string.IsNullOrWhiteSpace(seriesPositionValue)
-            ? seriesPosition ?? fallback.SeriesPosition
+            ? string.IsNullOrWhiteSpace(series)
+                ? fallback.SeriesPosition
+                : null
             : seriesPosition;
-        var selectedTitle = SelectTitle(
-            lines.Take(firstFieldIndex).ToArray(),
-            series,
-            seriesPosition,
-            fallback.Title);
+        var selectedTitle =
+            CleanOptional(Value(fields, TopicField.Title)) ??
+            SelectTitle(
+                lines.Take(firstFieldIndex).ToArray(),
+                series,
+                seriesPosition,
+                fallback.Title);
 
         var author = BuildAuthor(fields, fallback.Author);
         var title = RemoveKnownAuthorPrefix(selectedTitle, author);
@@ -199,10 +232,15 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             ParseChannels(quality) ??
             ParseChannels(bitrateValue);
         var bitrateMode = ParseBitrateMode(Value(fields, TopicField.BitrateMode));
-        var publisherValue = Value(fields, TopicField.Publisher);
+        var publisherSourceValue =
+            Value(fields, TopicField.Publisher) ??
+            Value(fields, TopicField.CountryPublisher);
+        var publisherValue =
+            Value(fields, TopicField.Publisher) ??
+            ParseCountryPublisher(Value(fields, TopicField.CountryPublisher));
         var publisher = CleanPublisher(publisherValue);
         var clearPublisher =
-            !string.IsNullOrWhiteSpace(publisherValue) &&
+            !string.IsNullOrWhiteSpace(publisherSourceValue) &&
             publisher is null;
 
         var corpus = string.Join(' ', lines);
@@ -405,7 +443,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
     }
 
     private static bool LooksLikeTitleNote(string candidate) =>
-        TitleNotePattern.IsMatch(candidate);
+        TitleNotePattern.IsMatch(candidate) ||
+        ImageMarkupPattern.IsMatch(candidate) ||
+        TitleWarningPattern.IsMatch(candidate);
 
     private static bool LooksLikeSeriesHeading(
         string candidate,
@@ -464,7 +504,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             StringSplitOptions.TrimEntries);
         if (authorParts.Length is >= 2 and <= 4 &&
             !cleanedAuthor.Any(character =>
-                character is ',' or ';' or ':' or '-' or '—'))
+                character is ',' or ';' or ':' or '-' or '–' or '—'))
         {
             candidates.Add(string.Join(' ', authorParts.Reverse()));
         }
@@ -479,7 +519,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
 
             var remainder = cleanedTitle[candidate.Length..].TrimStart();
             if (remainder.Length < 2 ||
-                remainder[0] is not ('-' or '—' or ':'))
+                remainder[0] is not ('-' or '–' or '—' or ':'))
                 continue;
 
             var stripped = CleanText(remainder[1..]);
@@ -494,12 +534,15 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         IReadOnlyDictionary<TopicField, string> fields,
         string fallback)
     {
-        var direct = CleanOptional(Value(fields, TopicField.Authors));
+        var direct = CleanAuthor(Value(fields, TopicField.Authors));
         if (direct is not null)
             return direct;
 
-        var surname = CleanOptional(Value(fields, TopicField.AuthorSurname));
-        var givenName = CleanOptional(Value(fields, TopicField.AuthorGivenName));
+        var surname = CleanAuthor(Value(fields, TopicField.AuthorSurname));
+        if (surname is not null && NumericAuthorFragmentPattern.IsMatch(surname))
+            surname = null;
+
+        var givenName = CleanAuthor(Value(fields, TopicField.AuthorGivenName));
         var combined = CleanText($"{surname} {givenName}");
         return string.IsNullOrWhiteSpace(combined) ? fallback : combined;
     }
@@ -577,7 +620,8 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             return null;
 
         var format = match.Groups[1].Value;
-        return format.Equals("мп3", StringComparison.OrdinalIgnoreCase)
+        return format.Equals("мп3", StringComparison.OrdinalIgnoreCase) ||
+               format.StartsWith("mpeg audio", StringComparison.OrdinalIgnoreCase)
             ? "MP3"
             : format.ToUpperInvariant();
     }
@@ -678,6 +722,28 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         }
     }
 
+    private static string? ParseCountryPublisher(string? value)
+    {
+        var cleaned = CleanOptional(value);
+        if (cleaned is null)
+            return null;
+
+        var match = CountryPublisherPattern.Match(cleaned);
+        return match.Success
+            ? CleanOptional(match.Groups["publisher"].Value)
+            : cleaned;
+    }
+
+    private static string? CleanAuthor(string? value)
+    {
+        var cleaned = CleanOptional(value);
+        if (cleaned is null)
+            return null;
+
+        cleaned = CleanText(cleaned.TrimStart(':'));
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+    }
+
     private static string? CleanPublisher(string? value)
     {
         var cleaned = CleanOptional(value);
@@ -742,6 +808,9 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
 
     private enum TopicField
     {
+        Title,
+        RecordType,
+        Language,
         ReleaseYear,
         Authors,
         AuthorSurname,
@@ -751,6 +820,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         SeriesPosition,
         Genres,
         Publisher,
+        CountryPublisher,
         AudioFormat,
         Bitrate,
         BitrateMode,
