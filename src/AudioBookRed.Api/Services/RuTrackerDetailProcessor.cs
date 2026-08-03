@@ -223,6 +223,24 @@ public sealed class RuTrackerDetailProcessor(
 
         try
         {
+            if (job.TopicId == 6592755)
+            {
+                var metadata = magnet.Metadata;
+                logger.LogWarning(
+                    "ABR_DIAG_6592755 before_upsert topic={TopicId} parser={ParserVersion} title={Title} author={Author} series={Series} position={SeriesPosition} clearPosition={ClearSeriesPosition} publisher={Publisher} clearPublisher={ClearPublisher} format={AudioFormat} bitrate={BitrateKbps}",
+                    job.TopicId,
+                    metadata?.ParserVersion,
+                    metadata?.ParsedTitle.Title,
+                    metadata?.ParsedTitle.Author,
+                    metadata?.ParsedTitle.Series,
+                    metadata?.ParsedTitle.SeriesPosition,
+                    metadata?.ClearSeriesPosition,
+                    metadata?.Publisher,
+                    metadata?.ClearPublisher,
+                    metadata?.ParsedTitle.AudioFormat,
+                    metadata?.ParsedTitle.BitrateKbps);
+            }
+
             var result = await crawlRepository.UpsertListingWithTopicMetadataAsync(
                 item,
                 job.CategoryId,
@@ -232,6 +250,17 @@ public sealed class RuTrackerDetailProcessor(
                 job.ListingFingerprint,
                 job.DetailFingerprint,
                 ct);
+
+            if (job.TopicId == 6592755)
+            {
+                logger.LogWarning(
+                    "ABR_DIAG_6592755 after_upsert topic={TopicId} releaseId={ReleaseId} inserted={Inserted} changed={Changed}",
+                    job.TopicId,
+                    result.Id,
+                    result.Inserted,
+                    result.Changed);
+            }
+
             await topicRepository.MarkImportedAsync(job, result, magnet.InfoHash, ct);
             await audiobookRepository.RefreshPeopleAsync(result.Id, ct);
             return new TopicOutcome(result.Inserted, result.Changed, true, false, false);
