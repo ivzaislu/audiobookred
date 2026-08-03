@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 5;
+    public const int CurrentParserVersion = 6;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
@@ -23,7 +23,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         RegexOptions.CultureInvariant);
 
     private static readonly Regex FormatPattern = new(
-        @"\b(mp3|m4b|m4a|aac|flac|ogg|opus|ape|alac|wav|wavpack|wv)\b",
+        @"\b(mp3|мп3|m4b|m4a|aac|flac|ogg|opus|ape|alac|wav|wavpack|wv)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex BitratePattern = new(
@@ -64,10 +64,17 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant);
 
+    private static readonly Regex NestedSeriesPattern = new(
+        @"^\s*[""«„“](?<series>.+?)[""»”]\s+входит\s+в\s+серию\b",
+        RegexOptions.Compiled |
+        RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant);
+
     private static readonly IReadOnlyDictionary<string, TopicField> KnownFields =
         new Dictionary<string, TopicField>(StringComparer.Ordinal)
         {
             ["год выпуска"] = TopicField.ReleaseYear,
+            ["годы выпуска"] = TopicField.ReleaseYear,
             ["автор"] = TopicField.Authors,
             ["авторы"] = TopicField.Authors,
             ["фамилия автора"] = TopicField.AuthorSurname,
@@ -152,7 +159,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         if (fields.Count == 0)
             return Empty(fallback);
 
-        var series = Value(fields, TopicField.Series);
+        var series = CleanSeries(Value(fields, TopicField.Series));
         var seriesPositionValue = Value(fields, TopicField.SeriesPosition);
         var seriesPosition = ParseSeriesPosition(seriesPositionValue);
         var clearSeriesPosition =
@@ -161,13 +168,14 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         var resolvedSeriesPosition = string.IsNullOrWhiteSpace(seriesPositionValue)
             ? seriesPosition ?? fallback.SeriesPosition
             : seriesPosition;
-        var title = SelectTitle(
+        var selectedTitle = SelectTitle(
             lines.Take(firstFieldIndex).ToArray(),
             series,
             seriesPosition,
             fallback.Title);
 
         var author = BuildAuthor(fields, fallback.Author);
+        var title = RemoveKnownAuthorPrefix(selectedTitle, author);
         var narrators = SplitValues(Value(fields, TopicField.Narrators));
         if (narrators.Length == 0)
             narrators = fallback.Narrators;
@@ -429,6 +437,59 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
                     StringComparison.Ordinal));
     }
 
+    private static string? CleanSeries(string? value)
+    {
+        var cleaned = CleanOptional(value);
+        if (cleaned is null)
+            return null;
+
+        var match = NestedSeriesPattern.Match(cleaned);
+        return match.Success
+            ? CleanOptional(match.Groups["series"].Value)
+            : cleaned;
+    }
+
+    private static string RemoveKnownAuthorPrefix(string title, string author)
+    {
+        var cleanedTitle = CleanText(title);
+        var cleanedAuthor = CleanText(author);
+        if (string.IsNullOrWhiteSpace(cleanedTitle) ||
+            string.IsNullOrWhiteSpace(cleanedAuthor))
+            return cleanedTitle;
+
+        var candidates = new List<string> { cleanedAuthor };
+        var authorParts = cleanedAuthor.Split(
+            ' ',
+            StringSplitOptions.RemoveEmptyEntries |
+            StringSplitOptions.TrimEntries);
+        if (authorParts.Length is >= 2 and <= 4 &&
+            !cleanedAuthor.Any(character =>
+                character is ',' or ';' or ':' or '-' or '—'))
+        {
+            candidates.Add(string.Join(' ', authorParts.Reverse()));
+        }
+
+        foreach (var candidate in candidates.Distinct(
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            if (!cleanedTitle.StartsWith(
+                    candidate,
+                    StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var remainder = cleanedTitle[candidate.Length..].TrimStart();
+            if (remainder.Length < 2 ||
+                remainder[0] is not ('-' or '—' or ':'))
+                continue;
+
+            var stripped = CleanText(remainder[1..]);
+            if (stripped.Count(char.IsLetterOrDigit) >= 2)
+                return stripped;
+        }
+
+        return cleanedTitle;
+    }
+
     private static string BuildAuthor(
         IReadOnlyDictionary<TopicField, string> fields,
         string fallback)
@@ -512,7 +573,13 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
             return null;
 
         var match = FormatPattern.Match(value);
-        return match.Success ? match.Groups[1].Value.ToUpperInvariant() : null;
+        if (!match.Success)
+            return null;
+
+        var format = match.Groups[1].Value;
+        return format.Equals("мп3", StringComparison.OrdinalIgnoreCase)
+            ? "MP3"
+            : format.ToUpperInvariant();
     }
 
     private static int? ParseSampleRate(string? value)
@@ -617,6 +684,7 @@ public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer
         if (cleaned is null)
             return null;
 
+        cleaned = CleanText(cleaned.TrimStart(':'));
         cleaned = CleanText(
             PublisherContentsSuffixPattern.Replace(cleaned, string.Empty));
         if (string.IsNullOrWhiteSpace(cleaned))

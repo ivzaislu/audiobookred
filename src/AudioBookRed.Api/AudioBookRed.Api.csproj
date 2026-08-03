@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <Version>0.23.5</Version>
+    <Version>0.23.6</Version>
     <Product>AudioBookRed</Product>
     <Description>Агрегатор метаданных аудиокниг с фасетным поиском и очередями источников.</Description>
   </PropertyGroup>

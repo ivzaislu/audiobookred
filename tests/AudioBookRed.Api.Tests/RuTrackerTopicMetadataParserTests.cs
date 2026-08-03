@@ -29,7 +29,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Сластин Артем Вячеславич, ПолуЁж - Мастер Рун 7 [MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Мастер Рун. Книга 7", result.ParsedTitle.Title);
         Assert.Equal(
             "Сластин Артем Вячеславич, ПолуЁж",
@@ -175,7 +175,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Нэппер Т. Р. - Призрак неонового бога [Игорь Князев, 2026, 128 kbps, MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Призрак неонового бога", result.ParsedTitle.Title);
         Assert.Equal("Нэппер Т. Р.", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Игорь Князев" }, result.ParsedTitle.Narrators);
@@ -215,7 +215,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Тыркова-Вильямс Ариадна - Жизнь Пушкина (том 1) [Терновский Евгений, 2013 г., 96 kbps, MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Жизнь Пушкина (том 1)", result.ParsedTitle.Title);
         Assert.Equal("Тыркова-Вильямс Ариадна", result.ParsedTitle.Author);
         Assert.Equal(new[] { "Терновский Евгений" }, result.ParsedTitle.Narrators);
@@ -257,7 +257,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Ардаматский Василий - \"Сатурн\" почти не виден [Герасимов Вячеслав, 2010 г., 96 kbps, 44 kHz, Mono, MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("\"Сатурн\" почти не виден", result.ParsedTitle.Title);
         Assert.Equal("Ардаматский Василий", result.ParsedTitle.Author);
         Assert.Equal("Сатурн почти не виден", result.ParsedTitle.Series);
@@ -289,7 +289,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Постановка - В.Смехов - Али-баба и 40 разбойников [О.Табаков, 1981, 256 kbps]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Али-баба и 40 разбойников", result.ParsedTitle.Title);
         Assert.Equal("Постановка - В.Смехов", result.ParsedTitle.Author);
         Assert.Equal(1981, result.ParsedTitle.ReleaseYear);
@@ -315,7 +315,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Михалкова Елена - Черный пудель, рыжий кот, или Свадьба с препятствиями [MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Аудиокнига", result.Publisher);
         Assert.False(result.ClearPublisher);
     }
@@ -339,7 +339,7 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Безрукова Елена - Архип+Снежинка #2. Девочка, я тебя присвою 2 [MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Девочка, я тебя присвою 2", result.ParsedTitle.Title);
         Assert.Null(result.Publisher);
         Assert.True(result.ClearPublisher);
@@ -364,12 +364,149 @@ public sealed class RuTrackerTopicMetadataParserTests
                 """),
             "Щерба Наталья - Цикл \"Часодеи\" [Наталья Терешкова, 2024, MP3]");
 
-        Assert.Equal(5, result.ParserVersion);
+        Assert.Equal(6, result.ParserVersion);
         Assert.Equal("Цикл \"Часодеи\"", result.ParsedTitle.Title);
         Assert.Equal("Часодеи", result.ParsedTitle.Series);
         Assert.Null(result.ParsedTitle.SeriesPosition);
         Assert.True(result.ClearSeriesPosition);
         Assert.False(result.ClearPublisher);
+    }
+
+
+    [Fact]
+    public void Accepts_plural_release_year_label_without_using_it_as_title()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Андрей Вознесенский читает свои стихи</span><br>
+                <span class="post-b">Годы выпуска</span>: 1978-1987<br>
+                <span class="post-b">Автор</span>: Андрей Андреевич Вознесенский<br>
+                <span class="post-b">Исполнитель</span>: А.Вознесенский<br>
+                <span class="post-b">Жанр</span>: поэзия<br>
+                <span class="post-b">Издательство</span>: фирма "Мелодия"<br>
+                <span class="post-b">Аудио кодек</span>: MP3<br>
+                <span class="post-b">Битрейт аудио</span>: 128-192 kbps
+                """),
+            "Андрей Вознесенский читает свои стихи [А.Вознесенский, 1978-1987, 128-192 kbps]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal(
+            "Андрей Вознесенский читает свои стихи",
+            result.ParsedTitle.Title);
+        Assert.Equal("Андрей Андреевич Вознесенский", result.ParsedTitle.Author);
+        Assert.Equal(1978, result.ParsedTitle.ReleaseYear);
+    }
+
+    [Fact]
+    public void Removes_leading_colon_from_publisher()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Семь духовных законов успеха</span><br>
+                <span class="post-b">Год выпуска</span>: 2021<br>
+                <span class="post-b">Фамилия автора</span>: Чопра<br>
+                <span class="post-b">Имя автора</span>: Дипак<br>
+                <span class="post-b">Издательство</span>: : София Медиа<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Чопра Дипак - Семь духовных законов успеха [MP3]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal("София Медиа", result.Publisher);
+        Assert.False(result.ClearPublisher);
+    }
+
+    [Fact]
+    public void Extracts_direct_series_from_nested_series_phrase()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Жрица Итфат</span><br>
+                <span class="post-b">Год выпуска</span>: 2025<br>
+                <span class="post-b">Фамилия автора</span>: Зеланд<br>
+                <span class="post-b">Имя автора</span>: Вадим<br>
+                <span class="post-b">Цикл/серия</span>: "Тафти жрица" входит в серию "Трансерфинг реальности"<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Зеланд Вадим - Тафти жрица. Жрица Итфат [MP3]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal("Жрица Итфат", result.ParsedTitle.Title);
+        Assert.Equal("Тафти жрица", result.ParsedTitle.Series);
+    }
+
+    [Fact]
+    public void Normalizes_cyrillic_mp3_format()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Карлос Кастанеда. Полное собрание сочинений.</span><br>
+                <span class="post-b">Исполнитель</span>: Илья Бобылев<br>
+                <span class="post-b">Издательство</span>: РАО "Говорящая книга"<br>
+                <span class="post-b">Аудио кодек</span>: МП3<br>
+                <span class="post-b">Битрейт аудио</span>: 64 кбит/с
+                """),
+            "Карлос Кастанеда. Полное собрание сочинений. [Илья Бобылев, 64 kbps]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal("MP3", result.ParsedTitle.AudioFormat);
+        Assert.Equal(64, result.ParsedTitle.BitrateKbps);
+    }
+
+    [Fact]
+    public void Removes_direct_known_author_prefix_with_explicit_separator()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Сергей Есенин - Стихотворения и поэмы</span><br>
+                <span class="post-b">Год выпуска</span>: 2005<br>
+                <span class="post-b">Исполнитель</span>: Валерий Золотухин<br>
+                <span class="post-b">Жанр</span>: Стихи<br>
+                <span class="post-b">Аудио кодек</span>: MP3
+                """),
+            "Сергей Есенин - Стихотворения [Валерий Золотухин, 192 кбит/с]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal("Сергей Есенин", result.ParsedTitle.Author);
+        Assert.Equal("Стихотворения и поэмы", result.ParsedTitle.Title);
+    }
+
+    [Fact]
+    public void Removes_reversed_known_author_prefix_with_explicit_separator()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span class="post-align" style="text-align: center;">
+                  <span style="font-size: 24px;">Мария Воронова - Станция «Звездная»</span>
+                </span><hr>
+                <span class="post-b">Год выпуска</span>: 2022<br>
+                <span class="post-b">Фамилия автора</span>: Воронова<br>
+                <span class="post-b">Имя автора</span>: Мария<br>
+                <span class="post-b">Исполнитель</span>: Кирилл Петров<br>
+                <span class="post-b">Аудиокодек</span>: MP3
+                """),
+            "Воронова Мария - Станция «Звездная» [Кирилл Петров, MP3]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal("Воронова Мария", result.ParsedTitle.Author);
+        Assert.Equal("Станция «Звездная»", result.ParsedTitle.Title);
+    }
+
+    [Fact]
+    public void Keeps_author_words_when_no_explicit_separator_follows()
+    {
+        var result = _parser.Parse(
+            Wrap("""
+                <span style="font-size: 24px;">Пушкин А.С. Евгений Онегин</span><br>
+                <span class="post-b">Исполнитель</span>: Иннокентий Смоктуновский<br>
+                <span class="post-b">Жанр</span>: роман в стихах<br>
+                <span class="post-b">Аудио кодек</span>: MP3
+                """),
+            "Пушкин А.С. - Евгений Онегин [Иннокентий Смоктуновский, MP3]");
+
+        Assert.Equal(6, result.ParserVersion);
+        Assert.Equal("Пушкин А.С.", result.ParsedTitle.Author);
+        Assert.Equal("Пушкин А.С. Евгений Онегин", result.ParsedTitle.Title);
     }
 
     [Fact]
