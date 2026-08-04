@@ -87,21 +87,27 @@ public sealed class CanonicalFacetRepository(
         decimal? seriesPosition,
         string rawTitle,
         string currentTitle,
+        bool preserveReleaseMetadata,
         CancellationToken ct)
     {
-        var parsedRaw = TryParse(rawTitle);
-        var canonicalSeries = ResolveSeries(series, seriesPosition, parsedRaw);
-        var canonicalTitle = parsedRaw?.Series is not null && !string.IsNullOrWhiteSpace(parsedRaw.Title)
-            ? parsedRaw.Title
-            : currentTitle;
+        var projection = CanonicalFacetProjectionPolicy.Resolve(
+            seriesNames,
+            currentTitle,
+            series,
+            seriesPosition,
+            TryParse(rawTitle),
+            preserveReleaseMetadata);
 
-        await UpdateReleaseCanonicalFieldsAsync(
-            db,
-            transaction,
-            releaseId,
-            canonicalTitle,
-            canonicalSeries,
-            ct);
+        if (projection.UpdateReleaseFields)
+        {
+            await UpdateReleaseCanonicalFieldsAsync(
+                db,
+                transaction,
+                releaseId,
+                projection.Title,
+                projection.Series,
+                ct);
+        }
 
         await db.ExecuteAsync(new CommandDefinition(
             "DELETE FROM release_people WHERE release_id = @ReleaseId; DELETE FROM release_series WHERE release_id = @ReleaseId;",
@@ -124,8 +130,8 @@ public sealed class CanonicalFacetRepository(
             personNames.ParseNarrators(narrators),
             ct);
 
-        if (canonicalSeries is not null)
-            await InsertSeriesAsync(db, transaction, releaseId, canonicalSeries, series, ct);
+        if (projection.Series is not null)
+            await InsertSeriesAsync(db, transaction, releaseId, projection.Series, series, ct);
 
         await RefreshSearchTextAsync(db, transaction, releaseId, ct);
     }
@@ -141,7 +147,8 @@ public sealed class CanonicalFacetRepository(
           author AS Author,
           series AS Series,
           series_position AS SeriesPosition,
-          narrators AS Narrators
+          narrators AS Narrators,
+          metadata_parser_version AS MetadataParserVersion
         FROM audiobook_releases
         ORDER BY id;
         """;
@@ -159,20 +166,26 @@ public sealed class CanonicalFacetRepository(
 
         foreach (var release in releases)
         {
-            var parsedRaw = TryParse(release.RawTitle);
-            var canonicalSeries = ResolveSeries(release.Series, release.SeriesPosition, parsedRaw);
-            var canonicalTitle = parsedRaw?.Series is not null && !string.IsNullOrWhiteSpace(parsedRaw.Title)
-                ? parsedRaw.Title
-                : release.Title;
+            var projection = CanonicalFacetProjectionPolicy.Resolve(
+                seriesNames,
+                release.Title,
+                release.Series,
+                release.SeriesPosition,
+                TryParse(release.RawTitle),
+                release.MetadataParserVersion > 0);
+            var canonicalSeries = projection.Series;
 
-            releaseUpdates.Add(new PendingReleaseUpdate(
-                release.Id,
-                canonicalTitle,
-                normalizer.Normalize(canonicalTitle),
-                normalizer.Normalize(release.Author),
-                canonicalSeries?.DisplayName,
-                canonicalSeries?.NormalizedName,
-                canonicalSeries?.Position));
+            if (projection.UpdateReleaseFields)
+            {
+                releaseUpdates.Add(new PendingReleaseUpdate(
+                    release.Id,
+                    projection.Title,
+                    normalizer.Normalize(projection.Title),
+                    normalizer.Normalize(release.Author),
+                    canonicalSeries?.DisplayName,
+                    canonicalSeries?.NormalizedName,
+                    canonicalSeries?.Position));
+            }
 
             AddPeople(
                 release.Id,
@@ -794,6 +807,7 @@ public sealed class CanonicalFacetRepository(
         public string? Series { get; set; }
         public decimal? SeriesPosition { get; set; }
         public string[] Narrators { get; set; } = [];
+        public int MetadataParserVersion { get; set; }
     }
 
     private sealed class IdByName

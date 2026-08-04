@@ -292,7 +292,8 @@ public sealed class AudiobookRepository(
             var savedRelease = await db.QuerySingleAsync<ReleaseFacetSource>(new CommandDefinition(
                 """
                 SELECT author AS Author, narrators AS Narrators, series AS Series,
-                  series_position AS SeriesPosition, raw_title AS RawTitle, title AS Title
+                  series_position AS SeriesPosition, raw_title AS RawTitle, title AS Title,
+                  metadata_parser_version AS MetadataParserVersion
                 FROM audiobook_releases WHERE id = @Id;
                 """,
                 new { Id = releaseId.Value },
@@ -308,6 +309,7 @@ public sealed class AudiobookRepository(
                 savedRelease.SeriesPosition,
                 savedRelease.RawTitle,
                 savedRelease.Title,
+                savedRelease.MetadataParserVersion > 0,
                 ct);
         }
 
@@ -783,7 +785,8 @@ public sealed class AudiobookRepository(
     {
         const string selectSql = """
         SELECT author AS Author, narrators AS Narrators, series AS Series,
-          series_position AS SeriesPosition, raw_title AS RawTitle, title AS Title
+          series_position AS SeriesPosition, raw_title AS RawTitle, title AS Title,
+          metadata_parser_version AS MetadataParserVersion
         FROM audiobook_releases
         WHERE id = @ReleaseId;
         """;
@@ -807,6 +810,7 @@ public sealed class AudiobookRepository(
             row.SeriesPosition,
             row.RawTitle,
             row.Title,
+            row.MetadataParserVersion > 0,
             ct);
         await transaction.CommitAsync(ct);
     }
@@ -1074,6 +1078,7 @@ public sealed class AudiobookRepository(
         public decimal? SeriesPosition { get; set; }
         public string RawTitle { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public int MetadataParserVersion { get; set; }
     }
 
     private sealed class ReleasePeopleSource

@@ -4,10 +4,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <Version>0.23.10</Version>
+    <Version>0.23.11</Version>
     <Product>AudioBookRed</Product>
     <Description>Агрегатор метаданных аудиокниг с фасетным поиском и очередями источников.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AudioBookRed.Api.Tests" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Npgsql" Version="9.0.5" />
