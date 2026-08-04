@@ -10,7 +10,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed class RuTrackerTopicMetadataParser(TitleNormalizer titleNormalizer)
 {
-    public const int CurrentParserVersion = 9;
+    public const int CurrentParserVersion = 10;
 
     private static readonly Regex YearPattern = new(
         @"\b(19\d{2}|20\d{2})\b",
