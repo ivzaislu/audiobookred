@@ -96,6 +96,8 @@ def main() -> int:
             continue
 
         absolute = root / relative
+        if not absolute.is_file():
+            continue
         data = absolute.read_bytes()
         if b"\0" in data:
             failures.append(f"{relative}: NUL byte in a tracked text file")

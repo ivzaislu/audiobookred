@@ -99,6 +99,24 @@ public static class SourceEndpointMappings
             }
         });
 
+        endpoints.MapPost("/api/v1/sources/{source}/page-map", async (
+            string source,
+            SourceRegistry registry,
+            CancellationToken ct) =>
+        {
+            if (!registry.TryGetCrawler(source, out var crawler))
+                return UnknownSource(source, registry);
+
+            try
+            {
+                return Results.Ok(await crawler.UpdatePageMapAsync(ct));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return SourceGuardUnavailable(ex);
+            }
+        });
+
         endpoints.MapPost("/api/v1/sources/{source}/reconcile", async (
             string source,
             SourceRegistry registry,

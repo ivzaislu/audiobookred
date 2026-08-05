@@ -32,20 +32,15 @@ builder.Services.AddSingleton<AudiobookRepository>();
 builder.Services.AddSingleton<SourceCrawlRepository>();
 builder.Services.AddSingleton<SourceJobRepository>();
 builder.Services.AddSingleton<RuTrackerTopicRepository>();
-builder.Services.AddSingleton<RuTrackerAtomRepository>();
 builder.Services.AddSingleton<SourceSettingsRepository>();
 builder.Services.AddSingleton<StatisticsRepository>();
 builder.Services.AddSingleton<RuTrackerTransport>();
 builder.Services.AddSingleton<RuTrackerClient>();
 builder.Services.AddSingleton<RuTrackerHtmlParser>();
 builder.Services.AddSingleton<RuTrackerTopicMetadataParser>();
-builder.Services.AddSingleton<RuTrackerAtomClient>();
-builder.Services.AddSingleton<RuTrackerAtomState>();
-builder.Services.AddSingleton<RuTrackerAtomImporter>();
 builder.Services.AddSingleton<RuTrackerMagnetClient>();
 builder.Services.AddSingleton<RuTrackerMagnetState>();
 builder.Services.AddSingleton<RuTrackerMagnetEnricher>();
-builder.Services.AddHostedService<RuTrackerAtomWorker>();
 
 // Общая граница источников. Конкретный адаптер регистрирует module и crawler
 // под одним стабильным source key.
@@ -116,8 +111,6 @@ var jobRepository = app.Services.GetRequiredService<SourceJobRepository>();
 await jobRepository.InitializeAsync(CancellationToken.None);
 var topicRepository = app.Services.GetRequiredService<RuTrackerTopicRepository>();
 await topicRepository.InitializeAsync(CancellationToken.None);
-var atomRepository = app.Services.GetRequiredService<RuTrackerAtomRepository>();
-await atomRepository.InitializeAsync(CancellationToken.None);
 var sourceSettingsRepository = app.Services.GetRequiredService<SourceSettingsRepository>();
 await sourceSettingsRepository.InitializeAsync(CancellationToken.None);
 var statisticsRepository = app.Services.GetRequiredService<StatisticsRepository>();
@@ -278,44 +271,6 @@ app.MapPost("/api/v1/sources/rutracker/import-html", () =>
             message = "HTML import отключён: он не создавал полноценные записи без magnet."
         },
         statusCode: StatusCodes.Status410Gone));
-
-app.MapGet("/api/v1/sources/rutracker/atom/status", (
-    RuTrackerAtomClient client,
-    RuTrackerAtomState state) => Results.Ok(state.Snapshot(client)));
-
-app.MapPost("/api/v1/sources/rutracker/atom/import", async (
-    RuTrackerAtomImportRequest request,
-    RuTrackerAtomClient client,
-    RuTrackerAtomImporter importer,
-    CancellationToken ct) =>
-{
-    var forumId = request.ForumId ?? client.ForumIds.First();
-    var maxEntries = Math.Clamp(request.MaxEntries ?? client.MaxEntries, 1, 100);
-    try
-    {
-        return Results.Ok(await importer.ImportAsync(forumId, maxEntries, ct));
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Conflict(new { error = "rutracker_atom_busy", message = ex.Message });
-    }
-    catch (HttpRequestException ex)
-    {
-        return Results.Json(
-            new { error = "rutracker_atom_http_error", message = ex.Message },
-            statusCode: StatusCodes.Status502BadGateway);
-    }
-    catch (InvalidDataException ex)
-    {
-        return Results.Json(
-            new { error = "rutracker_atom_xml_error", message = ex.Message },
-            statusCode: StatusCodes.Status502BadGateway);
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { error = "invalid_request", message = ex.Message });
-    }
-});
 
 app.MapGet("/api/v1/sources/rutracker/magnets/status", () =>
     Results.Json(

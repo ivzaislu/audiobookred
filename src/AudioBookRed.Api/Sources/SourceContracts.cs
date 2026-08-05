@@ -27,6 +27,7 @@ public interface ISourceCrawler
     Task<SourceBootstrapDiscoveryResult> StartBootstrapAsync(CancellationToken ct);
     Task<SourceBootstrapDiscoveryResult> DiscoverBootstrapAsync(CancellationToken ct);
     Task<SourceBootstrapDiscoveryResult> DiscoverReconcileAsync(CancellationToken ct);
+    Task<SourcePageMapResult> UpdatePageMapAsync(CancellationToken ct);
     Task<SourceRunEnqueueResult> EnqueueIncrementalAsync(CancellationToken ct);
     Task<SourceWorkerResult> WorkAsync(int? requestedLimit, CancellationToken ct);
     Task PauseBootstrapAsync(CancellationToken ct);
@@ -57,3 +58,11 @@ public sealed record SourceModuleDescriptor(
     IReadOnlyList<int> Categories,
     SourceRuntimeDefaults Defaults,
     IReadOnlyList<string> Capabilities);
+
+public sealed record SourcePageMapResult(
+    string Source,
+    int CategoriesDiscovered,
+    int CategoriesFailed,
+    int PagesDiscovered,
+    IReadOnlyList<string> Errors,
+    string Message);

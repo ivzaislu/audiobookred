@@ -105,6 +105,48 @@ public sealed class SourceCrawlRepository(
         await tx.CommitAsync(ct);
     }
 
+    public async Task UpdateDiscoveredPageMapAsync(
+        string source,
+        IReadOnlyDictionary<int, int> discoveredPages,
+        CancellationToken ct)
+    {
+        if (discoveredPages.Count == 0)
+            return;
+
+        const string sql = """
+        WITH discovered AS (
+          SELECT category_id, max_page
+          FROM unnest(CAST(@Categories AS integer[]), CAST(@MaxPages AS integer[]))
+            AS d(category_id, max_page)
+        )
+        UPDATE source_crawl_state state
+        SET bootstrap_last_page = discovered.max_page,
+            bootstrap_completed = state.bootstrap_completed
+              OR state.bootstrap_next_page > discovered.max_page,
+            last_error = NULL,
+            updated_at = NOW()
+        FROM discovered
+        WHERE state.source = @Source
+          AND state.category_id = discovered.category_id;
+        """;
+
+        var categories = discoveredPages.Keys.ToArray();
+        var maxPages = categories
+            .Select(category => Math.Max(1, discoveredPages[category]))
+            .ToArray();
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        await db.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                Source = source,
+                Categories = categories,
+                MaxPages = maxPages
+            },
+            cancellationToken: ct));
+    }
+
     public async Task<SourceCategoryCrawlState?> GetNextBootstrapCategoryAsync(
         string source,
         CancellationToken ct)

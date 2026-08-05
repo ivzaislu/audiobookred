@@ -10,7 +10,7 @@ public sealed class RuTrackerSourceDefinitionTests
         var definition = new RuTrackerSourceDefinition();
 
         Assert.Equal(23, definition.Categories.Count);
-        Assert.Equal(2, definition.DefaultIncrementalPages);
+        Assert.Equal(1, definition.DefaultIncrementalPages);
         Assert.Equal(3, definition.DefaultWorkerJobLimit);
         Assert.Equal(20, definition.WorkerLeaseMinutes);
     }

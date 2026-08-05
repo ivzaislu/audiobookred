@@ -44,7 +44,7 @@ public sealed class SourceSettingsRepository
         CREATE TABLE IF NOT EXISTS source_runtime_settings (
           source TEXT PRIMARY KEY,
           enabled BOOLEAN NOT NULL DEFAULT TRUE,
-          incremental_pages INT NOT NULL DEFAULT 2,
+          incremental_pages INT NOT NULL DEFAULT 1,
           worker_job_limit INT NOT NULL DEFAULT 3,
           page_concurrency INT NOT NULL DEFAULT 3,
           detail_concurrency INT NOT NULL DEFAULT 3,
@@ -60,7 +60,7 @@ public sealed class SourceSettingsRepository
         );
 
         ALTER TABLE source_runtime_settings
-          ALTER COLUMN incremental_pages SET DEFAULT 2;
+          ALTER COLUMN incremental_pages SET DEFAULT 1;
 
         CREATE TABLE IF NOT EXISTS audiobookred_migrations (
           migration_key TEXT PRIMARY KEY,
@@ -81,6 +81,23 @@ public sealed class SourceSettingsRepository
             updated_at = NOW()
         WHERE source = 'rutracker'
           AND incremental_pages = 3
+          AND EXISTS (SELECT 1 FROM applied);
+
+
+        -- JacRed-like fast path scans only page 1 every hour. This one-time
+        -- migration changes the previous stock value 2, while preserving any
+        -- other explicit administrator choice.
+        WITH applied AS (
+          INSERT INTO audiobookred_migrations(migration_key)
+          VALUES ('0.23.13-rutracker-incremental-pages-1')
+          ON CONFLICT (migration_key) DO NOTHING
+          RETURNING migration_key
+        )
+        UPDATE source_runtime_settings
+        SET incremental_pages = 1,
+            updated_at = NOW()
+        WHERE source = 'rutracker'
+          AND incremental_pages = 2
           AND EXISTS (SELECT 1 FROM applied);
         """;
 

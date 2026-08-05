@@ -14,9 +14,15 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # flock не позволяет наложиться двум экземплярам одного worker.
 * * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work >> /var/log/audiobookred-rutracker-worker.log 2>&1
 
-# Контрольный обход первых двух страниц всех категорий раз в сутки.
-# Сиды и личи обновляются из viewforum.php без открытия каждой темы.
-17 4 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1
+# Быстрое обнаружение и обновление пиров: первая страница всех категорий ежечасно.
+# incrementalPages рекомендуется установить в 1.
+0 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 5m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1
+
+# Ежедневно обновляем карту количества страниц без постановки полного каталога.
+20 3 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-page-map.lock /usr/bin/timeout 10m /usr/local/sbin/audiobookred-source rutracker page-map >> /var/log/audiobookred-rutracker-page-map.log 2>&1
+
+# Полный каталог — раз в неделю.
+40 3 * * 0 root /usr/bin/flock -n /run/lock/audiobookred-rutracker-reconcile.lock /usr/bin/timeout 30m /usr/local/sbin/audiobookred-source rutracker reconcile >> /var/log/audiobookred-rutracker-reconcile.log 2>&1
 
 # Обновление кэшированной статистики для UI.
 */10 * * * * root /usr/bin/flock -n /run/lock/audiobookred-stats.lock /usr/bin/timeout 2m /usr/local/sbin/audiobookred-source rutracker stats-refresh >> /var/log/audiobookred-maintenance.log 2>&1

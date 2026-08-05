@@ -24,13 +24,11 @@ public sealed class RuTrackerDetailProcessor(
         if (items.Count == 0)
             return new ListingImportSummary(0, 0, Empty());
 
-        var settings = await GetEnabledSettingsAsync(ct);
+        _ = await GetEnabledSettingsAsync(ct);
         var existingStates = await crawlRepository.GetExistingListingStatesAsync(
             items.Select(item => item.TopicId).ToArray(),
             ct);
 
-        var candidates = new List<TopicCandidate>(items.Count);
-        var inserted = 0;
         var changed = 0;
 
         foreach (var item in items)
@@ -38,7 +36,6 @@ public sealed class RuTrackerDetailProcessor(
             resourceGuard.EnsureEnoughDiskSpace();
             var listingFingerprint = ListingFingerprint.ForListing(item);
             var detailFingerprint = ListingFingerprint.ForDetails(item);
-            var countedChanged = false;
             var needsDetails = true;
 
             if (existingStates.TryGetValue(item.TopicId, out var existing))
@@ -51,6 +48,7 @@ public sealed class RuTrackerDetailProcessor(
                         detailFingerprint,
                         StringComparison.Ordinal)
                     || legacyDetailsMatch;
+
                 var update = await crawlRepository.UpdateExistingListingAsync(
                     item,
                     categoryId,
@@ -58,10 +56,7 @@ public sealed class RuTrackerDetailProcessor(
                     legacyDetailsMatch ? detailFingerprint : null,
                     ct);
                 if (update?.Changed == true)
-                {
                     changed++;
-                    countedChanged = true;
-                }
 
                 needsDetails = !existing.HasMagnet || !detailsUnchanged;
             }
@@ -74,53 +69,11 @@ public sealed class RuTrackerDetailProcessor(
                 detailFingerprint,
                 needsDetails,
                 ct);
-
-            if (needsDetails)
-                candidates.Add(new TopicCandidate(item.TopicId, countedChanged));
         }
 
-        var enriched = 0;
-        var missing = 0;
-        var failed = 0;
-
-        await Parallel.ForEachAsync(
-            candidates,
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = settings.DetailConcurrency,
-                CancellationToken = ct
-            },
-            async (candidate, token) =>
-            {
-                var job = await topicRepository.TryClaimAsync(
-                    RuTrackerSourceDefinition.Key,
-                    candidate.TopicId,
-                    definition.WorkerLeaseMinutes,
-                    token);
-                if (job is null)
-                    return;
-
-                var outcome = await ProcessClaimedTopicAsync(job, settings, token);
-                if (outcome.Enriched)
-                    Interlocked.Increment(ref enriched);
-                if (outcome.Missing)
-                    Interlocked.Increment(ref missing);
-                if (outcome.Failed)
-                    Interlocked.Increment(ref failed);
-                if (outcome.Inserted)
-                    Interlocked.Increment(ref inserted);
-                else if (outcome.Changed && !candidate.CountedChanged)
-                    Interlocked.Increment(ref changed);
-            });
-
-        var batches = candidates.Count == 0
-            ? 0
-            : (candidates.Count + settings.DetailConcurrency - 1) / settings.DetailConcurrency;
-
-        return new ListingImportSummary(
-            inserted,
-            changed,
-            new DetailDrainSummary(batches, candidates.Count, enriched, missing, failed));
+        // Listing jobs never open viewtopic.php. Topic pages are fetched only
+        // by DrainPendingTopicsAsync, which owns retry, lease and concurrency.
+        return new ListingImportSummary(0, changed, Empty());
     }
 
     public async Task<ListingImportSummary> DrainPendingTopicsAsync(
@@ -316,7 +269,6 @@ public sealed class RuTrackerDetailProcessor(
 
     private static DetailDrainSummary Empty() => new(0, 0, 0, 0, 0);
 
-    private sealed record TopicCandidate(long TopicId, bool CountedChanged);
 
     private sealed record TopicOutcome(
         bool Inserted,

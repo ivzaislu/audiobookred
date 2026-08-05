@@ -18,12 +18,6 @@ public static class ListingFingerprint
         item.Title,
         item.SizeBytes.ToString(CultureInfo.InvariantCulture));
 
-    // Atom не содержит достоверных сидов/личей. Его fingerprint отражает только
-    // данные, изменение которых действительно может потребовать повторной detail-проверки.
-    public static string ForAtom(RuTrackerAtomEntry entry) => Hash(
-        entry.Title,
-        entry.SizeBytes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-        entry.TopicUrl.Trim());
 
     private static string Hash(params string[] values)
     {

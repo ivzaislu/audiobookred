@@ -128,3 +128,9 @@ POST /api/v1/sources/rutracker/magnets/reset-failures
 
 Используйте `incremental/enqueue`, `bootstrap/discover`, `work` и
 `topics/retry-failed`.
+
+## Обновление карты страниц источника
+
+`POST /api/v1/sources/{source}/page-map` повторно определяет количество страниц
+категорий и обновляет `source_crawl_state.bootstrap_last_page`, не создавая
+задания полного обхода.

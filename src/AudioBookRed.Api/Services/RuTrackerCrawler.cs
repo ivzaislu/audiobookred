@@ -55,6 +55,26 @@ public sealed class RuTrackerCrawler(
             message);
     }
 
+    public async Task<SourcePageMapResult> UpdatePageMapAsync(CancellationToken ct)
+    {
+        var (ordered, errors) = await DiscoverPagesAsync(ct);
+        await crawlRepository.UpdateDiscoveredPageMapAsync(
+            RuTrackerSourceDefinition.Key,
+            ordered,
+            ct);
+
+        var pageCount = ordered.Values.Sum();
+        return new SourcePageMapResult(
+            RuTrackerSourceDefinition.Key,
+            ordered.Count,
+            errors.Count,
+            pageCount,
+            errors,
+            errors.Count == 0
+                ? $"Карта страниц обновлена: {ordered.Count} категорий, {pageCount} страниц."
+                : $"Карта страниц обновлена частично: {ordered.Count} категорий, ошибок {errors.Count}.");
+    }
+
     public async Task<SourceBootstrapDiscoveryResult> DiscoverReconcileAsync(CancellationToken ct)
     {
         var (ordered, errors) = await DiscoverPagesAsync(ct);

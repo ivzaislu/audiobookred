@@ -31,11 +31,6 @@ services:
       RuTrackerProxy__Password: ${RUTRACKER_PROXY_PASSWORD:-}
       RuTrackerNetwork__TimeoutSeconds: ${RUTRACKER_NETWORK_TIMEOUT_SECONDS:-45}
       RuTrackerNetwork__SessionHours: ${RUTRACKER_SESSION_HOURS:-168}
-      RuTrackerAtom__Enabled: ${RUTRACKER_ATOM_ENABLED:-false}
-      RuTrackerAtom__BaseUrl: ${RUTRACKER_ATOM_BASE_URL:-https://feed.rutracker.cc}
-      RuTrackerAtom__ForumIds: ${RUTRACKER_ATOM_FORUM_IDS:-2388}
-      RuTrackerAtom__IntervalMinutes: ${RUTRACKER_ATOM_INTERVAL_MINUTES:-15}
-      RuTrackerAtom__MaxEntries: ${RUTRACKER_ATOM_MAX_ENTRIES:-50}
       RuTrackerMagnet__Enabled: ${RUTRACKER_MAGNET_ENABLED:-false}
       RuTrackerMagnet__IntervalMinutes: ${RUTRACKER_MAGNET_INTERVAL_MINUTES:-10}
       RuTrackerMagnet__BatchSize: ${RUTRACKER_MAGNET_BATCH_SIZE:-20}

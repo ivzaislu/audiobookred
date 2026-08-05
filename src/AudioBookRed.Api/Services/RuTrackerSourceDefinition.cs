@@ -24,11 +24,12 @@ public sealed class RuTrackerSourceDefinition : ISourceModule
         "magnet",
         "bootstrap",
         "incremental",
+        "page-map",
         "reconcile"
     ];
 
     public SourceRuntimeDefaults RuntimeDefaults { get; } = new(
-        IncrementalPages: 2,
+        IncrementalPages: 1,
         WorkerJobLimit: 3,
         PageConcurrency: 3,
         DetailConcurrency: 3,

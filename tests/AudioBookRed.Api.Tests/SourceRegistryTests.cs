@@ -80,6 +80,10 @@ public sealed class SourceRegistryTests
         public Task<SourceBootstrapDiscoveryResult> DiscoverReconcileAsync(
             CancellationToken ct) => throw new NotSupportedException();
 
+
+        public Task<SourcePageMapResult> UpdatePageMapAsync(
+            CancellationToken ct) => throw new NotSupportedException();
+
         public Task<SourceRunEnqueueResult> EnqueueIncrementalAsync(
             CancellationToken ct) => throw new NotSupportedException();
 

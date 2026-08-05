@@ -42,53 +42,6 @@ sudo audiobookred-source rutracker set requestDelayMilliseconds 150
 
 Cron запускает `work` без числа: фактический лимит берётся из `workerJobLimit` в runtime-настройках.
 
-## Atom discovery worker
-
-Atom worker по умолчанию отключён. Он получает свежие темы из Atom feed и передаёт их в основной pipeline RuTracker:
-
-```text
-Atom feed
-  → source_topic_jobs
-  → RuTracker detail processor
-  → magnet и метаданные
-  → audiobook_releases
-```
-
-Он не создаёт отдельную параллельную базу и использует те же ограничения, повторные попытки и дедупликацию, что и обычный crawler.
-
-Включение:
-
-```bash
-cd /opt/audiobookred
-sed -i 's/^RUTRACKER_ATOM_ENABLED=.*/RUTRACKER_ATOM_ENABLED=true/' .env
-docker compose --env-file .env up -d --force-recreate api
-```
-
-Статус:
-
-```bash
-API_KEY="$(sed -n 's/^API_KEY=//p' .env | tail -1)"
-
-curl -fsS \
-  -H "X-Api-Key: $API_KEY" \
-  http://127.0.0.1:9117/api/v1/sources/rutracker/atom/status \
-  | python3 -m json.tool
-```
-
-Ручной запуск одного прохода:
-
-```bash
-curl -fsS -X POST \
-  -H "X-Api-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"maxEntries":20}' \
-  http://127.0.0.1:9117/api/v1/sources/rutracker/atom/import \
-  | python3 -m json.tool
-```
-
-Параллельные ручной и фоновый проходы не выполняются: второй запрос получает `409 Conflict`.
-
-`RUTRACKER_MAGNET_ENABLED` пока следует оставлять `false`. Отдельный legacy Magnet worker не используется; magnet получает основной detail processor из очереди тем.
 
 ## Обновление
 
@@ -213,27 +166,6 @@ sudo bash uninstall.sh --purge-data --remove-code
 Перед удалением данных обязательно создайте и сохраните резервную копию.
 
 
-## Atom discovery без лишних запросов к Worker
-
-Начиная с версии 0.20.0 Atom-проход только обнаруживает темы. Состояние
-`topic_id + fingerprint(title, size, URL)` хранится в PostgreSQL, поэтому
-повторные записи feed получают статус `skipped` и не открывают `viewtopic.php`.
-Новые и действительно изменившиеся темы ставятся в `source_topic_jobs`, после
-чего обычный минутный worker получает magnet с существующими retry/lease.
-
-Рекомендуемый режим:
-
-```dotenv
-RUTRACKER_ATOM_ENABLED=true
-RUTRACKER_ATOM_INTERVAL_MINUTES=15
-RUTRACKER_ATOM_MAX_ENTRIES=10
-RUTRACKER_MAGNET_ENABLED=false
-```
-
-Контрольный `rutracker latest` запускается ежедневно в 04:17 и проверяет две
-первые страницы каждой категории. Он обновляет сиды и личи из `viewforum.php`
-без detail-запроса для каждой темы.
-
 
 ## Одноразовые миграции базы
 
@@ -264,3 +196,15 @@ audiobook-core-indexes-v1
 bash doctor.sh --full
 docker compose --env-file .env logs --since=10m api | grep 'Database migration'
 ```
+
+## Расписание RuTracker
+
+```cron
+0 * * * *     rutracker latest
+20 3 * * *    rutracker page-map
+40 3 * * 0    rutracker reconcile
+* * * * *     rutracker work
+```
+
+`latest` использует `incrementalPages=1`. Повторный листинг обновляет сидов и
+личей, но не открывает страницу неизменённой темы.

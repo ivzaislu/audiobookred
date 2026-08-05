@@ -8,14 +8,7 @@ public sealed class ListingFingerprintTests
     [Fact]
     public void Detail_fingerprint_ignores_seed_and_leech_changes()
     {
-        var first = new RuTrackerSearchItem(
-            42,
-            "Author - Book",
-            "Audiobooks",
-            "https://rutracker.org/forum/viewtopic.php?t=42",
-            1_234_567,
-            10,
-            2);
+        var first = Item();
         var second = first with { Seeders = 999, Leechers = 100 };
 
         Assert.Equal(
@@ -27,24 +20,33 @@ public sealed class ListingFingerprintTests
     }
 
     [Fact]
-    public void Atom_fingerprint_ignores_feed_timestamp_and_publisher()
+    public void Detail_fingerprint_changes_when_title_changes()
     {
-        var first = new RuTrackerAtomEntry(
-            42,
-            "Author - Book",
-            "https://rutracker.org/forum/viewtopic.php?t=42",
-            1_234_567,
-            DateTimeOffset.Parse("2026-08-01T10:00:00Z"),
-            "first",
-            574);
-        var second = first with
-        {
-            UpdatedAt = DateTimeOffset.Parse("2026-08-02T10:00:00Z"),
-            Publisher = "second"
-        };
+        var first = Item();
+        var second = first with { Title = "Author - Revised Book" };
 
-        Assert.Equal(
-            ListingFingerprint.ForAtom(first),
-            ListingFingerprint.ForAtom(second));
+        Assert.NotEqual(
+            ListingFingerprint.ForDetails(first),
+            ListingFingerprint.ForDetails(second));
     }
+
+    [Fact]
+    public void Detail_fingerprint_changes_when_size_changes()
+    {
+        var first = Item();
+        var second = first with { SizeBytes = first.SizeBytes + 1 };
+
+        Assert.NotEqual(
+            ListingFingerprint.ForDetails(first),
+            ListingFingerprint.ForDetails(second));
+    }
+
+    private static RuTrackerSearchItem Item() => new(
+        42,
+        "Author - Book",
+        "Audiobooks",
+        "https://rutracker.org/forum/viewtopic.php?t=42",
+        1_234_567,
+        10,
+        2);
 }

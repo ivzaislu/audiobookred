@@ -334,21 +334,15 @@ fi
 
 if [[ -f /etc/cron.d/audiobookred ]]; then
   ok "cron установлен"
-  if grep -Eq '^17[[:space:]]+4[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*[[:space:]]+root[[:space:]].*audiobookred-source rutracker latest' /etc/cron.d/audiobookred; then
-    ok "rutracker latest: ежедневно в 04:17"
-  elif grep -Fq 'audiobookred-source rutracker latest' /etc/cron.d/audiobookred; then
-    warn "rutracker latest использует другое расписание; рекомендуется ежедневно в 04:17"
-  else
-    warn "cron-задача rutracker latest не найдена"
-  fi
-
-  if grep -Eq 'audiobookred-source rutracker work[[:space:]]*>>' /etc/cron.d/audiobookred; then
-    ok "rutracker worker использует runtime workerJobLimit"
-  elif grep -Eq 'audiobookred-source rutracker work[[:space:]]+[0-9]+' /etc/cron.d/audiobookred; then
-    warn "rutracker worker фиксирует limit в cron; рекомендуется команда work без числа"
-  else
-    warn "cron-задача rutracker worker не найдена"
-  fi
+  grep -Eq '^0[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*[[:space:]]+root[[:space:]].*audiobookred-source rutracker latest' /etc/cron.d/audiobookred \
+    && ok "rutracker latest: ежечасно" \
+    || warn "rutracker latest должен запускаться ежечасно"
+  grep -Eq '^20[[:space:]]+3[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*[[:space:]]+root[[:space:]].*audiobookred-source rutracker page-map' /etc/cron.d/audiobookred \
+    && ok "rutracker page-map: ежедневно в 03:20" \
+    || warn "cron-задача rutracker page-map не найдена"
+  grep -Eq '^40[[:space:]]+3[[:space:]]+\*[[:space:]]+\*[[:space:]]+0[[:space:]]+root[[:space:]].*audiobookred-source rutracker reconcile' /etc/cron.d/audiobookred \
+    && ok "rutracker reconcile: еженедельно" \
+    || warn "cron-задача rutracker reconcile не найдена"
 else
   warn "cron не установлен"
 fi

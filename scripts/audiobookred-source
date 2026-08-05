@@ -18,6 +18,7 @@ usage() {
   audiobookred-source <source> work [1..16]
   audiobookred-source <source> latest
   audiobookred-source <source> incremental
+  audiobookred-source <source> page-map
   audiobookred-source <source> reconcile
   audiobookred-source <source> completeness
   audiobookred-source <source> retry-topics
@@ -98,8 +99,11 @@ case "$COMMAND" in
   latest|incremental|incremental-enqueue)
     request POST "$base/incremental/enqueue" 120 | pretty
     ;;
+  page-map)
+    request POST "$base/page-map" 600 | pretty
+    ;;
   reconcile)
-    request POST "$base/reconcile" 600 | pretty
+    request POST "$base/reconcile" 1800 | pretty
     ;;
   completeness|topic-status)
     request GET "$base/completeness" 120 | pretty

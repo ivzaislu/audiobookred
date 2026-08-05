@@ -67,10 +67,13 @@ project_version() {
 
 migrate_existing_cron() {
   local cron_file="/etc/cron.d/audiobookred"
-  local old_latest_line='17 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
-  local new_latest_line='17 4 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
-  local old_worker_line='* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work 3 >> /var/log/audiobookred-rutracker-worker.log 2>&1'
-  local new_worker_line='* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work >> /var/log/audiobookred-rutracker-worker.log 2>&1'
+  local old_latest_hourly='17 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
+  local old_latest_daily='17 4 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 3m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
+  local new_latest='0 * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-latest.lock /usr/bin/timeout 5m /usr/local/sbin/audiobookred-source rutracker latest >> /var/log/audiobookred-rutracker-latest.log 2>&1'
+  local page_map='20 3 * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-page-map.lock /usr/bin/timeout 10m /usr/local/sbin/audiobookred-source rutracker page-map >> /var/log/audiobookred-rutracker-page-map.log 2>&1'
+  local reconcile='40 3 * * 0 root /usr/bin/flock -n /run/lock/audiobookred-rutracker-reconcile.lock /usr/bin/timeout 30m /usr/local/sbin/audiobookred-source rutracker reconcile >> /var/log/audiobookred-rutracker-reconcile.log 2>&1'
+  local old_worker='* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work 3 >> /var/log/audiobookred-rutracker-worker.log 2>&1'
+  local new_worker='* * * * * root /usr/bin/flock -n /run/lock/audiobookred-rutracker-worker.lock /usr/bin/timeout 9m /usr/local/sbin/audiobookred-source rutracker work >> /var/log/audiobookred-rutracker-worker.log 2>&1'
   local backup=""
 
   [[ -f "$cron_file" ]] || return 0
@@ -82,46 +85,45 @@ migrate_existing_cron() {
     fi
   }
 
-  replace_exact_cron_line() {
+  replace_line() {
     local old_line="$1"
     local new_line="$2"
-
     backup_once
     python3 - "$cron_file" "$old_line" "$new_line" <<'PY'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-old = sys.argv[2]
-new = sys.argv[3]
+old, new = sys.argv[2:]
 text = path.read_text()
 if text.count(old) != 1:
-    raise SystemExit(f"ожидалась одна cron-строка, найдено {text.count(old)}")
+    raise SystemExit(f"expected one cron line, found {text.count(old)}")
 path.write_text(text.replace(old, new))
 PY
   }
 
-  if grep -Fxq "$old_latest_line" "$cron_file"; then
-    replace_exact_cron_line "$old_latest_line" "$new_latest_line"
-    echo "Cron latest перенесён с ежечасного запуска на ежедневный 04:17; backup: $backup"
-  elif grep -Fxq "$new_latest_line" "$cron_file"; then
-    echo "Cron latest уже настроен на ежедневный запуск в 04:17."
-  elif grep -Fq 'audiobookred-source rutracker latest' "$cron_file"; then
-    echo "Предупреждение: обнаружено пользовательское расписание rutracker latest; оно сохранено без изменений." >&2
+  append_line() {
+    backup_once
+    printf '\n%s\n' "$1" >> "$cron_file"
+  }
+
+  if grep -Fxq "$old_latest_daily" "$cron_file"; then
+    replace_line "$old_latest_daily" "$new_latest"
+  elif grep -Fxq "$old_latest_hourly" "$cron_file"; then
+    replace_line "$old_latest_hourly" "$new_latest"
+  elif ! grep -Fxq "$new_latest" "$cron_file"; then
+    echo "Warning: custom rutracker latest schedule preserved." >&2
   fi
 
-  if grep -Fxq "$old_worker_line" "$cron_file"; then
-    replace_exact_cron_line "$old_worker_line" "$new_worker_line"
-    echo "Cron worker переведён на runtime workerJobLimit; backup: $backup"
-  elif grep -Fxq "$new_worker_line" "$cron_file"; then
-    echo "Cron worker уже использует runtime workerJobLimit."
-  elif grep -Fq 'audiobookred-source rutracker work' "$cron_file"; then
-    echo "Предупреждение: обнаружена пользовательская команда rutracker work; она сохранена без изменений." >&2
+  if grep -Fxq "$old_worker" "$cron_file"; then
+    replace_line "$old_worker" "$new_worker"
   fi
+
+  grep -Fq 'audiobookred-source rutracker page-map' "$cron_file" || append_line "$page_map"
+  grep -Fq 'audiobookred-source rutracker reconcile' "$cron_file" || append_line "$reconcile"
 
   [[ -z "$backup" ]] || chmod 0644 "$cron_file"
 }
-
 show_api_diagnostics() {
   local api_id health_status
 
