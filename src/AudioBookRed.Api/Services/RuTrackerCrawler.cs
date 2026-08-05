@@ -29,7 +29,7 @@ public sealed class RuTrackerCrawler(
 
     public async Task<SourceBootstrapDiscoveryResult> DiscoverBootstrapAsync(CancellationToken ct)
     {
-        var (ordered, errors) = await DiscoverPagesAsync(ct);
+        var (ordered, errors) = await DiscoverPagesAsync("bootstrap", ct);
         var (run, jobsAdded) = await jobRepository.CreateOrResumeBootstrapAsync(
             RuTrackerSourceDefinition.Key,
             ordered,
@@ -57,13 +57,32 @@ public sealed class RuTrackerCrawler(
 
     public async Task<SourcePageMapResult> UpdatePageMapAsync(CancellationToken ct)
     {
-        var (ordered, errors) = await DiscoverPagesAsync(ct);
+        var stopwatch = Stopwatch.StartNew();
+        logger.LogInformation(
+            "RuTracker page-map started: categories {CategoryCount}",
+            definition.Categories.Count);
+
+        var (ordered, errors) = await DiscoverPagesAsync("page-map", ct);
+        logger.LogInformation(
+            "RuTracker page-map persistence started: categories {CategoryCount}, pages {PageCount}",
+            ordered.Count,
+            ordered.Values.Sum());
+
         await crawlRepository.UpdateDiscoveredPageMapAsync(
             RuTrackerSourceDefinition.Key,
             ordered,
             ct);
 
+        stopwatch.Stop();
         var pageCount = ordered.Values.Sum();
+        logger.LogInformation(
+            "RuTracker page-map completed: categories {CategoryCount}, pages {PageCount}, failed {Failed}, elapsedMs {ElapsedMs}, categoriesPerSecond {Rate:F2}",
+            ordered.Count,
+            pageCount,
+            errors.Count,
+            stopwatch.ElapsedMilliseconds,
+            RatePerSecond(ordered.Count, stopwatch.Elapsed));
+
         return new SourcePageMapResult(
             RuTrackerSourceDefinition.Key,
             ordered.Count,
@@ -77,8 +96,25 @@ public sealed class RuTrackerCrawler(
 
     public async Task<SourceBootstrapDiscoveryResult> DiscoverReconcileAsync(CancellationToken ct)
     {
-        var (ordered, errors) = await DiscoverPagesAsync(ct);
+        var stopwatch = Stopwatch.StartNew();
+        logger.LogInformation(
+            "RuTracker reconcile started: stage page-map, categories {CategoryCount}",
+            definition.Categories.Count);
+
+        var (ordered, errors) = await DiscoverPagesAsync("reconcile", ct);
+        var pageCount = ordered.Values.Sum();
+        logger.LogInformation(
+            "RuTracker reconcile page-map completed: categories {CategoryCount}, pages {PageCount}, failed {Failed}",
+            ordered.Count,
+            pageCount,
+            errors.Count);
+
         var runKey = $"reconcile-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
+        logger.LogInformation(
+            "RuTracker reconcile enqueue started: runKey {RunKey}, pages {PageCount}",
+            runKey,
+            pageCount);
+
         var (run, jobsAdded) = await jobRepository.CreateReconcileRunAsync(
             RuTrackerSourceDefinition.Key,
             ordered,
@@ -88,7 +124,14 @@ public sealed class RuTrackerCrawler(
             RuTrackerSourceDefinition.Key,
             "reconcile",
             ct);
-        var pageCount = ordered.Values.Sum();
+
+        stopwatch.Stop();
+        logger.LogInformation(
+            "RuTracker reconcile enqueue completed: runId {RunId}, jobsAdded {JobsAdded}, failedCategories {Failed}, elapsedMs {ElapsedMs}",
+            run.Id,
+            jobsAdded,
+            errors.Count,
+            stopwatch.ElapsedMilliseconds);
 
         return new SourceBootstrapDiscoveryResult(
             RuTrackerSourceDefinition.Key,
@@ -113,6 +156,12 @@ public sealed class RuTrackerCrawler(
 
         var now = DateTimeOffset.UtcNow;
         var runKey = $"{now:yyyyMMdd-HH}";
+        logger.LogInformation(
+            "RuTracker incremental enqueue started: runKey {RunKey}, categories {CategoryCount}, pagesPerCategory {PagesPerCategory}",
+            runKey,
+            definition.Categories.Count,
+            settings.IncrementalPages);
+
         var (run, jobsAdded) = await jobRepository.CreateIncrementalRunAsync(
             RuTrackerSourceDefinition.Key,
             definition.Categories,
@@ -123,6 +172,14 @@ public sealed class RuTrackerCrawler(
             RuTrackerSourceDefinition.Key,
             "incremental",
             ct);
+
+        logger.LogInformation(
+            "RuTracker incremental enqueue completed: runId {RunId}, runKey {RunKey}, jobsAdded {JobsAdded}, pending {Pending}, retry {Retry}",
+            run.Id,
+            run.RunKey,
+            jobsAdded,
+            queue.Pending,
+            queue.Retry);
 
         return new SourceRunEnqueueResult(
             RuTrackerSourceDefinition.Key,
@@ -147,12 +204,38 @@ public sealed class RuTrackerCrawler(
             definition.Categories,
             ct);
 
-        var limit = Math.Clamp(requestedLimit ?? settings.WorkerJobLimit, 1, 16);
+        var incrementalReady = requestedLimit is null &&
+            await jobRepository.HasReadyJobsAsync(
+                RuTrackerSourceDefinition.Key,
+                "incremental",
+                ct);
+        var configuredLimit = requestedLimit ??
+            (incrementalReady
+                ? Math.Max(settings.WorkerJobLimit, 8)
+                : settings.WorkerJobLimit);
+        var limit = Math.Clamp(configuredLimit, 1, 16);
+
         var jobs = await jobRepository.ClaimJobsAsync(
             RuTrackerSourceDefinition.Key,
             limit,
             definition.WorkerLeaseMinutes,
             ct);
+
+        var incrementalBatch = jobs.Count > 0 &&
+            jobs.All(job => job.Mode == "incremental");
+        var pageConcurrency = incrementalBatch
+            ? Math.Clamp(Math.Max(settings.PageConcurrency, 8), 1, 8)
+            : Math.Clamp(settings.PageConcurrency, 1, 8);
+
+        if (jobs.Count > 0)
+        {
+            logger.LogInformation(
+                "RuTracker worker batch started: jobs {JobCount}, limit {Limit}, concurrency {Concurrency}, modes {Modes}",
+                jobs.Count,
+                limit,
+                pageConcurrency,
+                string.Join(",", jobs.Select(job => job.Mode).Distinct().OrderBy(mode => mode)));
+        }
 
         var results = new ConcurrentBag<SourceJobResult>();
         if (jobs.Count > 0)
@@ -161,7 +244,7 @@ public sealed class RuTrackerCrawler(
                 jobs,
                 new ParallelOptions
                 {
-                    MaxDegreeOfParallelism = settings.PageConcurrency,
+                    MaxDegreeOfParallelism = pageConcurrency,
                     CancellationToken = ct
                 },
                 async (job, token) => results.Add(await ProcessJobAsync(job, settings, token)));
@@ -176,6 +259,27 @@ public sealed class RuTrackerCrawler(
         await jobRepository.PruneAsync(RuTrackerSourceDefinition.Key, ct);
         stopwatch.Stop();
         var ordered = results.OrderBy(result => result.JobId).ToArray();
+        if (ordered.Length > 0 || topicDrain.Details.Candidates > 0)
+        {
+            var received = ordered.Sum(result => result.Received);
+            var inserted = ordered.Sum(result => result.Inserted);
+            var changed = ordered.Sum(result => result.Changed);
+            logger.LogInformation(
+                "RuTracker worker batch completed: jobs {Jobs}, completed {Completed}, retry {Retry}, failed {Failed}, received {Received}, inserted {Inserted}, changed {Changed}, topicCandidates {TopicCandidates}, topicEnriched {TopicEnriched}, elapsedMs {ElapsedMs}, pagesPerMinute {PagesPerMinute:F2}, listingsPerSecond {ListingsPerSecond:F2}",
+                ordered.Length,
+                ordered.Count(result => result.Status == "completed"),
+                ordered.Count(result => result.Status == "retry"),
+                ordered.Count(result => result.Status == "failed"),
+                received,
+                inserted,
+                changed,
+                topicDrain.Details.Candidates,
+                topicDrain.Details.Enriched,
+                stopwatch.ElapsedMilliseconds,
+                RatePerMinute(ordered.Length, stopwatch.Elapsed),
+                RatePerSecond(received, stopwatch.Elapsed));
+        }
+
         return new SourceWorkerResult(
             RuTrackerSourceDefinition.Key,
             jobs.Count,
@@ -570,8 +674,10 @@ public sealed class RuTrackerCrawler(
     }
 
     private async Task<(IReadOnlyDictionary<int, int> Pages, IReadOnlyList<string> Errors)> DiscoverPagesAsync(
+        string operation,
         CancellationToken ct)
     {
+        var stopwatch = Stopwatch.StartNew();
         resourceGuard.EnsureEnoughDiskSpace();
         var settings = await GetEnabledSettingsAsync(ct);
         await crawlRepository.EnsureSourceAsync(
@@ -579,13 +685,23 @@ public sealed class RuTrackerCrawler(
             definition.Categories,
             ct);
 
+        var concurrency = Math.Clamp(settings.PageConcurrency, 1, 6);
+        logger.LogInformation(
+            "RuTracker {Operation} discovery started: categories {CategoryCount}, concurrency {Concurrency}",
+            operation,
+            definition.Categories.Count,
+            concurrency);
+
         var discovered = new ConcurrentDictionary<int, int>();
         var errors = new ConcurrentBag<string>();
+        var completed = 0;
+        long pages = 0;
+
         await Parallel.ForEachAsync(
             definition.Categories,
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = Math.Clamp(settings.PageConcurrency, 1, 6),
+                MaxDegreeOfParallelism = concurrency,
                 CancellationToken = ct
             },
             async (categoryId, token) =>
@@ -593,12 +709,32 @@ public sealed class RuTrackerCrawler(
                 try
                 {
                     var firstPage = await listingClient.FetchPageAsync(categoryId, 1, token);
-                    discovered[categoryId] = Math.Max(1, firstPage.TotalPages);
+                    var categoryPages = Math.Max(1, firstPage.TotalPages);
+                    discovered[categoryId] = categoryPages;
+                    var done = Interlocked.Increment(ref completed);
+                    var pagesTotal = Interlocked.Add(ref pages, categoryPages);
+                    logger.LogInformation(
+                        "RuTracker {Operation} discovery progress: completed {Completed}/{Total}, category {CategoryId}, categoryPages {CategoryPages}, pagesTotal {PagesTotal}, elapsedMs {ElapsedMs}",
+                        operation,
+                        done,
+                        definition.Categories.Count,
+                        categoryId,
+                        categoryPages,
+                        pagesTotal,
+                        stopwatch.ElapsedMilliseconds);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    var done = Interlocked.Increment(ref completed);
                     var message = $"Категория {categoryId}: {ex.Message}";
                     errors.Add(message);
+                    logger.LogWarning(
+                        ex,
+                        "RuTracker {Operation} discovery failed: completed {Completed}/{Total}, category {CategoryId}",
+                        operation,
+                        done,
+                        definition.Categories.Count,
+                        categoryId);
                     await crawlRepository.RecordCategoryErrorAsync(
                         RuTrackerSourceDefinition.Key,
                         categoryId,
@@ -610,9 +746,19 @@ public sealed class RuTrackerCrawler(
         if (discovered.IsEmpty)
             throw new InvalidOperationException("Не удалось определить страницы ни одной категории RuTracker.");
 
+        stopwatch.Stop();
         var ordered = definition.Categories
             .Where(discovered.ContainsKey)
             .ToDictionary(category => category, category => discovered[category]);
+        logger.LogInformation(
+            "RuTracker {Operation} discovery completed: categories {CategoryCount}, pages {PageCount}, failed {Failed}, elapsedMs {ElapsedMs}, categoriesPerSecond {Rate:F2}",
+            operation,
+            ordered.Count,
+            ordered.Values.Sum(),
+            errors.Count,
+            stopwatch.ElapsedMilliseconds,
+            RatePerSecond(ordered.Count, stopwatch.Elapsed));
+
         return (ordered, errors.OrderBy(value => value).Take(30).ToArray());
     }
 
@@ -630,6 +776,12 @@ public sealed class RuTrackerCrawler(
 
     async Task<object> ISourceCrawler.GetStatusAsync(CancellationToken ct) =>
         await GetStatusAsync(ct);
+
+    private static double RatePerSecond(long count, TimeSpan elapsed) =>
+        elapsed.TotalSeconds <= 0 ? 0 : count / elapsed.TotalSeconds;
+
+    private static double RatePerMinute(long count, TimeSpan elapsed) =>
+        elapsed.TotalMinutes <= 0 ? 0 : count / elapsed.TotalMinutes;
 
     private static DetailDrainSummary EmptyDetails() => new(0, 0, 0, 0, 0);
 }

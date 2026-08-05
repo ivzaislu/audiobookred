@@ -49,7 +49,7 @@ HTTP-порта, а не откладывается до первого запр
 ```
 
 Существующие URL RuTracker не меняются, потому что `{source}` принимает
-`rutracker`. Специфичные transport, Atom и legacy-маршруты RuTracker пока
+`rutracker`. Специфичные transport- и legacy-маршруты RuTracker пока
 остаются отдельными.
 
 Добавлен защищённый endpoint:
@@ -74,7 +74,7 @@ GET /api/v1/sources
 - таблицы и существующие данные PostgreSQL;
 - ключ `rutracker`;
 - cron и CLI;
-- RuTracker topic, Atom и magnet pipeline;
+- RuTracker topic и magnet pipeline;
 - `.env`;
 - алгоритм bootstrap, incremental и reconcile;
 - формат существующих ответов RuTracker.

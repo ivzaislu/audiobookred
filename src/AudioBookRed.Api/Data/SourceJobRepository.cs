@@ -472,6 +472,29 @@ public sealed class SourceJobRepository(IConfiguration configuration)
         return (run, added);
     }
 
+    public async Task<bool> HasReadyJobsAsync(
+        string source,
+        string mode,
+        CancellationToken ct)
+    {
+        const string sql = """
+        SELECT EXISTS (
+          SELECT 1
+          FROM source_crawl_jobs
+          WHERE source = @Source
+            AND mode = @Mode
+            AND status IN ('pending', 'retry')
+            AND next_attempt_at <= NOW()
+        );
+        """;
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        return await db.ExecuteScalarAsync<bool>(new CommandDefinition(
+            sql,
+            new { Source = source, Mode = mode },
+            cancellationToken: ct));
+    }
+
     public async Task<IReadOnlyList<SourceCrawlJob>> ClaimJobsAsync(
         string source,
         int limit,

@@ -102,13 +102,15 @@ sudo bash restore-db.sh backups/audiobookred-YYYYMMDD-HHMMSS.dump --yes
 
 `install.sh` устанавливает `/etc/cron.d/audiobookred`:
 
-- worker очереди — каждую минуту;
-- контрольный обход первых двух страниц — ежедневно в 04:17;
+- worker очередей — каждую минуту;
+- первая страница всех категорий — каждый час;
+- карта количества страниц — ежедневно в 03:20;
+- полный reconcile — по воскресеньям в 03:40;
 - обновление статистики — каждые 10 минут;
 - повтор упавших страниц — каждый час;
 - обслуживание — ежедневно.
 
-Полный импорт автоматически не запускается:
+Полный bootstrap автоматически не запускается:
 
 ```bash
 sudo audiobookred-source rutracker discover
@@ -127,6 +129,8 @@ sudo bash install.sh --no-start --replace-cron
 docker compose --env-file .env logs -f --tail=200 api
 sudo tail -f /var/log/audiobookred-rutracker-worker.log
 sudo tail -f /var/log/audiobookred-rutracker-latest.log
+sudo tail -f /var/log/audiobookred-rutracker-page-map.log
+sudo tail -f /var/log/audiobookred-rutracker-reconcile.log
 sudo tail -f /var/log/audiobookred-rutracker-retry.log
 sudo tail -f /var/log/audiobookred-maintenance.log
 ```
