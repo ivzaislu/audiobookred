@@ -26,6 +26,7 @@ public sealed class RuTrackerDetailProcessor(
 
         _ = await GetEnabledSettingsAsync(ct);
         var existingStates = await crawlRepository.GetExistingListingStatesAsync(
+            RuTrackerSourceDefinition.Key,
             items.Select(item => item.TopicId).ToArray(),
             ct);
 
@@ -50,6 +51,7 @@ public sealed class RuTrackerDetailProcessor(
                     || legacyDetailsMatch;
 
                 var update = await crawlRepository.UpdateExistingListingAsync(
+                    RuTrackerSourceDefinition.Key,
                     item,
                     categoryId,
                     listingFingerprint,
@@ -62,6 +64,7 @@ public sealed class RuTrackerDetailProcessor(
             }
 
             await topicRepository.RegisterDiscoveredAsync(
+                RuTrackerSourceDefinition.Key,
                 item,
                 categoryId,
                 page,
@@ -177,6 +180,7 @@ public sealed class RuTrackerDetailProcessor(
         try
         {
             var result = await crawlRepository.UpsertListingWithTopicMetadataAsync(
+                RuTrackerSourceDefinition.Key,
                 item,
                 job.CategoryId,
                 magnet.InfoHash,

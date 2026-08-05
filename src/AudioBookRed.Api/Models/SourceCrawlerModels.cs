@@ -37,12 +37,35 @@ public sealed class CrawlUpsertResult
     public bool Changed { get; set; }
 }
 
+public interface ISourceListingItem
+{
+    long TopicId { get; }
+    string Title { get; }
+    string Category { get; }
+    string TopicUrl { get; }
+    long SizeBytes { get; }
+    int Seeders { get; }
+    int Leechers { get; }
+}
+
+public interface ISourceListingPage
+{
+    int CategoryId { get; }
+    int Page { get; }
+    int TotalPages { get; }
+    bool HasNextPage { get; }
+    int ItemCount { get; }
+}
+
 public sealed record RuTrackerListingPage(
     int CategoryId,
     int Page,
     int TotalPages,
     bool HasNextPage,
-    IReadOnlyList<RuTrackerSearchItem> Items);
+    IReadOnlyList<RuTrackerSearchItem> Items) : ISourceListingPage
+{
+    public int ItemCount => Items.Count;
+}
 
 public sealed class ExistingListingState
 {

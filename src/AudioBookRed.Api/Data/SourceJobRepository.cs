@@ -714,7 +714,7 @@ public sealed class SourceJobRepository(IConfiguration configuration)
 
     public async Task CompleteJobAsync(
         SourceCrawlJob job,
-        RuTrackerListingPage listing,
+        ISourceListingPage listing,
         ListingImportSummary imported,
         int incrementalPageLimit,
         CancellationToken ct)
@@ -922,10 +922,10 @@ public sealed class SourceJobRepository(IConfiguration configuration)
             job.Page,
             TotalPages = listing.TotalPages,
             PlannedPages = plannedPages,
-            Received = listing.Items.Count,
+            Received = listing.ItemCount,
             imported.Inserted,
             imported.Changed,
-            Message = $"Получено {listing.Items.Count}; добавлено {imported.Inserted}; изменено {imported.Changed}."
+            Message = $"Получено {listing.ItemCount}; добавлено {imported.Inserted}; изменено {imported.Changed}."
         };
 
         await db.ExecuteAsync(new CommandDefinition(jobSql, args, tx, cancellationToken: ct));

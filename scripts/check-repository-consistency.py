@@ -48,10 +48,43 @@ TEXT_SUFFIXES = {
     ".env", ".example", ".txt",
 }
 
+REQUIRED_RUTOR_CONTRACTS = {
+    "src/AudioBookRed.Api/Services/RutorSourceDefinition.cs": {
+        "stable source key": 'public const string Key = "rutor";',
+        "disabled-by-default registration":
+            "public bool EnabledByDefault => false;",
+    },
+    "src/AudioBookRed.Api/Program.cs": {
+        "Rutor module registration":
+            "services.GetRequiredService<RutorSourceDefinition>()",
+        "Rutor crawler registration":
+            "services.GetRequiredService<RutorCrawler>()",
+    },
+    "src/AudioBookRed.Api/Data/SourceSettingsRepository.cs": {
+        "per-module enabled default":
+            "Enabled = module.EnabledByDefault",
+    },
+    "docker-compose.yml": {
+        "Rutor mirror configuration": "Rutor__BaseUrls:",
+    },
+    ".env.example": {
+        "Rutor mirror environment variable": "RUTOR_BASE_URLS=",
+    },
+    "docs/source-module-contract.md": {
+        "Rutor module documentation": "## Rutor",
+    },
+    "src/AudioBookRed.Api/wwwroot/ui/app.js": {
+        "Rutor UI source label": "rutor: 'Rutor'",
+    },
+}
+
 
 def repository_files() -> list[pathlib.Path]:
     result = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "-z"],
+        [
+            "git", "-C", str(ROOT), "ls-files",
+            "--cached", "--others", "--exclude-standard", "-z",
+        ],
         check=True,
         stdout=subprocess.PIPE,
     )
@@ -84,6 +117,19 @@ def report_matches(
 
 def main() -> int:
     problems: list[str] = []
+
+    for relative, snippets in REQUIRED_RUTOR_CONTRACTS.items():
+        path = ROOT / relative
+        if not path.is_file():
+            problems.append(f"{relative}: required Rutor contract file is missing")
+            continue
+
+        text = path.read_text(encoding="utf-8")
+        for label, snippet in snippets.items():
+            if snippet not in text:
+                problems.append(
+                    f"{relative}: missing {label}: {snippet!r}"
+                )
 
     for relative, reason in STALE_DOCUMENTS.items():
         if (ROOT / relative).exists():

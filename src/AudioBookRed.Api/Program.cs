@@ -53,6 +53,19 @@ builder.Services.AddSingleton<RuTrackerDetailProcessor>();
 builder.Services.AddSingleton<RuTrackerCrawler>();
 builder.Services.AddSingleton<ISourceCrawler>(services =>
     services.GetRequiredService<RuTrackerCrawler>());
+
+// Rutor exposes magnet/infohash directly in its paged Books listing. The
+// source is registered disabled-by-default and can be enabled after a probe.
+builder.Services.AddSingleton<RutorSourceDefinition>();
+builder.Services.AddSingleton<ISourceModule>(services =>
+    services.GetRequiredService<RutorSourceDefinition>());
+builder.Services.AddSingleton<RutorTransport>();
+builder.Services.AddSingleton<RutorHtmlParser>();
+builder.Services.AddSingleton<RutorListingClient>();
+builder.Services.AddSingleton<RutorCrawler>();
+builder.Services.AddSingleton<ISourceCrawler>(services =>
+    services.GetRequiredService<RutorCrawler>());
+
 builder.Services.AddSingleton<SourceRegistry>();
 
 var app = builder.Build();

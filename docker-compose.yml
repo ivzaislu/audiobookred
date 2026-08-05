@@ -37,6 +37,8 @@ services:
       RuTrackerMagnet__DelayMilliseconds: ${RUTRACKER_MAGNET_DELAY_MS:-2000}
       RuTrackerMagnet__MaxAttempts: ${RUTRACKER_MAGNET_MAX_ATTEMPTS:-5}
       RuTrackerMagnet__RetryMinutes: ${RUTRACKER_MAGNET_RETRY_MINUTES:-60}
+      Rutor__BaseUrls: ${RUTOR_BASE_URLS:-https://rutor.info,https://rutor.is,https://tracker.rutor.is}
+      Rutor__TimeoutSeconds: ${RUTOR_TIMEOUT_SECONDS:-45}
     ports:
       - "${AUDIOBOOKRED_BIND_ADDRESS:-0.0.0.0}:${AUDIOBOOKRED_PORT:-9117}:9117"
     healthcheck:

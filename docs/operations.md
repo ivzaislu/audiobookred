@@ -201,6 +201,35 @@ bash doctor.sh --full
 docker compose --env-file .env logs --since=10m api | grep 'Database migration'
 ```
 
+## Первый запуск Rutor
+
+Rutor регистрируется выключенным и не получает cron автоматически. После
+обновления проверьте настройки и включите источник вручную:
+
+```bash
+sudo audiobookred-source rutor settings
+sudo audiobookred-source rutor set enabled true
+sudo audiobookred-source rutor page-map
+sudo audiobookred-source rutor latest
+sudo audiobookred-source rutor work
+sudo audiobookred-source rutor status
+```
+
+Для полного первоначального прохода:
+
+```bash
+sudo audiobookred-source rutor discover
+```
+
+Внешняя пагинация Rutor начинается с нуля, но CLI и очередь AudioBookRed
+используют страницы с единицы. Адаптер выполняет преобразование автоматически.
+В 0.24.0 detail metadata reparse для Rutor не запускается: magnet, infohash,
+размер и пиры берутся из listing.
+
+После ручной проверки можно добавить отдельное расписание по образцу RuTracker,
+используя команды `rutor latest`, `rutor page-map`, `rutor reconcile` и
+`rutor work`.
+
 ## Расписание RuTracker
 
 ```cron

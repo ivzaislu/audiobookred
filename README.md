@@ -2,7 +2,7 @@
 
 AudioBookRed — самостоятельный каталог и поисковый сервис метаданных аудиокниг на .NET 9 и PostgreSQL.
 
-Приложение индексирует RuTracker, сохраняет метаданные раздач, предоставляет браузерный интерфейс, собственный REST API и Torznab API для совместимых клиентов.
+Приложение индексирует RuTracker и Rutor, сохраняет метаданные раздач, предоставляет браузерный интерфейс, собственный REST API и Torznab API для совместимых клиентов.
 
 ## Возможности
 
@@ -13,6 +13,7 @@ AudioBookRed — самостоятельный каталог и поисков
 - PostgreSQL-очереди с повторными попытками;
 - полный импорт, восстановительный проход и регулярное получение новых раздач;
 - прямое подключение к RuTracker, proxy или Cloudflare Worker;
+- Rutor с автоматическим fallback между публичными зеркалами;
 - Torznab API с категорией `3030 Audio/Audiobook`;
 - Docker Compose, CLI, cron, logrotate, диагностика и резервное копирование.
 
@@ -61,6 +62,9 @@ AUDIOBOOKRED_PORT=9117
 RUTRACKER_BASE_URL=https://rutracker.org
 RUTRACKER_USERNAME=
 RUTRACKER_PASSWORD=
+
+RUTOR_BASE_URLS=https://rutor.info,https://rutor.is,https://tracker.rutor.is
+RUTOR_TIMEOUT_SECONDS=45
 ```
 
 Для собственного Worker:
@@ -178,3 +182,19 @@ audiobookred/
 ставится в очередь раз в неделю. Сиды и личи обновляются из `viewforum.php`;
 `viewtopic.php` открывается только для новых тем, отсутствующего magnet или
 изменения заголовка/размера.
+
+## Источник Rutor
+
+Rutor добавлен как источник `rutor` и после обновления остаётся выключенным.
+Он читает одну логическую категорию «Книги», выбирает аудиоформаты и получает
+magnet непосредственно из listing. Перед первым bootstrap:
+
+```bash
+sudo audiobookred-source rutor settings
+sudo audiobookred-source rutor set enabled true
+sudo audiobookred-source rutor page-map
+sudo audiobookred-source rutor discover
+```
+
+Автоматический cron для Rutor в 0.24.0 не устанавливается: сначала следует
+проверить listing и результаты импорта вручную.

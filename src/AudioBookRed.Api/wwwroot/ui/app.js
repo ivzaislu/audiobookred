@@ -69,7 +69,7 @@
 
   function sourceLabel(source) {
     const value = String(source ?? '').trim();
-    const known = { rutracker: 'RuTracker' };
+    const known = { rutracker: 'RuTracker', rutor: 'Rutor' };
     return known[value.toLocaleLowerCase('ru-RU')] || value;
   }
 
@@ -426,7 +426,10 @@
     refillFacetSelect(els.authorFilter, data.authors, 'Любой', { preferQueryMatches: true });
     refillFacetSelect(els.narratorFilter, data.narrators, 'Любой', { preferQueryMatches: true });
     refillFacetSelect(els.seriesFilter, data.series, 'Любая', { preferQueryMatches: true });
-    refillFacetSelect(els.sourceFilter, data.sources, 'Любой');
+    const sourceOptions = Array.isArray(data.sources)
+      ? data.sources.map(item => ({ ...item, label: sourceLabel(item.label || item.value) }))
+      : [];
+    refillFacetSelect(els.sourceFilter, sourceOptions, 'Любой');
     refillFacetSelect(els.formatFilter, data.formats, 'Любой');
     refillFacetSelect(els.qualityFilter, data.qualities, 'Любое', { preserveOrder: true });
     refillFacetSelect(els.yearFilter, data.years, 'Любой', { numeric: true });

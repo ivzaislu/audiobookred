@@ -127,7 +127,8 @@ public sealed class RuTrackerTopicRepository(
     }
 
     public async Task RegisterDiscoveredAsync(
-        RuTrackerSearchItem item,
+        string source,
+        ISourceListingItem item,
         int categoryId,
         int page,
         string listingFingerprint,
@@ -203,7 +204,7 @@ public sealed class RuTrackerTopicRepository(
 
         var args = new
         {
-            Source = RuTrackerSourceDefinition.Key,
+            Source = source,
             item.TopicId,
             CategoryId = categoryId,
             Page = Math.Max(1, page),

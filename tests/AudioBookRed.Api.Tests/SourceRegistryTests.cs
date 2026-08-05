@@ -24,6 +24,17 @@ public sealed class SourceRegistryTests
     }
 
     [Fact]
+    public void Describes_module_enabled_default()
+    {
+        var registry = new SourceRegistry(
+            [new FakeModule("rutor", enabledByDefault: false)],
+            [new FakeCrawler("rutor")]);
+
+        var descriptor = Assert.Single(registry.Describe());
+        Assert.False(descriptor.EnabledByDefault);
+    }
+
+    [Fact]
     public void Rejects_duplicate_module_keys()
     {
         var error = Assert.Throws<InvalidOperationException>(() =>
@@ -56,10 +67,13 @@ public sealed class SourceRegistryTests
         Assert.Contains("Invalid source key", error.Message);
     }
 
-    private sealed class FakeModule(string sourceKey) : ISourceModule
+    private sealed class FakeModule(
+        string sourceKey,
+        bool enabledByDefault = true) : ISourceModule
     {
         public string SourceKey { get; } = sourceKey;
         public string DisplayName => "Demo";
+        public bool EnabledByDefault => enabledByDefault;
         public IReadOnlyList<int> Categories { get; } = [1, 2];
         public SourceRuntimeDefaults RuntimeDefaults { get; } =
             new(2, 3, 3, 3, 150, 8);

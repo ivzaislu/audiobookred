@@ -101,6 +101,34 @@ PUT /api/v1/sources/rutracker/settings
 
 Для обычного администрирования предпочтительнее CLI `audiobookred-source`, поскольку он уже добавляет API key, таймауты и форматирование JSON.
 
+## Rutor
+
+Rutor зарегистрирован под ключом `rutor` и по умолчанию выключен. Общие
+маршруты имеют тот же формат:
+
+```text
+GET  /api/v1/sources/rutor/crawl/status
+GET  /api/v1/sources/rutor/settings
+PUT  /api/v1/sources/rutor/settings
+POST /api/v1/sources/rutor/page-map
+POST /api/v1/sources/rutor/bootstrap/discover
+POST /api/v1/sources/rutor/incremental/enqueue
+POST /api/v1/sources/rutor/reconcile
+POST /api/v1/sources/rutor/work
+```
+
+Первое включение через CLI:
+
+```bash
+sudo audiobookred-source rutor set enabled true
+sudo audiobookred-source rutor page-map
+sudo audiobookred-source rutor latest
+sudo audiobookred-source rutor work
+```
+
+Версия 0.24.0 получает magnet/infohash, размер и пиры прямо из listing. Detail
+metadata reparse для Rutor пока не реализован.
+
 ## Ошибки авторизации
 
 При отсутствующем или неверном ключе собственный REST API возвращает:
@@ -112,6 +140,7 @@ PUT /api/v1/sources/rutracker/settings
 ```
 
 со статусом `401 Unauthorized`.
+
 ## Удалённые legacy endpoints
 
 Начиная с версии 0.20.2 старые metadata-only и отдельные Magnet endpoints

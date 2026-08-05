@@ -120,7 +120,7 @@ public sealed class SourceSettingsRepository
           source, enabled, incremental_pages, worker_job_limit,
           page_concurrency, detail_concurrency, request_delay_ms, maximum_attempts)
         VALUES (
-          @Source, TRUE, @IncrementalPages, @WorkerJobLimit,
+          @Source, @Enabled, @IncrementalPages, @WorkerJobLimit,
           @PageConcurrency, @DetailConcurrency, @RequestDelayMilliseconds, @MaximumAttempts)
         ON CONFLICT (source) DO NOTHING;
         """;
@@ -236,6 +236,7 @@ public sealed class SourceSettingsRepository
         return new
         {
             Source = module.SourceKey,
+            Enabled = module.EnabledByDefault,
             defaults.IncrementalPages,
             defaults.WorkerJobLimit,
             defaults.PageConcurrency,

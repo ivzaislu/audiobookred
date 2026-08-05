@@ -14,6 +14,7 @@ public interface ISourceModule
 {
     string SourceKey { get; }
     string DisplayName { get; }
+    bool EnabledByDefault => true;
     IReadOnlyList<int> Categories { get; }
     SourceRuntimeDefaults RuntimeDefaults { get; }
     IReadOnlyList<string> Capabilities { get; }
@@ -55,6 +56,7 @@ public interface ISourceCrawler
 public sealed record SourceModuleDescriptor(
     string Source,
     string DisplayName,
+    bool EnabledByDefault,
     IReadOnlyList<int> Categories,
     SourceRuntimeDefaults Defaults,
     IReadOnlyList<string> Capabilities);

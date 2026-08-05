@@ -7,14 +7,14 @@ namespace AudioBookRed.Api.Services;
 
 public static class ListingFingerprint
 {
-    public static string ForListing(RuTrackerSearchItem item) => Hash(
+    public static string ForListing(ISourceListingItem item) => Hash(
         item.Title,
         item.SizeBytes.ToString(CultureInfo.InvariantCulture),
         item.Seeders.ToString(CultureInfo.InvariantCulture),
         item.Leechers.ToString(CultureInfo.InvariantCulture));
 
     // Изменение только числа сидов/личей не требует повторного открытия темы.
-    public static string ForDetails(RuTrackerSearchItem item) => Hash(
+    public static string ForDetails(ISourceListingItem item) => Hash(
         item.Title,
         item.SizeBytes.ToString(CultureInfo.InvariantCulture));
 

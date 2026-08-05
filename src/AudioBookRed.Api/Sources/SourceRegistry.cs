@@ -39,6 +39,7 @@ public sealed partial class SourceRegistry
             .Select(module => new SourceModuleDescriptor(
                 module.SourceKey,
                 module.DisplayName,
+                module.EnabledByDefault,
                 module.Categories,
                 module.RuntimeDefaults,
                 module.Capabilities))

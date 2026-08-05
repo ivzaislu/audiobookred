@@ -13,7 +13,7 @@ public sealed record RuTrackerSearchItem(
     string TopicUrl,
     long SizeBytes,
     int Seeders,
-    int Leechers);
+    int Leechers) : ISourceListingItem;
 
 public sealed record RuTrackerImportResult(
     int Requested,

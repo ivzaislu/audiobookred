@@ -445,6 +445,7 @@ public sealed class SourceCrawlRepository(
     }
 
     public async Task<IReadOnlyDictionary<long, ExistingListingState>> GetExistingListingStatesAsync(
+        string source,
         IReadOnlyCollection<long> topicIds,
         CancellationToken ct)
     {
@@ -469,7 +470,7 @@ public sealed class SourceCrawlRepository(
             sql,
             new
             {
-                Source = RuTrackerSourceDefinition.Key,
+                Source = source,
                 SourceIds = topicIds.Select(value => value.ToString()).ToArray()
             },
             cancellationToken: ct));
@@ -477,7 +478,8 @@ public sealed class SourceCrawlRepository(
     }
 
     public async Task<CrawlUpsertResult?> UpdateExistingListingAsync(
-        RuTrackerSearchItem item,
+        string source,
+        ISourceListingItem item,
         int categoryId,
         string listingFingerprint,
         string? detailFingerprintBackfill,
@@ -582,6 +584,7 @@ public sealed class SourceCrawlRepository(
         return await db.QuerySingleOrDefaultAsync<CrawlUpsertResult>(new CommandDefinition(
             sql,
             ListingArguments(
+                source,
                 item,
                 categoryId,
                 parsed,
@@ -594,7 +597,8 @@ public sealed class SourceCrawlRepository(
     }
 
     public Task<CrawlUpsertResult> UpsertListingWithMagnetAsync(
-        RuTrackerSearchItem item,
+        string source,
+        ISourceListingItem item,
         int categoryId,
         string infoHash,
         string magnetUri,
@@ -602,6 +606,7 @@ public sealed class SourceCrawlRepository(
         string detailFingerprint,
         CancellationToken ct) =>
         UpsertListingWithTopicMetadataAsync(
+            source,
             item,
             categoryId,
             infoHash,
@@ -612,7 +617,8 @@ public sealed class SourceCrawlRepository(
             ct);
 
     public async Task<CrawlUpsertResult> UpsertListingWithTopicMetadataAsync(
-        RuTrackerSearchItem item,
+        string source,
+        ISourceListingItem item,
         int categoryId,
         string infoHash,
         string magnetUri,
@@ -846,6 +852,7 @@ public sealed class SourceCrawlRepository(
 
         await using var db = new NpgsqlConnection(ConnectionString);
         var args = ListingArguments(
+            source,
             item,
             categoryId,
             parsed,
@@ -871,13 +878,14 @@ public sealed class SourceCrawlRepository(
         """;
         var id = await db.ExecuteScalarAsync<long>(new CommandDefinition(
             touchSql,
-            new { Source = RuTrackerSourceDefinition.Key, SourceId = item.TopicId.ToString() },
+            new { Source = source, SourceId = item.TopicId.ToString() },
             cancellationToken: ct));
         return new CrawlUpsertResult { Id = id, Inserted = false, Changed = false };
     }
 
     private object ListingArguments(
-        RuTrackerSearchItem item,
+        string source,
+        ISourceListingItem item,
         int categoryId,
         ParsedAudiobookTitle parsed,
         RuTrackerTopicMetadata? metadata,
@@ -914,7 +922,7 @@ public sealed class SourceCrawlRepository(
         MetadataParserVersion = metadata?.ParserVersion ?? 0,
         parsed.IsAbridged,
         parsed.IsDramatized,
-        Source = RuTrackerSourceDefinition.Key,
+        Source = source,
         SourceId = item.TopicId.ToString(),
         SourceUrl = item.TopicUrl,
         InfoHash = infoHash,
@@ -927,6 +935,22 @@ public sealed class SourceCrawlRepository(
         RawTitle = item.Title,
         CategoryId = categoryId
     };
+
+
+    public async Task<long> GetReleaseCountAsync(string source, CancellationToken ct)
+    {
+        const string sql = """
+        SELECT COUNT(*)
+        FROM audiobook_releases
+        WHERE source = @Source;
+        """;
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        return await db.ExecuteScalarAsync<long>(new CommandDefinition(
+            sql,
+            new { Source = source },
+            cancellationToken: ct));
+    }
 
     public async Task<IReadOnlyList<RuTrackerMagnetCandidate>> GetEligibleMissingMagnetsAsync(
         IReadOnlyCollection<long>? releaseIds,
