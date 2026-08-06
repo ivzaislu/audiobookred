@@ -41,7 +41,7 @@ public sealed class RutorDetailParserTests
             html,
             "Сергей Карелин, Александр Вольт - Архитектор душ [9 книг] (2025-2026) MP3");
 
-        Assert.Equal(2, RutorDetailParser.CurrentParserVersion);
+        Assert.Equal(3, RutorDetailParser.CurrentParserVersion);
         Assert.Equal("3175490ca61c3eca29eaf2c2c32ee491a048372e", result.InfoHash);
         Assert.Equal("Архитектор душ (9 книг)", result.Metadata.ParsedTitle.Title);
         Assert.Equal("Сергей Карелин, Александр Вольт", result.Metadata.ParsedTitle.Author);

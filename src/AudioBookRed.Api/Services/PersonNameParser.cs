@@ -72,6 +72,7 @@ public sealed partial class PersonNameParser(TitleNormalizer normalizer)
         if (string.IsNullOrWhiteSpace(value)) return [];
 
         var cleaned = Prefix().Replace(value.Trim(), string.Empty);
+        cleaned = SplitGluedNameBoundaries(cleaned);
         cleaned = Brackets().Replace(cleaned, " ");
         cleaned = ContributorSuffix().Replace(cleaned, string.Empty);
         cleaned = MultiSpace().Replace(cleaned, " ").Trim(' ', ',', ';', '/', '-', '–', '—');
@@ -135,7 +136,7 @@ public sealed partial class PersonNameParser(TitleNormalizer normalizer)
         var originalTokens = PersonToken().Matches(candidate)
             .Select(match => match.Value)
             .ToArray();
-        if (originalTokens.Length != 4)
+        if (originalTokens.Length is < 4 or > 8 || originalTokens.Length % 2 != 0)
         {
             yield return candidate;
             yield break;
@@ -160,21 +161,84 @@ public sealed partial class PersonNameParser(TitleNormalizer normalizer)
             .Where(item => !GivenNames.Contains(item.token))
             .Select(item => item.index)
             .ToArray();
+        var peopleCount = originalTokens.Length / 2;
 
-        // Без разделителя встречается шаблон вида
-        // «Злотников Будеев Роман Сергей». Разделяем его только при высокой
-        // уверенности: два известных имени и две фамилии с характерными
-        // русскими окончаниями. Это не затрагивает многословные иностранные имена.
-        if (givenIndexes.Length != 2 || surnameIndexes.Length != 2 ||
+        // Разделяем только при высокой уверенности: половина токенов — известные
+        // имена, половина — фамилии с характерными окончаниями. Для двух людей
+        // сохраняем поддержку смешанных последовательностей; для трёх и четырёх
+        // принимаем только блочный или строго чередующийся порядок.
+        if (givenIndexes.Length != peopleCount || surnameIndexes.Length != peopleCount ||
             surnameIndexes.Any(index => !LooksLikeRussianSurname(normalizedTokens[index])))
         {
             yield return candidate;
             yield break;
         }
 
-        var pairs = PairTwoPeople(givenIndexes, surnameIndexes);
+        IReadOnlyList<PersonTokenPair> pairs;
+        if (originalTokens.Length == 4)
+        {
+            pairs = PairTwoPeople(givenIndexes, surnameIndexes);
+        }
+        else if (!TryPairOrderedPeople(
+                     givenIndexes,
+                     surnameIndexes,
+                     originalTokens.Length,
+                     out pairs))
+        {
+            yield return candidate;
+            yield break;
+        }
+
         foreach (var pair in pairs)
             yield return $"{originalTokens[pair.SurnameIndex]} {originalTokens[pair.GivenIndex]}";
+    }
+
+    private static bool TryPairOrderedPeople(
+        IReadOnlyList<int> givenIndexes,
+        IReadOnlyList<int> surnameIndexes,
+        int tokenCount,
+        out IReadOnlyList<PersonTokenPair> pairs)
+    {
+        var peopleCount = tokenCount / 2;
+        var firstBlock = Enumerable.Range(0, peopleCount).ToArray();
+        var secondBlock = Enumerable.Range(peopleCount, peopleCount).ToArray();
+        var even = Enumerable.Range(0, peopleCount).Select(index => index * 2).ToArray();
+        var odd = Enumerable.Range(0, peopleCount).Select(index => index * 2 + 1).ToArray();
+
+        if (surnameIndexes.SequenceEqual(firstBlock) && givenIndexes.SequenceEqual(secondBlock))
+        {
+            pairs = Enumerable.Range(0, peopleCount)
+                .Select(index => new PersonTokenPair(secondBlock[index], firstBlock[index]))
+                .ToArray();
+            return true;
+        }
+
+        if (givenIndexes.SequenceEqual(firstBlock) && surnameIndexes.SequenceEqual(secondBlock))
+        {
+            pairs = Enumerable.Range(0, peopleCount)
+                .Select(index => new PersonTokenPair(firstBlock[index], secondBlock[index]))
+                .ToArray();
+            return true;
+        }
+
+        if (surnameIndexes.SequenceEqual(even) && givenIndexes.SequenceEqual(odd))
+        {
+            pairs = Enumerable.Range(0, peopleCount)
+                .Select(index => new PersonTokenPair(odd[index], even[index]))
+                .ToArray();
+            return true;
+        }
+
+        if (givenIndexes.SequenceEqual(even) && surnameIndexes.SequenceEqual(odd))
+        {
+            pairs = Enumerable.Range(0, peopleCount)
+                .Select(index => new PersonTokenPair(even[index], odd[index]))
+                .ToArray();
+            return true;
+        }
+
+        pairs = [];
+        return false;
     }
 
     private static IReadOnlyList<PersonTokenPair> PairTwoPeople(
@@ -324,6 +388,12 @@ public sealed partial class PersonNameParser(TitleNormalizer normalizer)
 
     [GeneratedRegex(@"[\p{L}][\p{L}'’\-]*")]
     private static partial Regex PersonToken();
+
+    private static string SplitGluedNameBoundaries(string value) =>
+        GluedNameBoundary().Replace(value, " ");
+
+    [GeneratedRegex(@"(?<=[\p{Ll}])(?=[\p{Lu}])", RegexOptions.CultureInvariant)]
+    private static partial Regex GluedNameBoundary();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex MultiSpace();

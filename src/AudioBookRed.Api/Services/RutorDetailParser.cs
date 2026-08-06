@@ -11,7 +11,7 @@ public sealed partial class RutorDetailParser(
     TitleNormalizer titleNormalizer,
     PersonNameParser personNames)
 {
-    public const int CurrentParserVersion = 2;
+    public const int CurrentParserVersion = 3;
 
     public RutorDetailValue Parse(string html, string fallbackTitle)
     {
@@ -52,16 +52,18 @@ public sealed partial class RutorDetailParser(
         var narrators = ParseNarrators(explicitNarrators, fallback.Narrators);
 
         var cleanExplicitTitle = CleanValue(explicitTitle);
+        var cleanExplicitAuthor = NormalizeAuthors(CleanValue(explicitAuthor));
+        var resolvedAuthor = cleanExplicitAuthor ?? NormalizeAuthors(fallback.Author) ?? fallback.Author;
         var explicitParsed = string.IsNullOrWhiteSpace(cleanExplicitTitle)
             ? fallback
-            : titleNormalizer.Parse($"{CleanValue(explicitAuthor) ?? fallback.Author} - {RutorHtmlParser.NormalizeAudioTokens(cleanExplicitTitle)}");
+            : titleNormalizer.Parse($"{resolvedAuthor} - {RutorHtmlParser.NormalizeAudioTokens(cleanExplicitTitle)}");
         var displayTitle = explicitParsed.Series is not null
             ? explicitParsed.Title
             : CleanAudioFormatSuffix(cleanExplicitTitle) ?? fallback.Title;
 
         var parsedTitle = new ParsedAudiobookTitle(
             displayTitle,
-            CleanValue(explicitAuthor) ?? explicitParsed.Author,
+            resolvedAuthor,
             explicitParsed.Series ?? fallback.Series,
             explicitParsed.SeriesPosition ?? fallback.SeriesPosition,
             narrators,
@@ -125,6 +127,21 @@ public sealed partial class RutorDetailParser(
         }
 
         return fields;
+    }
+
+    private string? NormalizeAuthors(string? value)
+    {
+        var cleaned = CleanValue(value);
+        if (cleaned is null)
+            return null;
+
+        var parsed = personNames.ParseAuthors(cleaned)
+            .Select(author => author.DisplayName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return parsed.Length > 0
+            ? string.Join(", ", parsed)
+            : cleaned;
     }
 
     private string[] ParseNarrators(string? value, IReadOnlyList<string> fallback)
