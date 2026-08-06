@@ -185,16 +185,23 @@ audiobookred/
 
 ## Источник Rutor
 
-Rutor добавлен как источник `rutor` и после обновления остаётся выключенным.
-Он читает одну логическую категорию «Книги», выбирает аудиоформаты и получает
-magnet непосредственно из listing. Перед первым bootstrap:
+Rutor добавлен как источник `rutor` и после первой установки остаётся
+выключенным. Он читает одну логическую категорию «Книги», выбирает
+аудиоформаты, получает magnet непосредственно из listing и отдельным detail
+worker сохраняет автора, чтецов, жанры, издательство, продолжительность,
+формат и битрейт. Перед первым bootstrap:
 
 ```bash
 sudo audiobookred-source rutor settings
 sudo audiobookred-source rutor set enabled true
 sudo audiobookred-source rutor page-map
+sudo audiobookred-source rutor latest
+sudo audiobookred-source rutor work
+sudo audiobookred-source rutor metadata-status
 sudo audiobookred-source rutor discover
 ```
 
-Автоматический cron для Rutor в 0.24.0 не устанавливается: сначала следует
-проверить listing и результаты импорта вручную.
+После обновления с listing-only версии существующие записи автоматически
+попадают в detail-очередь при первом `status`, `metadata-status` или `work`.
+Автоматический cron для Rutor пока не устанавливается: сначала следует
+проверить listing, detail metadata и результаты импорта вручную.

@@ -458,6 +458,85 @@ public sealed class RuTrackerTopicRepository(
             cancellationToken: ct));
     }
 
+    public async Task<int> EnsureReleaseJobsAsync(
+        string source,
+        int parserVersion,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            throw new ArgumentException("Source key is required.", nameof(source));
+        if (parserVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(parserVersion));
+
+        const string sql = """
+        INSERT INTO source_topic_jobs(
+          source, topic_id, category_id, last_page, title, topic_url,
+          size_bytes, seeders, leechers, listing_fingerprint, detail_fingerprint,
+          status, attempts, next_attempt_at, info_hash, release_id,
+          discovered_at, last_seen_at, completed_at, updated_at)
+        SELECT release.source,
+          release.source_id::bigint,
+          COALESCE(release.source_category_id, 0),
+          1,
+          release.raw_title,
+          COALESCE(release.source_url, ''),
+          COALESCE(release.size_bytes, 0),
+          COALESCE(release.seeders, 0),
+          COALESCE(release.leechers, 0),
+          COALESCE(release.listing_fingerprint, MD5(release.raw_title)),
+          COALESCE(
+            release.detail_fingerprint,
+            MD5(release.raw_title || ':' || COALESCE(release.size_bytes, 0)::text)),
+          CASE
+            WHEN release.metadata_parser_version < @ParserVersion THEN 'pending'
+            ELSE 'imported'
+          END,
+          0,
+          NOW(),
+          LOWER(release.info_hash),
+          release.id,
+          release.discovered_at,
+          COALESCE(release.last_seen_at, release.updated_at),
+          CASE
+            WHEN release.metadata_parser_version < @ParserVersion THEN NULL
+            ELSE NOW()
+          END,
+          NOW()
+        FROM audiobook_releases release
+        WHERE release.source = @Source
+          AND release.source_id ~ '^[0-9]+$'
+          AND release.magnet_uri IS NOT NULL
+          AND BTRIM(release.magnet_uri) <> ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM source_topic_jobs job
+            WHERE job.source = release.source
+              AND job.topic_id = release.source_id::bigint)
+        ON CONFLICT (source, topic_id) DO NOTHING;
+        """;
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        var inserted = await db.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                Source = source.Trim().ToLowerInvariant(),
+                ParserVersion = parserVersion
+            },
+            commandTimeout: 120,
+            cancellationToken: ct));
+
+        if (inserted > 0)
+        {
+            logger.LogInformation(
+                "Реестр detail jobs источника {Source} дополнен: {Inserted}",
+                source,
+                inserted);
+        }
+
+        return inserted;
+    }
+
     public async Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
         string source,
         IReadOnlyList<long> requestedTopicIds,

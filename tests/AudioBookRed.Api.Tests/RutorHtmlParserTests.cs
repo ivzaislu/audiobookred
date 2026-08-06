@@ -35,7 +35,7 @@ public sealed class RutorHtmlParserTests
         </body></html>
         """;
 
-        Assert.Equal(1, RutorHtmlParser.CurrentParserVersion);
+        Assert.Equal(2, RutorHtmlParser.CurrentParserVersion);
 
         var parser = new RutorHtmlParser();
         var page = await parser.ParseListingAsync(
@@ -47,6 +47,7 @@ public sealed class RutorHtmlParserTests
 
         var item = Assert.Single(page.Items);
         Assert.Equal(1101334, item.TopicId);
+        Assert.Equal("Автор - Книга (2026) MP3", item.Title);
         Assert.Equal("cef6c35262fcd854047ed370a606b55320c7d29b", item.InfoHash);
         Assert.Equal(66_41L * 1024 * 1024 / 100, item.SizeBytes);
         Assert.Equal(33, item.Seeders);
@@ -64,5 +65,15 @@ public sealed class RutorHtmlParserTests
     public void Classifies_audio_titles(string title, bool expected)
     {
         Assert.Equal(expected, RutorHtmlParser.IsAudiobookTitle(title));
+    }
+
+    [Theory]
+    [InlineData("МР3", "MP3")]
+    [InlineData("MP3", "MP3")]
+    [InlineData("МP3", "MP3")]
+    [InlineData("MР3", "MP3")]
+    public void Normalizes_mixed_cyrillic_mp3_tokens(string value, string expected)
+    {
+        Assert.Equal(expected, RutorHtmlParser.NormalizeAudioTokens(value));
     }
 }

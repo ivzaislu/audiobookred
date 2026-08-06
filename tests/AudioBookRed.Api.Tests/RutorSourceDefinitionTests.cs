@@ -14,5 +14,7 @@ public sealed class RutorSourceDefinitionTests
         Assert.Equal(new[] { RutorSourceDefinition.BooksCategoryId }, definition.Categories);
         Assert.Equal(1, definition.RuntimeDefaults.IncrementalPages);
         Assert.Contains("listing-magnet", definition.Capabilities);
+        Assert.Contains("topic-details", definition.Capabilities);
+        Assert.Contains("metadata-reparse", definition.Capabilities);
     }
 }

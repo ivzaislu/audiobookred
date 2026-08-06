@@ -76,6 +76,7 @@ public sealed class ExistingListingState
     public string? RawTitle { get; set; }
     public long? SizeBytes { get; set; }
     public bool HasMagnet { get; set; }
+    public int MetadataParserVersion { get; set; }
 }
 
 public sealed record DetailDrainSummary(

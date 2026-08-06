@@ -17,6 +17,8 @@ public sealed class RutorSourceDefinition : ISourceModule
     [
         "paged-listing",
         "listing-magnet",
+        "topic-details",
+        "metadata-reparse",
         "mirror-fallback",
         "bootstrap",
         "incremental",

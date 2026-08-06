@@ -115,6 +115,11 @@ POST /api/v1/sources/rutor/bootstrap/discover
 POST /api/v1/sources/rutor/incremental/enqueue
 POST /api/v1/sources/rutor/reconcile
 POST /api/v1/sources/rutor/work
+GET  /api/v1/sources/rutor/completeness
+GET  /api/v1/sources/rutor/metadata/status
+POST /api/v1/sources/rutor/metadata/backfill
+POST /api/v1/sources/rutor/metadata/reparse
+POST /api/v1/sources/rutor/topics/retry-failed
 ```
 
 Первое включение через CLI:
@@ -126,8 +131,10 @@ sudo audiobookred-source rutor latest
 sudo audiobookred-source rutor work
 ```
 
-Версия 0.24.0 получает magnet/infohash, размер и пиры прямо из listing. Detail
-metadata reparse для Rutor пока не реализован.
+Magnet/infohash, размер и пиры Rutor получаются прямо из listing. Detail worker
+открывает `/torrent/{id}` только для новой раздачи, изменившегося названия или
+размера, неудачной попытки либо metadata parser backfill. Он сохраняет автора,
+чтецов, жанры, издательство, продолжительность, аудиоформат и битрейт.
 
 ## Ошибки авторизации
 

@@ -459,7 +459,8 @@ public sealed class SourceCrawlRepository(
           info_hash AS InfoHash,
           raw_title AS RawTitle,
           size_bytes AS SizeBytes,
-          (magnet_uri IS NOT NULL AND BTRIM(magnet_uri) <> '') AS HasMagnet
+          (magnet_uri IS NOT NULL AND BTRIM(magnet_uri) <> '') AS HasMagnet,
+          metadata_parser_version AS MetadataParserVersion
         FROM audiobook_releases
         WHERE source = @Source
           AND source_id = ANY(CAST(@SourceIds AS text[]));

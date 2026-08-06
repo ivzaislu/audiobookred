@@ -53,12 +53,18 @@ REQUIRED_RUTOR_CONTRACTS = {
         "stable source key": 'public const string Key = "rutor";',
         "disabled-by-default registration":
             "public bool EnabledByDefault => false;",
+        "Rutor detail capability": '"topic-details"',
+        "Rutor metadata reparse capability": '"metadata-reparse"',
     },
     "src/AudioBookRed.Api/Program.cs": {
         "Rutor module registration":
             "services.GetRequiredService<RutorSourceDefinition>()",
         "Rutor crawler registration":
             "services.GetRequiredService<RutorCrawler>()",
+        "Rutor detail parser registration":
+            "builder.Services.AddSingleton<RutorDetailParser>();",
+        "Rutor detail processor registration":
+            "builder.Services.AddSingleton<RutorDetailProcessor>();",
     },
     "src/AudioBookRed.Api/Data/SourceSettingsRepository.cs": {
         "per-module enabled default":

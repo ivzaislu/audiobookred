@@ -9,7 +9,7 @@ namespace AudioBookRed.Api.Services;
 
 public sealed partial class RutorHtmlParser
 {
-    public const int CurrentParserVersion = 1;
+    public const int CurrentParserVersion = 2;
 
     public async Task<RutorListingPage> ParseListingAsync(
         string html,
@@ -45,7 +45,7 @@ public sealed partial class RutorHtmlParser
             if (topicId <= 0 || !seen.Add(topicId))
                 continue;
 
-            var title = CleanText(detailLink.TextContent);
+            var title = NormalizeAudioTokens(CleanText(detailLink.TextContent));
             if (!IsAudiobookTitle(title))
                 continue;
 
@@ -92,13 +92,23 @@ public sealed partial class RutorHtmlParser
             items);
     }
 
-    public static bool IsAudiobookTitle(string title) =>
-        !string.IsNullOrWhiteSpace(title)
-        && (AudioFormat().IsMatch(title)
-            || title.Contains("аудиокниг", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("радиоспектак", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("аудиоспектак", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("аудиопостанов", StringComparison.OrdinalIgnoreCase));
+    public static string NormalizeAudioTokens(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? value
+            : CyrillicMp3().Replace(value, "MP3");
+
+    public static bool IsAudiobookTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return false;
+
+        var normalized = NormalizeAudioTokens(title);
+        return AudioFormat().IsMatch(normalized)
+            || normalized.Contains("аудиокниг", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("радиоспектак", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("аудиоспектак", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("аудиопостанов", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static long ParseTopicId(string? href)
     {
@@ -178,6 +188,9 @@ public sealed partial class RutorHtmlParser
 
     [GeneratedRegex(@"(?<![\p{L}\p{N}])(?:MP3|МР3|M4B|M4A|OPUS|OGG|AAC|WMA|FLAC|APE)(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex AudioFormat();
+
+    [GeneratedRegex(@"(?<![\p{L}\p{N}])[MМ][PР]3(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CyrillicMp3();
 
     [GeneratedRegex(@"(?<value>\d+(?:[.,]\d+)?)\s*(?<unit>B|KB|KIB|MB|MIB|GB|GIB|TB|TIB|Б|КБ|МБ|ГБ|ТБ)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Size();

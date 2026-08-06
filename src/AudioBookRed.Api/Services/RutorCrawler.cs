@@ -10,9 +10,11 @@ namespace AudioBookRed.Api.Services;
 public sealed class RutorCrawler(
     RutorSourceDefinition definition,
     RutorListingClient listingClient,
+    RutorDetailProcessor detailProcessor,
     RutorTransport transport,
     SourceCrawlRepository crawlRepository,
     SourceJobRepository jobRepository,
+    RuTrackerTopicRepository topicRepository,
     SourceSettingsRepository settingsRepository,
     AudiobookRepository audiobookRepository,
     StatisticsRepository statisticsRepository,
@@ -157,6 +159,10 @@ public sealed class RutorCrawler(
         resourceGuard.EnsureEnoughDiskSpace();
         var settings = await GetEnabledSettingsAsync(ct);
         await crawlRepository.EnsureSourceAsync(SourceKey, Categories, ct);
+        await topicRepository.EnsureReleaseJobsAsync(
+            SourceKey,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
 
         var limit = Math.Clamp(requestedLimit ?? settings.WorkerJobLimit, 1, 16);
         var jobs = await jobRepository.ClaimJobsAsync(
@@ -185,14 +191,21 @@ public sealed class RutorCrawler(
                 async (job, token) => results.Add(await ProcessJobAsync(job, settings, token)));
         }
 
+        // Detail jobs are independent from listing pages. The minute worker
+        // continues metadata backfill even after page queues become empty.
+        var topicDrainLimit = jobs.Count == 0 ? limit * 10 : limit * 5;
+        var topicDrain = await detailProcessor.DrainPendingTopicsAsync(
+            topicDrainLimit,
+            ct);
+
         await jobRepository.PruneAsync(SourceKey, ct);
         stopwatch.Stop();
         var ordered = results.OrderBy(result => result.JobId).ToArray();
 
-        if (ordered.Length > 0)
+        if (ordered.Length > 0 || topicDrain.Details.Candidates > 0)
         {
             logger.LogInformation(
-                "Rutor worker batch completed: jobs {Jobs}, completed {Completed}, retry {Retry}, failed {Failed}, received {Received}, inserted {Inserted}, changed {Changed}, elapsedMs {ElapsedMs}, pagesPerMinute {PagesPerMinute:F2}",
+                "Rutor worker batch completed: jobs {Jobs}, completed {Completed}, retry {Retry}, failed {Failed}, received {Received}, inserted {Inserted}, changed {Changed}, detailCandidates {DetailCandidates}, detailEnriched {DetailEnriched}, detailFailed {DetailFailed}, elapsedMs {ElapsedMs}, pagesPerMinute {PagesPerMinute:F2}",
                 ordered.Length,
                 ordered.Count(result => result.Status == "completed"),
                 ordered.Count(result => result.Status == "retry"),
@@ -200,6 +213,9 @@ public sealed class RutorCrawler(
                 ordered.Sum(result => result.Received),
                 ordered.Sum(result => result.Inserted),
                 ordered.Sum(result => result.Changed),
+                topicDrain.Details.Candidates,
+                topicDrain.Details.Enriched,
+                topicDrain.Details.Failed,
                 stopwatch.ElapsedMilliseconds,
                 RatePerMinute(ordered.Length, stopwatch.Elapsed));
         }
@@ -212,8 +228,8 @@ public sealed class RutorCrawler(
             ordered.Count(result => result.Status == "failed"),
             stopwatch.Elapsed,
             await jobRepository.GetQueueSummaryAsync(SourceKey, null, ct),
-            EmptyTopicQueue(),
-            EmptyDetails(),
+            await topicRepository.GetSummaryAsync(SourceKey, ct),
+            topicDrain.Details,
             ordered);
     }
 
@@ -236,7 +252,7 @@ public sealed class RutorCrawler(
                 await Task.Delay(settings.RequestDelayMilliseconds, ct);
 
             var listing = await listingClient.FetchPageAsync(job.CategoryId, job.Page, ct);
-            var imported = await ImportListingsAsync(listing.Items, job.CategoryId, ct);
+            var imported = await ImportListingsAsync(listing.Items, job.CategoryId, job.Page, ct);
             await jobRepository.CompleteJobAsync(
                 job,
                 listing,
@@ -307,6 +323,7 @@ public sealed class RutorCrawler(
     private async Task<ListingImportSummary> ImportListingsAsync(
         IReadOnlyList<RutorListingItem> items,
         int categoryId,
+        int page,
         CancellationToken ct)
     {
         if (items.Count == 0)
@@ -324,39 +341,61 @@ public sealed class RutorCrawler(
             resourceGuard.EnsureEnoughDiskSpace();
             var listingFingerprint = ListingFingerprint.ForListing(item);
             var detailFingerprint = ListingFingerprint.ForDetails(item);
+            var needsDetails = true;
 
-            if (existingStates.TryGetValue(item.TopicId, out var existing)
-                && existing.HasMagnet)
+            if (existingStates.TryGetValue(item.TopicId, out var existing))
             {
-                var titleChanged = !string.Equals(
-                    existing.RawTitle,
-                    item.Title,
-                    StringComparison.Ordinal);
-                var update = await crawlRepository.UpdateExistingListingAsync(
-                    SourceKey,
-                    item,
-                    categoryId,
-                    listingFingerprint,
-                    existing.DetailFingerprint is null ? detailFingerprint : null,
-                    ct);
-                if (update?.Changed == true)
+                var legacyDetailsMatch = existing.DetailFingerprint is null
+                    && string.Equals(existing.RawTitle, item.Title, StringComparison.Ordinal)
+                    && existing.SizeBytes == item.SizeBytes;
+                var detailsUnchanged = string.Equals(
+                        existing.DetailFingerprint,
+                        detailFingerprint,
+                        StringComparison.Ordinal)
+                    || legacyDetailsMatch;
+                needsDetails = existing.MetadataParserVersion <
+                        RutorDetailParser.CurrentParserVersion
+                    || !detailsUnchanged;
+
+                if (existing.HasMagnet)
                 {
-                    changed++;
-                    if (titleChanged)
-                        await audiobookRepository.RefreshPeopleAsync(update.Id, ct);
+                    var titleChanged = !string.Equals(
+                        existing.RawTitle,
+                        item.Title,
+                        StringComparison.Ordinal);
+                    var update = await crawlRepository.UpdateExistingListingAsync(
+                        SourceKey,
+                        item,
+                        categoryId,
+                        listingFingerprint,
+                        legacyDetailsMatch ? detailFingerprint : null,
+                        ct);
+                    if (update?.Changed == true)
+                    {
+                        changed++;
+                        if (titleChanged)
+                            await audiobookRepository.RefreshPeopleAsync(update.Id, ct);
+                    }
                 }
-                continue;
+                else
+                {
+                    var result = await UpsertListingAsync(
+                        item,
+                        categoryId,
+                        listingFingerprint,
+                        detailFingerprint,
+                        ct);
+                    if (result.Inserted)
+                        inserted++;
+                    else if (result.Changed)
+                        changed++;
+                }
             }
-
-            try
+            else
             {
-                var result = await crawlRepository.UpsertListingWithTopicMetadataAsync(
-                    SourceKey,
+                var result = await UpsertListingAsync(
                     item,
                     categoryId,
-                    item.InfoHash,
-                    item.MagnetUri,
-                    null,
                     listingFingerprint,
                     detailFingerprint,
                     ct);
@@ -364,20 +403,53 @@ public sealed class RutorCrawler(
                     inserted++;
                 else if (result.Changed)
                     changed++;
+            }
 
-                if (result.Inserted || result.Changed)
-                    await audiobookRepository.RefreshPeopleAsync(result.Id, ct);
-            }
-            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
-            {
-                logger.LogInformation(
-                    "Rutor torrent {TorrentId}: duplicate infohash {InfoHash}",
-                    item.TopicId,
-                    item.InfoHash);
-            }
+            await topicRepository.RegisterDiscoveredAsync(
+                SourceKey,
+                item,
+                categoryId,
+                page,
+                listingFingerprint,
+                detailFingerprint,
+                needsDetails,
+                ct);
         }
 
         return new ListingImportSummary(inserted, changed, EmptyDetails());
+    }
+
+    private async Task<CrawlUpsertResult> UpsertListingAsync(
+        RutorListingItem item,
+        int categoryId,
+        string listingFingerprint,
+        string detailFingerprint,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await crawlRepository.UpsertListingWithTopicMetadataAsync(
+                SourceKey,
+                item,
+                categoryId,
+                item.InfoHash,
+                item.MagnetUri,
+                null,
+                listingFingerprint,
+                detailFingerprint,
+                ct);
+            if (result.Inserted || result.Changed)
+                await audiobookRepository.RefreshPeopleAsync(result.Id, ct);
+            return result;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            logger.LogInformation(
+                "Rutor torrent {TorrentId}: duplicate infohash {InfoHash}",
+                item.TopicId,
+                item.InfoHash);
+            return new CrawlUpsertResult();
+        }
     }
 
     private async Task<SourceJobResult?> TryCompleteKnownOutOfRangeAsync(
@@ -464,71 +536,110 @@ public sealed class RutorCrawler(
         return await jobRepository.RetryFailedAsync(SourceKey, normalized, ct);
     }
 
-    public Task<int> RetryTopicFailuresAsync(CancellationToken ct) => Task.FromResult(0);
+    public async Task<int> RetryTopicFailuresAsync(CancellationToken ct)
+    {
+        var retried = await topicRepository.RetryFailedAsync(SourceKey, ct);
+        if (retried > 0)
+        {
+            await jobRepository.AddEventAsync(
+                SourceKey,
+                "topic_retried",
+                $"Rutor detail jobs возвращены в очередь: {retried}.",
+                null,
+                ct);
+        }
+        return retried;
+    }
 
-    public Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
+    public async Task<SourceMetadataReparseResult> EnqueueMetadataReparseAsync(
         SourceMetadataReparseRequest request,
         CancellationToken ct)
     {
-        var ids = SourceMetadataReparsePolicy.NormalizeTopicIds(request.TopicIds);
-        return Task.FromResult(new SourceMetadataReparseResult(
+        resourceGuard.EnsureEnoughDiskSpace();
+        _ = await GetEnabledSettingsAsync(ct);
+        await topicRepository.EnsureReleaseJobsAsync(
             SourceKey,
-            "unsupported",
-            0,
-            ids.Length,
-            0,
-            0,
-            0,
-            0,
-            ids.Length,
-            0,
-            ids));
+            RutorDetailParser.CurrentParserVersion,
+            ct);
+        var topicIds = SourceMetadataReparsePolicy.NormalizeTopicIds(request.TopicIds);
+        var result = await topicRepository.EnqueueMetadataReparseAsync(
+            SourceKey,
+            topicIds,
+            RutorDetailParser.CurrentParserVersion,
+            request.Force,
+            ct);
+
+        if (result.Queued > 0)
+        {
+            await jobRepository.AddEventAsync(
+                SourceKey,
+                "metadata_reparse_enqueued",
+                $"Rutor metadata reparse: запрошено {result.Requested}, поставлено {result.Queued}.",
+                null,
+                ct);
+        }
+
+        return result;
     }
 
-    public Task<SourceMetadataReparseResult> EnqueueMetadataBackfillAsync(
+    public async Task<SourceMetadataReparseResult> EnqueueMetadataBackfillAsync(
         int? requestedLimit,
         CancellationToken ct)
     {
-        var limit = SourceMetadataReparsePolicy.NormalizeBatchLimit(requestedLimit);
-        return Task.FromResult(new SourceMetadataReparseResult(
+        resourceGuard.EnsureEnoughDiskSpace();
+        _ = await GetEnabledSettingsAsync(ct);
+        await topicRepository.EnsureReleaseJobsAsync(
             SourceKey,
-            "unsupported",
-            0,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
+        var limit = SourceMetadataReparsePolicy.NormalizeBatchLimit(requestedLimit);
+        var result = await topicRepository.EnqueueMetadataBackfillAsync(
+            SourceKey,
             limit,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            Array.Empty<long>()));
+            RutorDetailParser.CurrentParserVersion,
+            ct);
+
+        if (result.Queued > 0)
+        {
+            await jobRepository.AddEventAsync(
+                SourceKey,
+                "metadata_backfill_enqueued",
+                $"Rutor metadata backfill поставлен в очередь: {result.Queued}.",
+                null,
+                ct);
+        }
+
+        return result;
     }
 
     public async Task<SourceMetadataStatus> GetMetadataStatusAsync(CancellationToken ct)
     {
-        var total = await crawlRepository.GetReleaseCountAsync(SourceKey, ct);
-        return new SourceMetadataStatus(
+        await topicRepository.EnsureReleaseJobsAsync(
             SourceKey,
-            0,
-            total,
-            0,
-            total,
-            0,
-            0,
-            null,
-            null,
-            DateTimeOffset.UtcNow);
+            RutorDetailParser.CurrentParserVersion,
+            ct);
+        return await topicRepository.GetMetadataStatusAsync(
+            SourceKey,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
     }
 
     public async Task<object> GetCompletenessAsync(CancellationToken ct)
     {
-        var imported = await crawlRepository.GetReleaseCountAsync(SourceKey, ct);
+        await topicRepository.EnsureReleaseJobsAsync(
+            SourceKey,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
+        var topics = await topicRepository.GetCompletenessAsync(SourceKey, ct);
+        var metadata = await topicRepository.GetMetadataStatusAsync(
+            SourceKey,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
         return new
         {
             source = SourceKey,
-            discovered = imported,
-            imported,
-            listingOnly = true,
+            topics,
+            metadata,
             generatedAt = DateTimeOffset.UtcNow
         };
     }
@@ -568,11 +679,20 @@ public sealed class RutorCrawler(
     public async Task<object> GetStatusAsync(CancellationToken ct)
     {
         await crawlRepository.EnsureSourceAsync(SourceKey, Categories, ct);
+        await topicRepository.EnsureReleaseJobsAsync(
+            SourceKey,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
         var (control, states) = await crawlRepository.GetStatusAsync(SourceKey, ct);
         var settings = await settingsRepository.GetAsync(SourceKey, ct);
         var bootstrapQueue = await jobRepository.GetQueueSummaryAsync(SourceKey, "bootstrap", ct);
         var incrementalQueue = await jobRepository.GetQueueSummaryAsync(SourceKey, "incremental", ct);
         var reconcileQueue = await jobRepository.GetQueueSummaryAsync(SourceKey, "reconcile", ct);
+        var topicQueue = await topicRepository.GetSummaryAsync(SourceKey, ct);
+        var metadata = await topicRepository.GetMetadataStatusAsync(
+            SourceKey,
+            RutorDetailParser.CurrentParserVersion,
+            ct);
         var recentRuns = await jobRepository.GetRecentRunsAsync(SourceKey, 10, ct);
         var recentEvents = await jobRepository.GetRecentEventsAsync(SourceKey, 20, ct);
         var releases = await crawlRepository.GetReleaseCountAsync(SourceKey, ct);
@@ -582,6 +702,7 @@ public sealed class RutorCrawler(
             source = SourceKey,
             categories = Categories,
             listingParserVersion = RutorHtmlParser.CurrentParserVersion,
+            detailParserVersion = RutorDetailParser.CurrentParserVersion,
             mirrors = transport.BaseUris
                 .Select(uri => uri.GetLeftPart(UriPartial.Authority))
                 .ToArray(),
@@ -591,6 +712,8 @@ public sealed class RutorCrawler(
             bootstrapQueue,
             incrementalQueue,
             reconcileQueue,
+            topicQueue,
+            metadata,
             recentRuns,
             recentEvents,
             categoryStates = states
@@ -641,9 +764,6 @@ public sealed class RutorCrawler(
             throw new InvalidOperationException("Источник rutor отключён в runtime-настройках.");
         return settings;
     }
-
-    private static RuTrackerTopicQueueSummary EmptyTopicQueue() =>
-        new(0, 0, 0, 0, 0, 0, 0);
 
     private static DetailDrainSummary EmptyDetails() => new(0, 0, 0, 0, 0);
 

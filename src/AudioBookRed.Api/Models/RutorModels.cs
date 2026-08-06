@@ -21,3 +21,8 @@ public sealed record RutorListingPage(
 {
     public int ItemCount => Items.Count;
 }
+
+public sealed record RutorDetailValue(
+    string MagnetUri,
+    string InfoHash,
+    RuTrackerTopicMetadata Metadata);

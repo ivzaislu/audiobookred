@@ -223,8 +223,24 @@ sudo audiobookred-source rutor discover
 
 Внешняя пагинация Rutor начинается с нуля, но CLI и очередь AudioBookRed
 используют страницы с единицы. Адаптер выполняет преобразование автоматически.
-В 0.24.0 detail metadata reparse для Rutor не запускается: magnet, infohash,
-размер и пиры берутся из listing.
+Magnet, infohash, размер и пиры берутся из listing. Для новых или устаревших
+раздач отдельная detail-очередь загружает страницу `/torrent/{id}` и сохраняет
+название, автора, чтецов, жанры, издательство, продолжительность, формат и
+битрейт.
+
+После обновления с 0.24.0 уже импортированные listing-only записи автоматически
+появятся в detail-очереди. Проверка и ручная обработка:
+
+```bash
+sudo audiobookred-source rutor metadata-status
+sudo audiobookred-source rutor work
+sudo audiobookred-source rutor completeness
+```
+
+`work` обрабатывает page jobs и detail jobs одним коротким запуском. При пустой
+очереди страниц он продолжает backfill метаданных. Для точечного повторного
+разбора используются `rutor reparse <torrent_id> --force` и
+`rutor reparse-stale [1..100]`.
 
 После ручной проверки можно добавить отдельное расписание по образцу RuTracker,
 используя команды `rutor latest`, `rutor page-map`, `rutor reconcile` и
