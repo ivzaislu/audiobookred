@@ -192,6 +192,7 @@ audiobook-normalized-series-v1
 audiobook-magnet-required-v1
 audiobook-infohash-dedup-v1
 audiobook-core-indexes-v1
+audiobook-infohash-search-index-v2
 ```
 
 Проверка после обновления:

@@ -45,6 +45,7 @@ SQL
     audiobook-magnet-required-v1
     audiobook-infohash-dedup-v1
     audiobook-core-indexes-v1
+    audiobook-infohash-search-index-v2
   )
   missing=0
   for key in "${required[@]}"; do
@@ -108,7 +109,8 @@ WHERE schema_row.nspname = 'public'
     'ix_audiobook_format',
     'ix_audiobook_year',
     'ix_audiobook_bitrate',
-    'ix_audiobook_updated'
+    'ix_audiobook_updated',
+    'ix_audiobook_info_hash_search_v2'
   ])
   AND index_state.indisvalid
   AND index_state.indisready;
@@ -118,9 +120,9 @@ SQL
     return
   }
 
-  [[ "$index_count" == "10" ]] \
+  [[ "$index_count" == "11" ]] \
     && ok "основные индексы audiobook_releases валидны" \
-    || err "валидных основных индексов audiobook_releases: ${index_count:-unknown}/10"
+    || err "валидных основных индексов audiobook_releases: ${index_count:-unknown}/11"
 }
 
 printf 'AudioBookRed doctor\n'

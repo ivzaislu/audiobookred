@@ -1,6 +1,7 @@
 using AudioBookRed.Api.Models;
 using AudioBookRed.Api.Services;
 using Dapper;
+using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 
 namespace AudioBookRed.Api.Data;
@@ -12,10 +13,12 @@ public sealed class AudiobookRepository(
     SeriesNameParser seriesNames,
     CanonicalFacetRepository canonicalFacets,
     DatabaseMigrationRunner migrationRunner,
+    IMemoryCache memoryCache,
     ILogger<AudiobookRepository> logger)
 {
     private const string AuthorRole = "author";
     private const string NarratorRole = "narrator";
+    private static readonly TimeSpan FacetCacheDuration = TimeSpan.FromSeconds(45);
 
     private string ConnectionString => configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is missing");
@@ -369,138 +372,306 @@ public sealed class AudiobookRepository(
         AudiobookSearchRequest request,
         CancellationToken ct)
     {
-        var response = await SearchFacetedAsync(request, includeFacets: false, offset: 0, ct: ct);
+        var response = await SearchPageCoreAsync(request, 0, ct);
         return response.Items;
     }
 
     public async Task<AudiobookSearchResponse> SearchFacetedAsync(
         AudiobookSearchRequest request,
-        CancellationToken ct) => await SearchFacetedAsync(request, includeFacets: true, offset: 0, ct: ct);
+        CancellationToken ct)
+    {
+        var pageTask = SearchPageCoreAsync(request, 0, ct);
+        var facetsTask = SearchFacetsAsync(request, ct);
+        await Task.WhenAll(pageTask, facetsTask);
 
-    public async Task<AudiobookSearchResponse> SearchPageAsync(
+        var page = await pageTask;
+        return new AudiobookSearchResponse(page.Total, page.Items, await facetsTask);
+    }
+
+    public Task<AudiobookSearchResponse> SearchPageAsync(
         AudiobookSearchRequest request,
         int offset,
-        CancellationToken ct) => await SearchFacetedAsync(request, includeFacets: false, offset: offset, ct: ct);
+        CancellationToken ct) => SearchPageCoreAsync(request, offset, ct);
 
-    private async Task<AudiobookSearchResponse> SearchFacetedAsync(
+    public async Task<AudiobookSearchFacets> SearchFacetsAsync(
         AudiobookSearchRequest request,
-        bool includeFacets,
+        CancellationToken ct)
+    {
+        var filters = BuildFilters(request);
+        var cacheKey = CreateFacetCacheKey(filters);
+        var facets = await memoryCache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = FacetCacheDuration;
+            return await LoadFacetsAsync(filters, ct);
+        });
+
+        return facets ?? EmptyFacets();
+    }
+
+    private async Task<AudiobookSearchResponse> SearchPageCoreAsync(
+        AudiobookSearchRequest request,
         int offset,
         CancellationToken ct)
     {
         var filters = BuildFilters(request);
         var parameters = BuildParameters(filters, offset);
         var allWhere = BuildWhere(filters, excludeFacet: null);
-        var orderBy = BuildOrderBy(filters.Sort);
-        var groupedOrderBy = orderBy.Replace("r.seeders", "r.grouped_seeders", StringComparison.Ordinal);
+        var groupedOrderBy = BuildGroupedOrderBy(filters.Sort);
+        var groupedSeeders = BuildPeerSumExpression("peer", "seeders");
+        var groupedLeechers = BuildPeerSumExpression("peer", "leechers");
 
-        var groupKey = "COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)";
         var sql = $"""
-        WITH filtered AS (
-          SELECT r.*, {groupKey} AS group_key
+        WITH filtered AS MATERIALIZED (
+          SELECT r.id, NULLIF(r.info_hash, '') AS info_hash
           FROM audiobook_releases r
           WHERE {allWhere}
-        ), ranked AS (
-          SELECT f.*,
-            ROW_NUMBER() OVER (
-              PARTITION BY group_key
-              ORDER BY metadata_parser_version DESC,
-                ((series IS NOT NULL)::int + (series_position IS NOT NULL)::int +
-                 (cardinality(narrators) > 0)::int + (duration_seconds IS NOT NULL)::int +
-                 (bitrate_kbps IS NOT NULL)::int + (publisher IS NOT NULL)::int) DESC,
-                updated_at DESC, id DESC) AS metadata_rank,
-            MAX(seeders) OVER (PARTITION BY group_key) AS grouped_seeders,
-            MAX(leechers) OVER (PARTITION BY group_key) AS grouped_leechers
-          FROM filtered f
+        ), hash_groups AS (
+          SELECT matched.info_hash,
+            NULL::bigint AS release_id,
+            matched.info_hash AS group_key,
+            {groupedSeeders} AS grouped_seeders,
+            {groupedLeechers} AS grouped_leechers,
+            MAX(peer.updated_at) AS grouped_updated_at,
+            MAX(peer.size_bytes) AS grouped_size_bytes,
+            MIN(peer.normalized_title) AS grouped_title,
+            MAX(peer.id) AS grouped_id
+          FROM (
+            SELECT DISTINCT info_hash
+            FROM filtered
+            WHERE info_hash IS NOT NULL
+          ) matched
+          JOIN audiobook_releases peer ON peer.info_hash = matched.info_hash
+          GROUP BY matched.info_hash
+        ), release_groups AS (
+          SELECT NULL::text AS info_hash,
+            peer.id AS release_id,
+            'release:' || peer.id::text AS group_key,
+            COALESCE(peer.seeders, 0)::bigint AS grouped_seeders,
+            COALESCE(peer.leechers, 0)::bigint AS grouped_leechers,
+            peer.updated_at AS grouped_updated_at,
+            peer.size_bytes AS grouped_size_bytes,
+            peer.normalized_title AS grouped_title,
+            peer.id AS grouped_id
+          FROM filtered matched
+          JOIN audiobook_releases peer ON peer.id = matched.id
+          WHERE matched.info_hash IS NULL
         ), grouped AS (
-          SELECT * FROM ranked WHERE metadata_rank = 1
+          SELECT * FROM hash_groups
+          UNION ALL
+          SELECT * FROM release_groups
+        ), page AS (
+          SELECT g.*,
+            COUNT(*) OVER () AS total_count,
+            ROW_NUMBER() OVER (ORDER BY {groupedOrderBy}) AS page_order
+          FROM grouped g
+          ORDER BY {groupedOrderBy}
+          LIMIT @Limit
+          OFFSET @Offset
         )
-        SELECT id, title, normalized_title AS NormalizedTitle, author, normalized_author AS NormalizedAuthor,
-          series, series_position AS SeriesPosition, narrators, language, release_year AS ReleaseYear,
-          duration_seconds AS DurationSeconds, audio_format AS AudioFormat, bitrate_kbps AS BitrateKbps,
-          genres, publisher, sample_rate_hz AS SampleRateHz, audio_channels AS AudioChannels,
-          bitrate_mode AS BitrateMode, edition_type AS EditionType, edition_category AS EditionCategory,
-          music, metadata_parser_version AS MetadataParserVersion, metadata_parsed_at AS MetadataParsedAt,
-          is_abridged AS IsAbridged, is_dramatized AS IsDramatized, source, source_id AS SourceId,
-          source_url AS SourceUrl, info_hash AS InfoHash, magnet_uri AS MagnetUri, size_bytes AS SizeBytes,
-          grouped_seeders AS Seeders, grouped_leechers AS Leechers,
-          discovered_at AS DiscoveredAt, updated_at AS UpdatedAt, group_key AS GroupKey
-        FROM grouped r
-        ORDER BY {groupedOrderBy}
-        LIMIT @Limit
-        OFFSET @Offset;
-
-        SELECT COUNT(DISTINCT {groupKey})::bigint
-        FROM audiobook_releases r
-        WHERE {allWhere};
+        SELECT r.id, r.title, r.normalized_title AS NormalizedTitle,
+          r.author, r.normalized_author AS NormalizedAuthor,
+          r.series, r.series_position AS SeriesPosition, r.narrators, r.language,
+          r.release_year AS ReleaseYear, r.duration_seconds AS DurationSeconds,
+          r.audio_format AS AudioFormat, r.bitrate_kbps AS BitrateKbps,
+          r.genres, r.publisher, r.sample_rate_hz AS SampleRateHz,
+          r.audio_channels AS AudioChannels, r.bitrate_mode AS BitrateMode,
+          r.edition_type AS EditionType, r.edition_category AS EditionCategory,
+          r.music, r.metadata_parser_version AS MetadataParserVersion,
+          r.metadata_parsed_at AS MetadataParsedAt,
+          r.is_abridged AS IsAbridged, r.is_dramatized AS IsDramatized,
+          r.source, r.source_id AS SourceId, r.source_url AS SourceUrl,
+          r.info_hash AS InfoHash, r.magnet_uri AS MagnetUri,
+          r.size_bytes AS SizeBytes,
+          LEAST(p.grouped_seeders, 2147483647)::int AS Seeders,
+          LEAST(p.grouped_leechers, 2147483647)::int AS Leechers,
+          r.discovered_at AS DiscoveredAt,
+          p.grouped_updated_at AS UpdatedAt,
+          p.group_key AS GroupKey,
+          p.total_count AS TotalCount
+        FROM page p
+        JOIN LATERAL (
+          SELECT candidate.*
+          FROM audiobook_releases candidate
+          WHERE (p.info_hash IS NOT NULL AND candidate.info_hash = p.info_hash)
+             OR (p.release_id IS NOT NULL AND candidate.id = p.release_id)
+          ORDER BY candidate.metadata_parser_version DESC,
+            ((candidate.series IS NOT NULL)::int +
+             (candidate.series_position IS NOT NULL)::int +
+             (cardinality(candidate.narrators) > 0)::int +
+             (candidate.duration_seconds IS NOT NULL)::int +
+             (candidate.bitrate_kbps IS NOT NULL)::int +
+             (candidate.publisher IS NOT NULL)::int) DESC,
+            candidate.updated_at DESC,
+            candidate.id DESC
+          LIMIT 1
+        ) r ON TRUE
+        ORDER BY p.page_order;
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);
         await db.OpenAsync(ct);
 
-        IReadOnlyList<AudiobookRelease> items;
-        long total;
-        using (var result = await db.QueryMultipleAsync(new CommandDefinition(
+        var items = (await db.QueryAsync<AudiobookRelease>(new CommandDefinition(
             sql,
             parameters,
             commandTimeout: 60,
-            cancellationToken: ct)))
-        {
-            items = (await result.ReadAsync<AudiobookRelease>()).AsList();
-            total = await result.ReadSingleAsync<long>();
-        }
+            cancellationToken: ct))).AsList();
 
-        if (items.Count > 0)
-        {
-            var keys = items.Select(item => item.GroupKey).Distinct(StringComparer.Ordinal).ToArray();
-            var variants = await db.QueryAsync<AudiobookSourceVariant>(new CommandDefinition(
-                """
-                SELECT COALESCE(NULLIF(LOWER(info_hash), ''), 'release:' || id::text) AS GroupKey,
-                  source AS Source, source_id AS SourceId, source_url AS SourceUrl,
-                  magnet_uri AS MagnetUri, seeders AS Seeders, leechers AS Leechers,
-                  updated_at AS UpdatedAt
-                FROM audiobook_releases
-                WHERE COALESCE(NULLIF(LOWER(info_hash), ''), 'release:' || id::text) = ANY(@Keys)
-                ORDER BY source, updated_at DESC;
-                """,
-                new { Keys = keys },
-                commandTimeout: 60,
-                cancellationToken: ct));
-            var byGroup = variants.GroupBy(value => value.GroupKey, StringComparer.Ordinal)
-                .ToDictionary(
-                    group => group.Key,
-                    group => (IReadOnlyList<AudiobookSourceVariant>)group
-                        .GroupBy(value => value.Source, StringComparer.OrdinalIgnoreCase)
-                        .Select(sourceGroup => sourceGroup.First())
-                        .ToArray(),
-                    StringComparer.Ordinal);
-            foreach (var item in items)
-                item.Sources = byGroup.GetValueOrDefault(item.GroupKey) ?? [];
-        }
+        var total = items.Count > 0
+            ? items[0].TotalCount
+            : offset > 0
+                ? await CountGroupedResultsAsync(db, allWhere, parameters, ct)
+                : 0;
 
-        if (!includeFacets)
-            return new AudiobookSearchResponse(total, items, EmptyFacets());
+        await PopulateSourceVariantsAsync(db, items, ct);
+        return new AudiobookSearchResponse(total, items, EmptyFacets());
+    }
 
-        // JacRed-style staged search: first obtain the result set, then calculate each
-        // facet independently. A slow facet can no longer hold the whole multi-result
-        // response open inside Npgsql, and every query can use the PostgreSQL indexes.
+    private async Task<long> CountGroupedResultsAsync(
+        NpgsqlConnection db,
+        string allWhere,
+        DynamicParameters parameters,
+        CancellationToken ct)
+    {
+        var groupKey = BuildGroupKeyExpression("r");
+        var sql = $"""
+        SELECT COUNT(*)::bigint
+        FROM (
+          SELECT {groupKey}
+          FROM audiobook_releases r
+          WHERE {allWhere}
+          GROUP BY {groupKey}
+        ) grouped;
+        """;
+
+        return await db.ExecuteScalarAsync<long>(new CommandDefinition(
+            sql,
+            parameters,
+            commandTimeout: 60,
+            cancellationToken: ct));
+    }
+
+    private static async Task PopulateSourceVariantsAsync(
+        NpgsqlConnection db,
+        IReadOnlyList<AudiobookRelease> items,
+        CancellationToken ct)
+    {
+        if (items.Count == 0) return;
+
+        var infoHashes = items
+            .Select(item => item.InfoHash)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var releaseIds = items
+            .Select(item => TryParseReleaseGroupId(item.GroupKey))
+            .Where(value => value is not null)
+            .Select(value => value!.Value)
+            .Distinct()
+            .ToArray();
+
+        var variants = await db.QueryAsync<AudiobookSourceVariant>(new CommandDefinition(
+            """
+            SELECT COALESCE(NULLIF(info_hash, ''), 'release:' || id::text) AS GroupKey,
+              source AS Source, source_id AS SourceId, source_url AS SourceUrl,
+              magnet_uri AS MagnetUri, seeders AS Seeders, leechers AS Leechers,
+              updated_at AS UpdatedAt
+            FROM audiobook_releases
+            WHERE (CARDINALITY(CAST(@InfoHashes AS text[])) > 0
+                   AND info_hash = ANY(CAST(@InfoHashes AS text[])))
+               OR (CARDINALITY(CAST(@ReleaseIds AS bigint[])) > 0
+                   AND id = ANY(CAST(@ReleaseIds AS bigint[])))
+            ORDER BY source, updated_at DESC;
+            """,
+            new { InfoHashes = infoHashes, ReleaseIds = releaseIds },
+            commandTimeout: 60,
+            cancellationToken: ct));
+
+        var byGroup = variants
+            .GroupBy(value => value.GroupKey, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<AudiobookSourceVariant>)group
+                    .GroupBy(value => value.Source, StringComparer.OrdinalIgnoreCase)
+                    .Select(sourceGroup => sourceGroup.First())
+                    .ToArray(),
+                StringComparer.Ordinal);
+
+        foreach (var item in items)
+            item.Sources = byGroup.GetValueOrDefault(item.GroupKey) ?? [];
+    }
+
+    private async Task<AudiobookSearchFacets> LoadFacetsAsync(
+        SearchFilterValues filters,
+        CancellationToken ct)
+    {
+        var parameters = BuildParameters(filters);
         var facetQueries = BuildFacetSql(filters);
+        var sql = string.Join(Environment.NewLine, facetQueries);
+
+        await using var db = new NpgsqlConnection(ConnectionString);
+        await db.OpenAsync(ct);
+        using var result = await db.QueryMultipleAsync(new CommandDefinition(
+            sql,
+            parameters,
+            commandTimeout: 60,
+            cancellationToken: ct));
+
         var facets = new IReadOnlyList<FacetOption>[facetQueries.Count];
         for (var index = 0; index < facetQueries.Count; index++)
-        {
-            var rows = await db.QueryAsync<FacetDbRow>(new CommandDefinition(
-                facetQueries[index],
-                parameters,
-                commandTimeout: 60,
-                cancellationToken: ct));
-            facets[index] = ConvertFacets(rows);
-        }
+            facets[index] = ConvertFacets(await result.ReadAsync<FacetDbRow>());
 
-        return new AudiobookSearchResponse(
-            total,
-            items,
-            new AudiobookSearchFacets(
-                facets[0], facets[1], facets[2], facets[3], facets[4], facets[5], facets[6]));
+        return new AudiobookSearchFacets(
+            facets[0], facets[1], facets[2], facets[3], facets[4], facets[5], facets[6]);
+    }
+
+    internal static string BuildGroupKeyExpression(string alias) =>
+        $"COALESCE(NULLIF({alias}.info_hash, ''), 'release:' || {alias}.id::text)";
+
+    internal static string BuildPeerSumExpression(string alias, string column)
+    {
+        if (column != "seeders" && column != "leechers")
+            throw new ArgumentOutOfRangeException(nameof(column));
+        return $"SUM(COALESCE({alias}.{column}, 0))::bigint";
+    }
+
+    internal static string BuildGroupedOrderBy(string sort) => sort switch
+    {
+        "updatedAt" => "g.grouped_updated_at DESC, g.grouped_seeders DESC, g.grouped_id DESC",
+        "sizeBytes" => "g.grouped_size_bytes DESC NULLS LAST, g.grouped_seeders DESC, g.grouped_id DESC",
+        "title" => "g.grouped_title ASC, g.grouped_seeders DESC, g.grouped_id DESC",
+        _ => "g.grouped_seeders DESC, g.grouped_updated_at DESC, g.grouped_id DESC"
+    };
+
+    private static long? TryParseReleaseGroupId(string groupKey)
+    {
+        const string prefix = "release:";
+        return groupKey.StartsWith(prefix, StringComparison.Ordinal) &&
+               long.TryParse(groupKey[prefix.Length..], out var id)
+            ? id
+            : null;
+    }
+
+    private static string CreateFacetCacheKey(SearchFilterValues filters)
+    {
+        var values = new string?[]
+        {
+            filters.Query,
+            filters.AuthorId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            filters.Author,
+            filters.NarratorId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            filters.Narrator,
+            filters.SeriesId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            filters.Series,
+            filters.Source,
+            filters.AudioFormat,
+            filters.Quality,
+            filters.QualityBitrate?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            filters.Year?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            filters.Magnet
+        };
+        return "search-facets:v2:" + string.Join('\u001f', values.Select(value => value ?? string.Empty));
     }
 
     public async Task<DatabaseStatistics> GetStatisticsAsync(CancellationToken ct)
@@ -689,14 +860,6 @@ public sealed class AudiobookRepository(
         return string.Join(" AND ", clauses.Select(clause => $"({clause.Trim()})"));
     }
 
-    private static string BuildOrderBy(string sort) => sort switch
-    {
-        "updatedAt" => "r.updated_at DESC, r.seeders DESC NULLS LAST, r.id DESC",
-        "sizeBytes" => "r.size_bytes DESC NULLS LAST, r.seeders DESC NULLS LAST, r.id DESC",
-        "title" => "r.normalized_title ASC, r.seeders DESC NULLS LAST, r.id DESC",
-        _ => "r.seeders DESC NULLS LAST, r.updated_at DESC, r.id DESC"
-    };
-
     private static IReadOnlyList<string> BuildFacetSql(SearchFilterValues filters)
     {
         var authorWhere = BuildWhere(filters, "author");
@@ -706,13 +869,14 @@ public sealed class AudiobookRepository(
         var formatWhere = BuildWhere(filters, "format");
         var qualityWhere = BuildWhere(filters, "quality");
         var yearWhere = BuildWhere(filters, "year");
+        var groupKey = BuildGroupKeyExpression("r");
 
         return
         [
             $"""
             SELECT 'p:' || p.id::text AS Value,
               p.display_name AS Label,
-              COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text))::bigint AS Count,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               CASE WHEN @QueryPattern IS NULL THEN FALSE ELSE
                 p.normalized_name LIKE @QueryPattern OR EXISTS (
                   SELECT 1 FROM person_aliases query_alias
@@ -724,14 +888,14 @@ public sealed class AudiobookRepository(
             JOIN people p ON p.id = rp.person_id
             WHERE {authorWhere}
             GROUP BY p.id, p.normalized_name, p.display_name
-            ORDER BY MatchesQuery DESC, COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)) DESC, p.display_name
+            ORDER BY MatchesQuery DESC, Count DESC, p.display_name
             LIMIT 250;
             """,
 
             $"""
             SELECT 'p:' || p.id::text AS Value,
               p.display_name AS Label,
-              COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text))::bigint AS Count,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               CASE WHEN @QueryPattern IS NULL THEN FALSE ELSE
                 p.normalized_name LIKE @QueryPattern OR EXISTS (
                   SELECT 1 FROM person_aliases query_alias
@@ -743,14 +907,14 @@ public sealed class AudiobookRepository(
             JOIN people p ON p.id = rp.person_id
             WHERE {narratorWhere}
             GROUP BY p.id, p.normalized_name, p.display_name
-            ORDER BY MatchesQuery DESC, COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)) DESC, p.display_name
+            ORDER BY MatchesQuery DESC, Count DESC, p.display_name
             LIMIT 250;
             """,
 
             $"""
             SELECT 's:' || catalog.id::text AS Value,
               catalog.display_name AS Label,
-              COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text))::bigint AS Count,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               CASE WHEN @QueryPattern IS NULL THEN FALSE ELSE
                 catalog.normalized_name LIKE @QueryPattern OR EXISTS (
                   SELECT 1 FROM series_aliases query_alias
@@ -762,36 +926,37 @@ public sealed class AudiobookRepository(
             JOIN series_catalog catalog ON catalog.id = relation.series_id
             WHERE {seriesWhere}
             GROUP BY catalog.id, catalog.normalized_name, catalog.display_name
-            ORDER BY MatchesQuery DESC, COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)) DESC, catalog.display_name
+            ORDER BY MatchesQuery DESC, Count DESC, catalog.display_name
             LIMIT 250;
             """,
 
             $"""
             SELECT LOWER(r.source) AS Value,
               MIN(r.source) AS Label,
-              COUNT(*)::bigint AS Count,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               FALSE AS MatchesQuery
             FROM audiobook_releases r
             WHERE {sourceWhere}
             GROUP BY LOWER(r.source)
-            ORDER BY COUNT(*) DESC, MIN(r.source);
+            ORDER BY Count DESC, MIN(r.source);
             """,
 
             $"""
             SELECT LOWER(r.audio_format) AS Value,
               UPPER(MIN(r.audio_format)) AS Label,
-              COUNT(*)::bigint AS Count,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               FALSE AS MatchesQuery
             FROM audiobook_releases r
             WHERE {formatWhere}
               AND r.audio_format IS NOT NULL
               AND BTRIM(r.audio_format) <> ''
             GROUP BY LOWER(r.audio_format)
-            ORDER BY COUNT(*) DESC, UPPER(MIN(r.audio_format));
+            ORDER BY Count DESC, UPPER(MIN(r.audio_format));
             """,
 
             $"""
-            SELECT quality.Value, quality.Label, COUNT(*)::bigint AS Count,
+            SELECT quality.Value, quality.Label,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               FALSE AS MatchesQuery
             FROM audiobook_releases r
             CROSS JOIN LATERAL (
@@ -813,13 +978,14 @@ public sealed class AudiobookRepository(
             WHERE {qualityWhere}
               AND quality.Value IS NOT NULL
             GROUP BY quality.Value, quality.Label
-            ORDER BY CASE WHEN quality.Value = 'lossless' THEN 100000 ELSE SPLIT_PART(quality.Value, ':', 2)::int END DESC;
+            ORDER BY CASE WHEN quality.Value = 'lossless'
+              THEN 100000 ELSE SPLIT_PART(quality.Value, ':', 2)::int END DESC;
             """,
 
             $"""
             SELECT r.release_year::text AS Value,
               r.release_year::text AS Label,
-              COUNT(*)::bigint AS Count,
+              COUNT(DISTINCT {groupKey})::bigint AS Count,
               FALSE AS MatchesQuery
             FROM audiobook_releases r
             WHERE {yearWhere}

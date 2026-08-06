@@ -15,6 +15,7 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestHeadersTotalSize = 32 * 1024;
     options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
 });
+builder.Services.AddMemoryCache();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -242,6 +243,44 @@ app.MapGet("/api/v1/search", async (
     var request = new AudiobookSearchRequest(
         q, author, narrator, series, source, audioFormat, quality, year, magnet, sort, limit == 0 ? 100 : limit);
     return Results.Ok(await repo.SearchFacetedAsync(request, ct));
+});
+
+app.MapGet("/api/v1/search/page", async (
+    string? q,
+    string? author,
+    string? narrator,
+    string? series,
+    string? source,
+    string? audioFormat,
+    string? quality,
+    int? year,
+    string? magnet,
+    string? sort,
+    int limit,
+    AudiobookRepository repo,
+    CancellationToken ct) =>
+{
+    var request = new AudiobookSearchRequest(
+        q, author, narrator, series, source, audioFormat, quality, year, magnet, sort, limit == 0 ? 100 : limit);
+    return Results.Ok(await repo.SearchPageAsync(request, 0, ct));
+});
+
+app.MapGet("/api/v1/search/facets", async (
+    string? q,
+    string? author,
+    string? narrator,
+    string? series,
+    string? source,
+    string? audioFormat,
+    string? quality,
+    int? year,
+    string? magnet,
+    AudiobookRepository repo,
+    CancellationToken ct) =>
+{
+    var request = new AudiobookSearchRequest(
+        q, author, narrator, series, source, audioFormat, quality, year, magnet, null, 1);
+    return Results.Ok(await repo.SearchFacetsAsync(request, ct));
 });
 
 app.MapGet("/api/v1/stats", async (

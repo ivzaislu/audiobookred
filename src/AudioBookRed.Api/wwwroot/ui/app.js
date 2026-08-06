@@ -453,7 +453,34 @@
     if (sort) params.set('sort', sort);
     localStorage.setItem(QUERY_STORAGE, JSON.stringify({ q, limit }));
     localStorage.setItem(SORT_STORAGE, sort);
-    return { apiUrl: `/api/v1/search?${params}`, params };
+    const facetParams = new URLSearchParams(params);
+    facetParams.delete('limit');
+    facetParams.delete('sort');
+    return {
+      pageUrl: `/api/v1/search/page?${params}`,
+      facetUrl: `/api/v1/search/facets?${facetParams}`,
+      params
+    };
+  }
+
+  async function loadFacets(facetUrl, key, sequence) {
+    els.facetHint.textContent = 'Фильтры обновляются отдельно от результатов…';
+
+    try {
+      const response = await fetch(facetUrl, {
+        headers: { 'X-Api-Key': key },
+        cache: 'no-store'
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const facets = await response.json();
+      if (sequence !== requestSequence) return;
+      updateFilterOptions(facets);
+      els.facetHint.textContent = 'Фильтры рассчитаны по уникальным infohash и кешируются на 45 секунд.';
+    } catch {
+      if (sequence !== requestSequence) return;
+      els.facetHint.textContent = 'Результаты загружены, но фильтры временно не удалось обновить.';
+    }
   }
 
   function updateBrowserUrl(params) {
@@ -491,7 +518,7 @@
     }
 
     const sequence = ++requestSequence;
-    lastRequest = request.apiUrl;
+    lastRequest = request.pageUrl;
     hasSearched = true;
     setVisible(els.welcome, false);
     setVisible(els.summaryRow, true);
@@ -502,7 +529,7 @@
     setControlsDisabled(true);
 
     try {
-      const response = await fetch(request.apiUrl, {
+      const response = await fetch(request.pageUrl, {
         headers: { 'X-Api-Key': key },
         cache: 'no-store'
       });
@@ -529,12 +556,12 @@
       total = data.total;
       setApiStatus('ok', 'API доступен');
       void loadDatabaseStats();
-      updateFilterOptions(data.facets);
       setVisible(els.filterArea, true);
       setVisible(els.facetHint, true);
       setVisible(els.sortBar, true);
       renderRows();
       updateBrowserUrl(request.params);
+      void loadFacets(request.facetUrl, key, sequence);
     } catch (error) {
       if (sequence !== requestSequence) return;
       rows = [];

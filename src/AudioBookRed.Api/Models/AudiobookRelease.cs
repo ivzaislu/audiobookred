@@ -43,12 +43,18 @@ public sealed class AudiobookRelease
 
     [JsonIgnore]
     public string GroupKey { get; set; } = "";
+
+    [JsonIgnore]
+    public long TotalCount { get; set; }
 }
 
 public sealed class AudiobookSourceVariant
 {
     [JsonIgnore]
     public string GroupKey { get; set; } = "";
+
+    [JsonIgnore]
+    public long TotalCount { get; set; }
     public string Source { get; set; } = "";
     public string SourceId { get; set; } = "";
     public string? SourceUrl { get; set; }

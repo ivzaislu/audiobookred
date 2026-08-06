@@ -14,7 +14,8 @@ public sealed class DatabaseMigrationRunner(
         "audiobook-normalized-series-v1",
         "audiobook-magnet-required-v1",
         "audiobook-infohash-dedup-v1",
-        "audiobook-core-indexes-v1"
+        "audiobook-core-indexes-v1",
+        "audiobook-infohash-search-index-v2"
     ];
 
     private const long AdvisoryLockKey = 4_172_020_001L;
@@ -117,7 +118,11 @@ public sealed class DatabaseMigrationRunner(
         new(
             RequiredMigrationKeys[4],
             (transaction, token) => HasRequiredIndexesAsync(db, transaction, token),
-            (transaction, token) => RebuildRequiredIndexesAsync(db, transaction, token))
+            (transaction, token) => RebuildRequiredIndexesAsync(db, transaction, token)),
+        new(
+            RequiredMigrationKeys[5],
+            (transaction, token) => HasFastInfoHashSearchIndexAsync(db, transaction, token),
+            (transaction, token) => CreateFastInfoHashSearchIndexAsync(db, transaction, token))
     ];
 
     private async Task<MigrationOutcome> RunOneAsync(
@@ -460,6 +465,63 @@ public sealed class DatabaseMigrationRunner(
             commandTimeout: CommandTimeoutSeconds,
             cancellationToken: ct));
     }
+
+
+    private Task<bool> HasFastInfoHashSearchIndexAsync(
+        NpgsqlConnection db,
+        NpgsqlTransaction? transaction,
+        CancellationToken ct = default) =>
+        db.ExecuteScalarAsync<bool>(new CommandDefinition(
+            """
+            SELECT
+              NOT EXISTS(
+                SELECT 1
+                FROM audiobook_releases
+                WHERE info_hash IS NOT NULL
+                  AND info_hash <> LOWER(BTRIM(info_hash)))
+              AND EXISTS(
+                SELECT 1
+                FROM pg_class index_row
+                JOIN pg_index index_state ON index_state.indexrelid = index_row.oid
+                JOIN pg_class table_row ON table_row.oid = index_state.indrelid
+                JOIN pg_namespace schema_row ON schema_row.oid = table_row.relnamespace
+                WHERE schema_row.nspname = 'public'
+                  AND table_row.relname = 'audiobook_releases'
+                  AND index_row.relname = 'ix_audiobook_info_hash_search_v2'
+                  AND index_state.indisvalid
+                  AND index_state.indisready
+              );
+            """,
+            transaction: transaction,
+            commandTimeout: CommandTimeoutSeconds,
+            cancellationToken: ct));
+
+    private Task CreateFastInfoHashSearchIndexAsync(
+        NpgsqlConnection db,
+        NpgsqlTransaction transaction,
+        CancellationToken ct = default) =>
+        db.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE audiobook_releases
+            SET info_hash = LOWER(BTRIM(info_hash))
+            WHERE info_hash IS NOT NULL
+              AND info_hash <> LOWER(BTRIM(info_hash));
+
+            DROP INDEX IF EXISTS ix_audiobook_info_hash_search_v2;
+            CREATE INDEX ix_audiobook_info_hash_search_v2
+              ON audiobook_releases(
+                info_hash,
+                metadata_parser_version DESC,
+                updated_at DESC,
+                id DESC)
+              INCLUDE (seeders, leechers, size_bytes)
+              WHERE info_hash IS NOT NULL AND info_hash <> '';
+
+            ANALYZE audiobook_releases (info_hash, seeders, leechers, updated_at);
+            """,
+            transaction: transaction,
+            commandTimeout: CommandTimeoutSeconds,
+            cancellationToken: ct));
 
     private static string[] RequiredIndexNames { get; } =
     [

@@ -30,6 +30,8 @@ curl -fsS http://127.0.0.1:9117/health/ready
 
 ```text
 GET  /api/v1/search
+GET  /api/v1/search/page
+GET  /api/v1/search/facets
 GET  /api/v1/releases
 POST /api/v1/releases
 POST /api/v1/parse-title
@@ -49,6 +51,12 @@ curl -fsS -G \
   http://127.0.0.1:9117/api/v1/search \
   | python3 -m json.tool
 ```
+
+`/api/v1/search` сохраняет совместимый полный ответ с карточками и facets.
+Браузерный интерфейс использует быстрый `/api/v1/search/page` для карточек и
+загружает `/api/v1/search/facets` отдельно. Facets кешируются на 45 секунд.
+Одинаковые раздачи группируются по нормализованному `infoHash`; сиды и личи
+складываются по источникам, а `sources` сохраняет значения каждого сайта.
 
 Основные параметры поиска:
 
