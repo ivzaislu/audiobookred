@@ -15,7 +15,8 @@ public sealed class DatabaseMigrationRunner(
         "audiobook-magnet-required-v1",
         "audiobook-infohash-dedup-v1",
         "audiobook-core-indexes-v1",
-        "audiobook-infohash-search-index-v2"
+        "audiobook-infohash-search-index-v2",
+        "audiobook-fast-candidate-index-v3"
     ];
 
     private const long AdvisoryLockKey = 4_172_020_001L;
@@ -122,7 +123,11 @@ public sealed class DatabaseMigrationRunner(
         new(
             RequiredMigrationKeys[5],
             (transaction, token) => HasFastInfoHashSearchIndexAsync(db, transaction, token),
-            (transaction, token) => CreateFastInfoHashSearchIndexAsync(db, transaction, token))
+            (transaction, token) => CreateFastInfoHashSearchIndexAsync(db, transaction, token)),
+        new(
+            RequiredMigrationKeys[6],
+            (transaction, token) => HasFastCandidateIndexAsync(db, transaction, token),
+            (transaction, token) => CreateFastCandidateIndexAsync(db, transaction, token))
     ];
 
     private async Task<MigrationOutcome> RunOneAsync(
@@ -518,6 +523,50 @@ public sealed class DatabaseMigrationRunner(
               WHERE info_hash IS NOT NULL AND info_hash <> '';
 
             ANALYZE audiobook_releases (info_hash, seeders, leechers, updated_at);
+            """,
+            transaction: transaction,
+            commandTimeout: CommandTimeoutSeconds,
+            cancellationToken: ct));
+
+    private Task<bool> HasFastCandidateIndexAsync(
+        NpgsqlConnection db,
+        NpgsqlTransaction? transaction,
+        CancellationToken ct = default) =>
+        db.ExecuteScalarAsync<bool>(new CommandDefinition(
+            """
+            SELECT EXISTS(
+              SELECT 1
+              FROM pg_class index_row
+              JOIN pg_index index_state ON index_state.indexrelid = index_row.oid
+              JOIN pg_class table_row ON table_row.oid = index_state.indrelid
+              JOIN pg_namespace schema_row ON schema_row.oid = table_row.relnamespace
+              WHERE schema_row.nspname = 'public'
+                AND table_row.relname = 'audiobook_releases'
+                AND index_row.relname = 'ix_audiobook_seeders_candidates_v3'
+                AND index_state.indisvalid
+                AND index_state.indisready
+            );
+            """,
+            transaction: transaction,
+            commandTimeout: CommandTimeoutSeconds,
+            cancellationToken: ct));
+
+    private Task CreateFastCandidateIndexAsync(
+        NpgsqlConnection db,
+        NpgsqlTransaction transaction,
+        CancellationToken ct = default) =>
+        db.ExecuteAsync(new CommandDefinition(
+            """
+            DROP INDEX IF EXISTS ix_audiobook_seeders_candidates_v3;
+            CREATE INDEX ix_audiobook_seeders_candidates_v3
+              ON audiobook_releases(
+                seeders DESC NULLS LAST,
+                updated_at DESC,
+                id DESC)
+              WHERE magnet_uri IS NOT NULL
+                AND BTRIM(magnet_uri) <> '';
+
+            ANALYZE audiobook_releases (seeders, updated_at);
             """,
             transaction: transaction,
             commandTimeout: CommandTimeoutSeconds,

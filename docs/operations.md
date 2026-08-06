@@ -193,6 +193,7 @@ audiobook-magnet-required-v1
 audiobook-infohash-dedup-v1
 audiobook-core-indexes-v1
 audiobook-infohash-search-index-v2
+audiobook-fast-candidate-index-v3
 ```
 
 Проверка после обновления:
@@ -201,6 +202,17 @@ audiobook-infohash-search-index-v2
 bash doctor.sh --full
 docker compose --env-file .env logs --since=10m api | grep 'Database migration'
 ```
+
+Для версии 0.24.4 горячий поиск пишет строку `Fast search page completed` с
+числом source-кандидатов, уникальных групп и временем выполнения. Проверка:
+
+```bash
+docker compose --env-file .env logs --since=10m api | grep 'Fast search page completed'
+```
+
+Миграция `audiobook-fast-candidate-index-v3` создаёт частичный индекс
+`ix_audiobook_seeders_candidates_v3`. Индекс `ix_audiobook_info_hash_search_v2`
+остаётся основным путём загрузки вариантов уже выбранных infohash.
 
 ## Первый запуск Rutor
 

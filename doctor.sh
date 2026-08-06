@@ -46,6 +46,7 @@ SQL
     audiobook-infohash-dedup-v1
     audiobook-core-indexes-v1
     audiobook-infohash-search-index-v2
+    audiobook-fast-candidate-index-v3
   )
   missing=0
   for key in "${required[@]}"; do
@@ -110,7 +111,8 @@ WHERE schema_row.nspname = 'public'
     'ix_audiobook_year',
     'ix_audiobook_bitrate',
     'ix_audiobook_updated',
-    'ix_audiobook_info_hash_search_v2'
+    'ix_audiobook_info_hash_search_v2',
+    'ix_audiobook_seeders_candidates_v3'
   ])
   AND index_state.indisvalid
   AND index_state.indisready;
@@ -120,9 +122,9 @@ SQL
     return
   }
 
-  [[ "$index_count" == "11" ]] \
+  [[ "$index_count" == "12" ]] \
     && ok "основные индексы audiobook_releases валидны" \
-    || err "валидных основных индексов audiobook_releases: ${index_count:-unknown}/11"
+    || err "валидных основных индексов audiobook_releases: ${index_count:-unknown}/12"
 }
 
 printf 'AudioBookRed doctor\n'

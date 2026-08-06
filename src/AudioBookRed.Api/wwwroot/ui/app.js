@@ -49,6 +49,7 @@
 
   let rows = [];
   let total = 0;
+  let hasMore = false;
   let lastRequest = null;
   let hasSearched = false;
   let requestSequence = 0;
@@ -203,6 +204,7 @@
   function showWelcome() {
     rows = [];
     total = 0;
+    hasMore = false;
     lastRequest = null;
     hasSearched = false;
     els.results.replaceChildren();
@@ -345,8 +347,8 @@
     els.results.append(fragment);
 
     setVisible(els.noresults, hasSearched && total === 0);
-    els.summary.textContent = total > rows.length
-      ? `Показано ${formatCount(rows.length)} из ${formatCount(total)}`
+    els.summary.textContent = hasMore
+      ? `Показано ${formatCount(rows.length)} результатов · есть ещё`
       : `Найдено записей: ${formatCount(total)}`;
   }
 
@@ -476,7 +478,7 @@
       const facets = await response.json();
       if (sequence !== requestSequence) return;
       updateFilterOptions(facets);
-      els.facetHint.textContent = 'Фильтры рассчитаны по уникальным infohash и кешируются на 45 секунд.';
+      els.facetHint.textContent = 'Фильтры рассчитаны по уникальным infohash и кешируются на 5 минут.';
     } catch {
       if (sequence !== requestSequence) return;
       els.facetHint.textContent = 'Результаты загружены, но фильтры временно не удалось обновить.';
@@ -508,6 +510,7 @@
     if (!key) {
       rows = [];
       total = 0;
+      hasMore = false;
       setVisible(els.welcome, false);
       setVisible(els.loading, false);
       setVisible(els.error, true);
@@ -554,6 +557,7 @@
 
       rows = data.items;
       total = data.total;
+      hasMore = data.hasMore === true;
       setApiStatus('ok', 'API доступен');
       void loadDatabaseStats();
       setVisible(els.filterArea, true);
@@ -566,6 +570,7 @@
       if (sequence !== requestSequence) return;
       rows = [];
       total = 0;
+      hasMore = false;
       setApiStatus('bad', 'ошибка API');
       setVisible(els.error, true);
       els.error.textContent = error instanceof Error ? error.message : String(error);

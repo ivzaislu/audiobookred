@@ -31,4 +31,5 @@ public sealed record AudiobookSearchFacets(
 public sealed record AudiobookSearchResponse(
     long Total,
     IReadOnlyList<AudiobookRelease> Items,
-    AudiobookSearchFacets Facets);
+    AudiobookSearchFacets Facets,
+    bool HasMore = false);

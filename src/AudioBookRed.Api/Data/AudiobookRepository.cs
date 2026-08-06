@@ -1,3 +1,4 @@
+using System.Text;
 using AudioBookRed.Api.Models;
 using AudioBookRed.Api.Services;
 using Dapper;
@@ -18,7 +19,49 @@ public sealed class AudiobookRepository(
 {
     private const string AuthorRole = "author";
     private const string NarratorRole = "narrator";
-    private static readonly TimeSpan FacetCacheDuration = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan FacetCacheDuration = TimeSpan.FromMinutes(5);
+    private const int CandidateMultiplier = 4;
+    private const int MinimumCandidateLimit = 100;
+    private const int MaximumCandidateLimit = 2_000;
+
+    private const string SearchReleaseProjection = """
+      r.id AS Id,
+      r.title AS Title,
+      r.normalized_title AS NormalizedTitle,
+      r.author AS Author,
+      r.normalized_author AS NormalizedAuthor,
+      r.series AS Series,
+      r.series_position AS SeriesPosition,
+      r.narrators AS Narrators,
+      r.language AS Language,
+      r.release_year AS ReleaseYear,
+      r.duration_seconds AS DurationSeconds,
+      r.audio_format AS AudioFormat,
+      r.bitrate_kbps AS BitrateKbps,
+      r.genres AS Genres,
+      r.publisher AS Publisher,
+      r.sample_rate_hz AS SampleRateHz,
+      r.audio_channels AS AudioChannels,
+      r.bitrate_mode AS BitrateMode,
+      r.edition_type AS EditionType,
+      r.edition_category AS EditionCategory,
+      r.music AS Music,
+      r.metadata_parser_version AS MetadataParserVersion,
+      r.metadata_parsed_at AS MetadataParsedAt,
+      r.is_abridged AS IsAbridged,
+      r.is_dramatized AS IsDramatized,
+      r.source AS Source,
+      r.source_id AS SourceId,
+      r.source_url AS SourceUrl,
+      r.info_hash AS InfoHash,
+      r.magnet_uri AS MagnetUri,
+      r.size_bytes AS SizeBytes,
+      r.seeders AS Seeders,
+      r.leechers AS Leechers,
+      r.discovered_at AS DiscoveredAt,
+      r.updated_at AS UpdatedAt,
+      COALESCE(NULLIF(r.info_hash, ''), 'release:' || r.id::text) AS GroupKey
+    """;
 
     private string ConnectionString => configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is missing");
@@ -380,12 +423,14 @@ public sealed class AudiobookRepository(
         AudiobookSearchRequest request,
         CancellationToken ct)
     {
-        var pageTask = SearchPageCoreAsync(request, 0, ct);
-        var facetsTask = SearchFacetsAsync(request, ct);
-        await Task.WhenAll(pageTask, facetsTask);
+        var page = await SearchPageCoreAsync(request, 0, ct);
+        var filters = BuildFilters(request);
+        var cacheKey = CreateFacetCacheKey(filters);
+        var facets = memoryCache.TryGetValue<AudiobookSearchFacets>(cacheKey, out var cached)
+            ? cached ?? EmptyFacets()
+            : EmptyFacets();
 
-        var page = await pageTask;
-        return new AudiobookSearchResponse(page.Total, page.Items, await facetsTask);
+        return new AudiobookSearchResponse(page.Total, page.Items, facets, page.HasMore);
     }
 
     public Task<AudiobookSearchResponse> SearchPageAsync(
@@ -413,193 +458,307 @@ public sealed class AudiobookRepository(
         int offset,
         CancellationToken ct)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var filters = BuildFilters(request);
         var parameters = BuildParameters(filters, offset);
         var allWhere = BuildWhere(filters, excludeFacet: null);
-        var groupedOrderBy = BuildGroupedOrderBy(filters.Sort);
-        var groupedSeeders = BuildPeerSumExpression("peer", "seeders");
-        var groupedLeechers = BuildPeerSumExpression("peer", "leechers");
+        var candidateLimit = CalculateCandidateLimit(filters.Limit, offset);
+        parameters.Add("CandidateLimit", candidateLimit);
 
-        var sql = $"""
-        WITH filtered AS MATERIALIZED (
-          SELECT r.id, NULLIF(r.info_hash, '') AS info_hash
-          FROM audiobook_releases r
-          WHERE {allWhere}
-        ), hash_groups AS (
-          SELECT matched.info_hash,
-            NULL::bigint AS release_id,
-            matched.info_hash AS group_key,
-            {groupedSeeders} AS grouped_seeders,
-            {groupedLeechers} AS grouped_leechers,
-            MAX(peer.updated_at) AS grouped_updated_at,
-            MAX(peer.size_bytes) AS grouped_size_bytes,
-            MIN(peer.normalized_title) AS grouped_title,
-            MAX(peer.id) AS grouped_id
-          FROM (
-            SELECT DISTINCT info_hash
-            FROM filtered
-            WHERE info_hash IS NOT NULL
-          ) matched
-          JOIN audiobook_releases peer ON peer.info_hash = matched.info_hash
-          GROUP BY matched.info_hash
-        ), release_groups AS (
-          SELECT NULL::text AS info_hash,
-            peer.id AS release_id,
-            'release:' || peer.id::text AS group_key,
-            COALESCE(peer.seeders, 0)::bigint AS grouped_seeders,
-            COALESCE(peer.leechers, 0)::bigint AS grouped_leechers,
-            peer.updated_at AS grouped_updated_at,
-            peer.size_bytes AS grouped_size_bytes,
-            peer.normalized_title AS grouped_title,
-            peer.id AS grouped_id
-          FROM filtered matched
-          JOIN audiobook_releases peer ON peer.id = matched.id
-          WHERE matched.info_hash IS NULL
-        ), grouped AS (
-          SELECT * FROM hash_groups
-          UNION ALL
-          SELECT * FROM release_groups
-        ), page AS (
-          SELECT g.*,
-            COUNT(*) OVER () AS total_count,
-            ROW_NUMBER() OVER (ORDER BY {groupedOrderBy}) AS page_order
-          FROM grouped g
-          ORDER BY {groupedOrderBy}
-          LIMIT @Limit
-          OFFSET @Offset
-        )
-        SELECT r.id, r.title, r.normalized_title AS NormalizedTitle,
-          r.author, r.normalized_author AS NormalizedAuthor,
-          r.series, r.series_position AS SeriesPosition, r.narrators, r.language,
-          r.release_year AS ReleaseYear, r.duration_seconds AS DurationSeconds,
-          r.audio_format AS AudioFormat, r.bitrate_kbps AS BitrateKbps,
-          r.genres, r.publisher, r.sample_rate_hz AS SampleRateHz,
-          r.audio_channels AS AudioChannels, r.bitrate_mode AS BitrateMode,
-          r.edition_type AS EditionType, r.edition_category AS EditionCategory,
-          r.music, r.metadata_parser_version AS MetadataParserVersion,
-          r.metadata_parsed_at AS MetadataParsedAt,
-          r.is_abridged AS IsAbridged, r.is_dramatized AS IsDramatized,
-          r.source, r.source_id AS SourceId, r.source_url AS SourceUrl,
-          r.info_hash AS InfoHash, r.magnet_uri AS MagnetUri,
-          r.size_bytes AS SizeBytes,
-          LEAST(p.grouped_seeders, 2147483647)::int AS Seeders,
-          LEAST(p.grouped_leechers, 2147483647)::int AS Leechers,
-          r.discovered_at AS DiscoveredAt,
-          p.grouped_updated_at AS UpdatedAt,
-          p.group_key AS GroupKey,
-          p.total_count AS TotalCount
-        FROM page p
-        JOIN LATERAL (
-          SELECT candidate.*
-          FROM audiobook_releases candidate
-          WHERE (p.info_hash IS NOT NULL AND candidate.info_hash = p.info_hash)
-             OR (p.release_id IS NOT NULL AND candidate.id = p.release_id)
-          ORDER BY candidate.metadata_parser_version DESC,
-            ((candidate.series IS NOT NULL)::int +
-             (candidate.series_position IS NOT NULL)::int +
-             (cardinality(candidate.narrators) > 0)::int +
-             (candidate.duration_seconds IS NOT NULL)::int +
-             (candidate.bitrate_kbps IS NOT NULL)::int +
-             (candidate.publisher IS NOT NULL)::int) DESC,
-            candidate.updated_at DESC,
-            candidate.id DESC
-          LIMIT 1
-        ) r ON TRUE
-        ORDER BY p.page_order;
+        var candidateSql = $"""
+        SELECT r.id AS Id, NULLIF(r.info_hash, '') AS InfoHash
+        FROM audiobook_releases r
+        WHERE {allWhere}
+        ORDER BY {BuildCandidateOrderBy(filters.Sort)}
+        LIMIT @CandidateLimit;
         """;
 
         await using var db = new NpgsqlConnection(ConnectionString);
         await db.OpenAsync(ct);
 
-        var items = (await db.QueryAsync<AudiobookRelease>(new CommandDefinition(
-            sql,
+        var candidates = (await db.QueryAsync<SearchCandidateRow>(new CommandDefinition(
+            candidateSql,
             parameters,
-            commandTimeout: 60,
+            commandTimeout: 30,
             cancellationToken: ct))).AsList();
 
-        var total = items.Count > 0
-            ? items[0].TotalCount
-            : offset > 0
-                ? await CountGroupedResultsAsync(db, allWhere, parameters, ct)
-                : 0;
+        if (candidates.Count == 0)
+        {
+            logger.LogInformation(
+                "Fast search page completed: candidates=0, groups=0, items=0, durationMs={DurationMs}",
+                stopwatch.ElapsedMilliseconds);
+            return new AudiobookSearchResponse(0, [], EmptyFacets(), false);
+        }
 
-        await PopulateSourceVariantsAsync(db, items, ct);
-        return new AudiobookSearchResponse(total, items, EmptyFacets());
-    }
-
-    private async Task<long> CountGroupedResultsAsync(
-        NpgsqlConnection db,
-        string allWhere,
-        DynamicParameters parameters,
-        CancellationToken ct)
-    {
-        var groupKey = BuildGroupKeyExpression("r");
-        var sql = $"""
-        SELECT COUNT(*)::bigint
-        FROM (
-          SELECT {groupKey}
-          FROM audiobook_releases r
-          WHERE {allWhere}
-          GROUP BY {groupKey}
-        ) grouped;
-        """;
-
-        return await db.ExecuteScalarAsync<long>(new CommandDefinition(
-            sql,
-            parameters,
-            commandTimeout: 60,
-            cancellationToken: ct));
-    }
-
-    private static async Task PopulateSourceVariantsAsync(
-        NpgsqlConnection db,
-        IReadOnlyList<AudiobookRelease> items,
-        CancellationToken ct)
-    {
-        if (items.Count == 0) return;
-
-        var infoHashes = items
-            .Select(item => item.InfoHash)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value!)
+        var candidateKeys = candidates
+            .Select(candidate => BuildCandidateGroupKey(candidate.Id, candidate.InfoHash))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var releaseIds = items
-            .Select(item => TryParseReleaseGroupId(item.GroupKey))
-            .Where(value => value is not null)
-            .Select(value => value!.Value)
-            .Distinct()
+
+        var releases = await LoadCandidateGroupsAsync(db, candidateKeys, ct);
+        var merged = releases
+            .GroupBy(
+                release => BuildCandidateGroupKey(release.Id, release.InfoHash),
+                StringComparer.Ordinal)
+            .Select(group => MergeReleaseGroup(group.ToArray()))
             .ToArray();
 
-        var variants = await db.QueryAsync<AudiobookSourceVariant>(new CommandDefinition(
-            """
-            SELECT COALESCE(NULLIF(info_hash, ''), 'release:' || id::text) AS GroupKey,
-              source AS Source, source_id AS SourceId, source_url AS SourceUrl,
-              magnet_uri AS MagnetUri, seeders AS Seeders, leechers AS Leechers,
-              updated_at AS UpdatedAt
-            FROM audiobook_releases
-            WHERE (CARDINALITY(CAST(@InfoHashes AS text[])) > 0
-                   AND info_hash = ANY(CAST(@InfoHashes AS text[])))
-               OR (CARDINALITY(CAST(@ReleaseIds AS bigint[])) > 0
-                   AND id = ANY(CAST(@ReleaseIds AS bigint[])))
-            ORDER BY source, updated_at DESC;
-            """,
+        var ordered = SortMergedCandidates(merged, filters.Sort);
+        var safeOffset = Math.Clamp(offset, 0, 1_000_000);
+        var pageItems = ordered
+            .Skip(safeOffset)
+            .Take(filters.Limit)
+            .ToArray();
+
+        var hasMore = candidates.Count >= candidateLimit ||
+                      ordered.Count > safeOffset + filters.Limit;
+        var total = hasMore
+            ? Math.Max(ordered.Count, safeOffset + pageItems.Length)
+            : ordered.Count;
+
+        stopwatch.Stop();
+        logger.LogInformation(
+            "Fast search page completed: candidates={Candidates}, groups={Groups}, items={Items}, hasMore={HasMore}, durationMs={DurationMs}",
+            candidates.Count,
+            ordered.Count,
+            pageItems.Length,
+            hasMore,
+            stopwatch.ElapsedMilliseconds);
+
+        return new AudiobookSearchResponse(total, pageItems, EmptyFacets(), hasMore);
+    }
+
+    private static async Task<IReadOnlyList<AudiobookRelease>> LoadCandidateGroupsAsync(
+        NpgsqlConnection db,
+        IReadOnlyCollection<string> candidateKeys,
+        CancellationToken ct)
+    {
+        var infoHashes = candidateKeys
+            .Where(key => !key.StartsWith("release:", StringComparison.Ordinal))
+            .ToArray();
+        var releaseIds = candidateKeys
+            .Select(TryParseReleaseGroupId)
+            .Where(value => value is not null)
+            .Select(value => value!.Value)
+            .ToArray();
+
+        var sql = $"""
+        SELECT {SearchReleaseProjection}
+        FROM audiobook_releases r
+        WHERE r.info_hash = ANY(CAST(@InfoHashes AS text[]))
+
+        UNION ALL
+
+        SELECT {SearchReleaseProjection}
+        FROM audiobook_releases r
+        WHERE r.id = ANY(CAST(@ReleaseIds AS bigint[]));
+        """;
+
+        return (await db.QueryAsync<AudiobookRelease>(new CommandDefinition(
+            sql,
             new { InfoHashes = infoHashes, ReleaseIds = releaseIds },
-            commandTimeout: 60,
-            cancellationToken: ct));
+            commandTimeout: 30,
+            cancellationToken: ct))).AsList();
+    }
 
-        var byGroup = variants
-            .GroupBy(value => value.GroupKey, StringComparer.Ordinal)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<AudiobookSourceVariant>)group
-                    .GroupBy(value => value.Source, StringComparer.OrdinalIgnoreCase)
-                    .Select(sourceGroup => sourceGroup.First())
-                    .ToArray(),
-                StringComparer.Ordinal);
+    internal static int CalculateCandidateLimit(int requestedLimit, int offset)
+    {
+        var requested = Math.Clamp(requestedLimit, 1, 250);
+        var safeOffset = Math.Clamp(offset, 0, 1_000_000);
+        var desired = ((long)safeOffset + requested) * CandidateMultiplier;
+        return (int)Math.Clamp(desired, MinimumCandidateLimit, MaximumCandidateLimit);
+    }
 
-        foreach (var item in items)
-            item.Sources = byGroup.GetValueOrDefault(item.GroupKey) ?? [];
+    internal static string BuildCandidateGroupKey(long id, string? infoHash)
+    {
+        var normalized = infoHash?.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? $"release:{id}"
+            : normalized;
+    }
+
+    internal static string BuildCandidateOrderBy(string sort) => sort switch
+    {
+        "updatedAt" => "r.updated_at DESC, r.seeders DESC NULLS LAST, r.id DESC",
+        "sizeBytes" => "r.size_bytes DESC NULLS LAST, r.seeders DESC NULLS LAST, r.id DESC",
+        "title" => "r.normalized_title ASC, r.seeders DESC NULLS LAST, r.id DESC",
+        _ => "r.seeders DESC NULLS LAST, r.updated_at DESC, r.id DESC"
+    };
+
+    internal static IReadOnlyList<AudiobookRelease> SortMergedCandidates(
+        IEnumerable<AudiobookRelease> releases,
+        string sort)
+    {
+        var values = releases.ToArray();
+        IEnumerable<AudiobookRelease> ordered = sort switch
+        {
+            "updatedAt" => values
+                .OrderByDescending(release => release.UpdatedAt)
+                .ThenByDescending(release => release.Seeders ?? 0)
+                .ThenByDescending(release => release.Id),
+            "sizeBytes" => values
+                .OrderByDescending(release => release.SizeBytes ?? -1)
+                .ThenByDescending(release => release.Seeders ?? 0)
+                .ThenByDescending(release => release.Id),
+            "title" => values
+                .OrderBy(release => string.IsNullOrWhiteSpace(release.NormalizedTitle)
+                    ? release.Title
+                    : release.NormalizedTitle, StringComparer.Ordinal)
+                .ThenByDescending(release => release.Seeders ?? 0)
+                .ThenByDescending(release => release.Id),
+            _ => values
+                .OrderByDescending(release => release.Seeders ?? 0)
+                .ThenByDescending(release => release.UpdatedAt)
+                .ThenByDescending(release => release.Id)
+        };
+
+        return ordered.ToArray();
+    }
+
+    internal static AudiobookRelease MergeReleaseGroup(
+        IReadOnlyCollection<AudiobookRelease> releases)
+    {
+        if (releases.Count == 0)
+            throw new ArgumentException("At least one release is required.", nameof(releases));
+
+        var representative = releases
+            .OrderByDescending(release => release.MetadataParserVersion)
+            .ThenByDescending(MetadataCompletenessScore)
+            .ThenByDescending(release => release.UpdatedAt)
+            .ThenByDescending(release => release.Id)
+            .First();
+
+        var sourceRows = releases
+            .GroupBy(release => release.Source, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(release => release.UpdatedAt)
+                .ThenByDescending(release => release.Id)
+                .First())
+            .OrderBy(release => release.Source, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var groupKey = BuildCandidateGroupKey(representative.Id, representative.InfoHash);
+        var sourceVariants = sourceRows
+            .Select(release => new AudiobookSourceVariant
+            {
+                GroupKey = groupKey,
+                Source = release.Source,
+                SourceId = release.SourceId,
+                SourceUrl = release.SourceUrl,
+                MagnetUri = release.MagnetUri,
+                Seeders = release.Seeders,
+                Leechers = release.Leechers,
+                UpdatedAt = release.UpdatedAt
+            })
+            .ToArray();
+
+        representative.GroupKey = groupKey;
+        representative.InfoHash = groupKey.StartsWith("release:", StringComparison.Ordinal)
+            ? null
+            : groupKey;
+        representative.Seeders = ClampPeerTotal(
+            sourceRows.Sum(release => (long)Math.Max(release.Seeders ?? 0, 0)));
+        representative.Leechers = ClampPeerTotal(
+            sourceRows.Sum(release => (long)Math.Max(release.Leechers ?? 0, 0)));
+        representative.UpdatedAt = releases.Max(release => release.UpdatedAt);
+
+        var knownSizes = releases
+            .Where(release => release.SizeBytes is > 0)
+            .Select(release => release.SizeBytes!.Value)
+            .ToArray();
+        if (knownSizes.Length > 0)
+            representative.SizeBytes = knownSizes.Max();
+
+        representative.Sources = sourceVariants;
+
+        if (representative.InfoHash is not null)
+        {
+            representative.MagnetUri = MergeMagnetUris(
+                representative.InfoHash,
+                sourceRows.Select(release => release.MagnetUri));
+        }
+
+        return representative;
+    }
+
+    internal static string? MergeMagnetUris(
+        string? infoHash,
+        IEnumerable<string?> magnetUris)
+    {
+        var normalizedHash = infoHash?.Trim().ToLowerInvariant();
+        var magnets = magnetUris
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToArray();
+
+        if (string.IsNullOrWhiteSpace(normalizedHash))
+            return magnets.FirstOrDefault();
+        if (magnets.Length == 0)
+            return $"magnet:?xt=urn:btih:{normalizedHash}";
+
+        var parameters = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var magnet in magnets)
+        {
+            var question = magnet.IndexOf('?');
+            if (question < 0 || question == magnet.Length - 1)
+                continue;
+
+            foreach (var segment in magnet[(question + 1)..]
+                         .Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var equals = segment.IndexOf('=');
+                var encodedKey = equals >= 0 ? segment[..equals] : segment;
+                var encodedValue = equals >= 0 ? segment[(equals + 1)..] : string.Empty;
+                var key = SafeDecode(encodedKey).Trim().ToLowerInvariant();
+                if (key.Length == 0 || key == "xt")
+                    continue;
+
+                var decodedValue = SafeDecode(encodedValue);
+                var dedupeKey = key is "dn" or "xl"
+                    ? key
+                    : $"{key}\u001f{decodedValue}";
+                if (seen.Add(dedupeKey))
+                    parameters.Add(segment);
+            }
+        }
+
+        var builder = new StringBuilder($"magnet:?xt=urn:btih:{normalizedHash}");
+        foreach (var parameter in parameters)
+            builder.Append('&').Append(parameter);
+        return builder.ToString();
+    }
+
+    private static int MetadataCompletenessScore(AudiobookRelease release) =>
+        (release.Series is not null ? 1 : 0) +
+        (release.SeriesPosition is not null ? 1 : 0) +
+        (release.Narrators.Length > 0 ? 1 : 0) +
+        (release.DurationSeconds is not null ? 1 : 0) +
+        (release.BitrateKbps is not null ? 1 : 0) +
+        (release.Publisher is not null ? 1 : 0);
+
+    private static int ClampPeerTotal(long value) =>
+        (int)Math.Clamp(value, 0, int.MaxValue);
+
+    private static string SafeDecode(string value)
+    {
+        try
+        {
+            return Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal));
+        }
+        catch (UriFormatException)
+        {
+            return value;
+        }
+    }
+
+    private static long? TryParseReleaseGroupId(string groupKey)
+    {
+        const string prefix = "release:";
+        return groupKey.StartsWith(prefix, StringComparison.Ordinal) &&
+               long.TryParse(groupKey[prefix.Length..], out var id)
+            ? id
+            : null;
     }
 
     private async Task<AudiobookSearchFacets> LoadFacetsAsync(
@@ -629,30 +788,6 @@ public sealed class AudiobookRepository(
     internal static string BuildGroupKeyExpression(string alias) =>
         $"COALESCE(NULLIF({alias}.info_hash, ''), 'release:' || {alias}.id::text)";
 
-    internal static string BuildPeerSumExpression(string alias, string column)
-    {
-        if (column != "seeders" && column != "leechers")
-            throw new ArgumentOutOfRangeException(nameof(column));
-        return $"SUM(COALESCE({alias}.{column}, 0))::bigint";
-    }
-
-    internal static string BuildGroupedOrderBy(string sort) => sort switch
-    {
-        "updatedAt" => "g.grouped_updated_at DESC, g.grouped_seeders DESC, g.grouped_id DESC",
-        "sizeBytes" => "g.grouped_size_bytes DESC NULLS LAST, g.grouped_seeders DESC, g.grouped_id DESC",
-        "title" => "g.grouped_title ASC, g.grouped_seeders DESC, g.grouped_id DESC",
-        _ => "g.grouped_seeders DESC, g.grouped_updated_at DESC, g.grouped_id DESC"
-    };
-
-    private static long? TryParseReleaseGroupId(string groupKey)
-    {
-        const string prefix = "release:";
-        return groupKey.StartsWith(prefix, StringComparison.Ordinal) &&
-               long.TryParse(groupKey[prefix.Length..], out var id)
-            ? id
-            : null;
-    }
-
     private static string CreateFacetCacheKey(SearchFilterValues filters)
     {
         var values = new string?[]
@@ -671,7 +806,7 @@ public sealed class AudiobookRepository(
             filters.Year?.ToString(System.Globalization.CultureInfo.InvariantCulture),
             filters.Magnet
         };
-        return "search-facets:v2:" + string.Join('\u001f', values.Select(value => value ?? string.Empty));
+        return "search-facets:v3:" + string.Join('\u001f', values.Select(value => value ?? string.Empty));
     }
 
     public async Task<DatabaseStatistics> GetStatisticsAsync(CancellationToken ct)
@@ -1267,6 +1402,12 @@ public sealed class AudiobookRepository(
         string? Magnet,
         string Sort,
         int Limit);
+
+    private sealed class SearchCandidateRow
+    {
+        public long Id { get; set; }
+        public string? InfoHash { get; set; }
+    }
 
     private sealed class FacetDbRow
     {
