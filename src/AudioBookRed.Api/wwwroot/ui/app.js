@@ -268,21 +268,31 @@
     const fragment = els.template.content.cloneNode(true);
     const card = fragment.querySelector('.release-card');
     const title = fragment.querySelector('.release-title');
-    const source = fragment.querySelector('.source-badge');
+    const sourceBadges = fragment.querySelector('.source-badges');
     const subtitle = fragment.querySelector('.release-subtitle');
     const meta = fragment.querySelector('.release-meta');
     const stats = fragment.querySelector('.stats');
     const actions = fragment.querySelector('.actions');
 
     title.textContent = row.title || row.rawTitle || `Запись #${row.id}`;
-    if (row.sourceUrl) {
-      title.href = row.sourceUrl;
-    } else {
-      title.removeAttribute('href');
-      title.classList.add('disabled-link');
-    }
+    title.removeAttribute('href');
+    title.classList.add('disabled-link');
 
-    source.textContent = sourceLabel(row.source || 'unknown');
+    const variants = Array.isArray(row.sources) && row.sources.length
+      ? row.sources
+      : [{ source: row.source, sourceUrl: row.sourceUrl, seeders: row.seeders, leechers: row.leechers }];
+    for (const variant of variants) {
+      const badge = document.createElement(variant.sourceUrl ? 'a' : 'span');
+      badge.className = 'source-badge';
+      badge.textContent = sourceLabel(variant.source || 'unknown');
+      badge.title = `${sourceLabel(variant.source || 'unknown')}: ↑ ${variant.seeders ?? 0} · ↓ ${variant.leechers ?? 0}`;
+      if (variant.sourceUrl) {
+        badge.href = variant.sourceUrl;
+        badge.target = '_blank';
+        badge.rel = 'noopener noreferrer';
+      }
+      sourceBadges.append(badge);
+    }
     subtitle.textContent = buildSubtitle(row);
 
     const chips = [];
@@ -300,16 +310,6 @@
     if (date) appendText(stats, date, 'stat date');
     appendText(stats, `⬆ ${row.seeders ?? 0}`, 'stat seeders');
     appendText(stats, `⬇ ${row.leechers ?? 0}`, 'stat leechers');
-
-    if (row.sourceUrl) {
-      const sourceLink = document.createElement('a');
-      sourceLink.className = 'action-link';
-      sourceLink.href = row.sourceUrl;
-      sourceLink.target = '_blank';
-      sourceLink.rel = 'noopener noreferrer';
-      sourceLink.textContent = 'Источник';
-      actions.append(sourceLink);
-    }
 
     if (row.magnetUri) {
       const magnet = document.createElement('a');

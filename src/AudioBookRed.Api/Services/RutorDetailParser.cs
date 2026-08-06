@@ -11,7 +11,7 @@ public sealed partial class RutorDetailParser(
     TitleNormalizer titleNormalizer,
     PersonNameParser personNames)
 {
-    public const int CurrentParserVersion = 1;
+    public const int CurrentParserVersion = 2;
 
     public RutorDetailValue Parse(string html, string fallbackTitle)
     {
@@ -51,11 +51,19 @@ public sealed partial class RutorDetailParser(
         var bitrate = ParseBitrate(formatSource) ?? fallback.BitrateKbps;
         var narrators = ParseNarrators(explicitNarrators, fallback.Narrators);
 
+        var cleanExplicitTitle = CleanValue(explicitTitle);
+        var explicitParsed = string.IsNullOrWhiteSpace(cleanExplicitTitle)
+            ? fallback
+            : titleNormalizer.Parse($"{CleanValue(explicitAuthor) ?? fallback.Author} - {RutorHtmlParser.NormalizeAudioTokens(cleanExplicitTitle)}");
+        var displayTitle = explicitParsed.Series is not null
+            ? explicitParsed.Title
+            : CleanAudioFormatSuffix(cleanExplicitTitle) ?? fallback.Title;
+
         var parsedTitle = new ParsedAudiobookTitle(
-            CleanValue(explicitTitle) ?? fallback.Title,
-            CleanValue(explicitAuthor) ?? fallback.Author,
-            fallback.Series,
-            fallback.SeriesPosition,
+            displayTitle,
+            CleanValue(explicitAuthor) ?? explicitParsed.Author,
+            explicitParsed.Series ?? fallback.Series,
+            explicitParsed.SeriesPosition ?? fallback.SeriesPosition,
             narrators,
             fallback.Language,
             year,
@@ -241,6 +249,16 @@ public sealed partial class RutorDetailParser(
         return cleaned.Length == 0 ? null : cleaned;
     }
 
+    private static string? CleanAudioFormatSuffix(string? value)
+    {
+        var cleaned = CleanValue(value);
+        if (cleaned is null)
+            return null;
+        cleaned = AudioFormatSuffix().Replace(RutorHtmlParser.NormalizeAudioTokens(cleaned), string.Empty)
+            .Trim(' ', '-', '–', '—', ':', '.', ',');
+        return cleaned.Length == 0 ? null : cleaned;
+    }
+
     private static string CleanLine(string value) =>
         string.Join(
             ' ',
@@ -316,6 +334,9 @@ public sealed partial class RutorDetailParser(
 
     [GeneratedRegex(@"(?<![\p{L}\p{N}])(MP3|M4B|M4A|AAC|FLAC|OGG|OPUS|APE|WMA)(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex AudioFormat();
+
+    [GeneratedRegex(@"\s+(?:MP3|M4B|M4A|AAC|FLAC|OGG|OPUS|APE|WMA)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex AudioFormatSuffix();
 
     [GeneratedRegex(@"(?:[?&]xt=urn:btih:)([a-f0-9]{40})(?:&|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex InfoHash();

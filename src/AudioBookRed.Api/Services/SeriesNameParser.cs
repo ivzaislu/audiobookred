@@ -75,6 +75,7 @@ public sealed partial class SeriesNameParser
         var match = MarkedTitlePrefix().Match(cleaned);
         if (!match.Success) match = ZeroPaddedTitlePrefix().Match(cleaned);
         if (!match.Success) match = MultiwordTitlePrefix().Match(cleaned);
+        if (!match.Success) match = PunctuatedTitlePrefix().Match(cleaned);
         if (!match.Success) return false;
 
         var position = ParsePosition(match.Groups["position"].Value);
@@ -162,6 +163,11 @@ public sealed partial class SeriesNameParser
     // цикла: «Небесное воинство 2: Девятый». Это не затронет «Зона 31».
     [GeneratedRegex(@"(?ix)^\s*(?<series>\S+(?:\s+\S+)+?)\s+(?<position>[1-9]\d?)\s*:\s*(?<title>.+?)\s*$")]
     private static partial Regex MultiwordTitlePrefix();
+
+    // Rutor часто разделяет цикл, номер и название точкой, запятой или двоеточием.
+    // Наличие текста после знака защищает названия вроде «Метро 2033» и «Зона 31».
+    [GeneratedRegex(@"(?ix)^\s*(?<series>.+?)\s+(?<position>0?[1-9]\d?)\s*[:.,]\s+(?<title>.+?)\s*$")]
+    private static partial Regex PunctuatedTitlePrefix();
 }
 
 public sealed record SeriesNamePart(

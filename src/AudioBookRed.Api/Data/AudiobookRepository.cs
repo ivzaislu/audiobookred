@@ -392,8 +392,29 @@ public sealed class AudiobookRepository(
         var parameters = BuildParameters(filters, offset);
         var allWhere = BuildWhere(filters, excludeFacet: null);
         var orderBy = BuildOrderBy(filters.Sort);
+        var groupedOrderBy = orderBy.Replace("r.seeders", "r.grouped_seeders", StringComparison.Ordinal);
 
+        var groupKey = "COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)";
         var sql = $"""
+        WITH filtered AS (
+          SELECT r.*, {groupKey} AS group_key
+          FROM audiobook_releases r
+          WHERE {allWhere}
+        ), ranked AS (
+          SELECT f.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY group_key
+              ORDER BY metadata_parser_version DESC,
+                ((series IS NOT NULL)::int + (series_position IS NOT NULL)::int +
+                 (cardinality(narrators) > 0)::int + (duration_seconds IS NOT NULL)::int +
+                 (bitrate_kbps IS NOT NULL)::int + (publisher IS NOT NULL)::int) DESC,
+                updated_at DESC, id DESC) AS metadata_rank,
+            MAX(seeders) OVER (PARTITION BY group_key) AS grouped_seeders,
+            MAX(leechers) OVER (PARTITION BY group_key) AS grouped_leechers
+          FROM filtered f
+        ), grouped AS (
+          SELECT * FROM ranked WHERE metadata_rank = 1
+        )
         SELECT id, title, normalized_title AS NormalizedTitle, author, normalized_author AS NormalizedAuthor,
           series, series_position AS SeriesPosition, narrators, language, release_year AS ReleaseYear,
           duration_seconds AS DurationSeconds, audio_format AS AudioFormat, bitrate_kbps AS BitrateKbps,
@@ -402,14 +423,14 @@ public sealed class AudiobookRepository(
           music, metadata_parser_version AS MetadataParserVersion, metadata_parsed_at AS MetadataParsedAt,
           is_abridged AS IsAbridged, is_dramatized AS IsDramatized, source, source_id AS SourceId,
           source_url AS SourceUrl, info_hash AS InfoHash, magnet_uri AS MagnetUri, size_bytes AS SizeBytes,
-          seeders, leechers, discovered_at AS DiscoveredAt, updated_at AS UpdatedAt
-        FROM audiobook_releases r
-        WHERE {allWhere}
-        ORDER BY {orderBy}
+          grouped_seeders AS Seeders, grouped_leechers AS Leechers,
+          discovered_at AS DiscoveredAt, updated_at AS UpdatedAt, group_key AS GroupKey
+        FROM grouped r
+        ORDER BY {groupedOrderBy}
         LIMIT @Limit
         OFFSET @Offset;
 
-        SELECT COUNT(*)::bigint
+        SELECT COUNT(DISTINCT {groupKey})::bigint
         FROM audiobook_releases r
         WHERE {allWhere};
         """;
@@ -427,6 +448,34 @@ public sealed class AudiobookRepository(
         {
             items = (await result.ReadAsync<AudiobookRelease>()).AsList();
             total = await result.ReadSingleAsync<long>();
+        }
+
+        if (items.Count > 0)
+        {
+            var keys = items.Select(item => item.GroupKey).Distinct(StringComparer.Ordinal).ToArray();
+            var variants = await db.QueryAsync<AudiobookSourceVariant>(new CommandDefinition(
+                """
+                SELECT COALESCE(NULLIF(LOWER(info_hash), ''), 'release:' || id::text) AS GroupKey,
+                  source AS Source, source_id AS SourceId, source_url AS SourceUrl,
+                  magnet_uri AS MagnetUri, seeders AS Seeders, leechers AS Leechers,
+                  updated_at AS UpdatedAt
+                FROM audiobook_releases
+                WHERE COALESCE(NULLIF(LOWER(info_hash), ''), 'release:' || id::text) = ANY(@Keys)
+                ORDER BY source, updated_at DESC;
+                """,
+                new { Keys = keys },
+                commandTimeout: 60,
+                cancellationToken: ct));
+            var byGroup = variants.GroupBy(value => value.GroupKey, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<AudiobookSourceVariant>)group
+                        .GroupBy(value => value.Source, StringComparer.OrdinalIgnoreCase)
+                        .Select(sourceGroup => sourceGroup.First())
+                        .ToArray(),
+                    StringComparer.Ordinal);
+            foreach (var item in items)
+                item.Sources = byGroup.GetValueOrDefault(item.GroupKey) ?? [];
         }
 
         if (!includeFacets)
@@ -663,7 +712,7 @@ public sealed class AudiobookRepository(
             $"""
             SELECT 'p:' || p.id::text AS Value,
               p.display_name AS Label,
-              COUNT(DISTINCT r.id)::bigint AS Count,
+              COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text))::bigint AS Count,
               CASE WHEN @QueryPattern IS NULL THEN FALSE ELSE
                 p.normalized_name LIKE @QueryPattern OR EXISTS (
                   SELECT 1 FROM person_aliases query_alias
@@ -675,14 +724,14 @@ public sealed class AudiobookRepository(
             JOIN people p ON p.id = rp.person_id
             WHERE {authorWhere}
             GROUP BY p.id, p.normalized_name, p.display_name
-            ORDER BY MatchesQuery DESC, COUNT(DISTINCT r.id) DESC, p.display_name
+            ORDER BY MatchesQuery DESC, COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)) DESC, p.display_name
             LIMIT 250;
             """,
 
             $"""
             SELECT 'p:' || p.id::text AS Value,
               p.display_name AS Label,
-              COUNT(DISTINCT r.id)::bigint AS Count,
+              COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text))::bigint AS Count,
               CASE WHEN @QueryPattern IS NULL THEN FALSE ELSE
                 p.normalized_name LIKE @QueryPattern OR EXISTS (
                   SELECT 1 FROM person_aliases query_alias
@@ -694,14 +743,14 @@ public sealed class AudiobookRepository(
             JOIN people p ON p.id = rp.person_id
             WHERE {narratorWhere}
             GROUP BY p.id, p.normalized_name, p.display_name
-            ORDER BY MatchesQuery DESC, COUNT(DISTINCT r.id) DESC, p.display_name
+            ORDER BY MatchesQuery DESC, COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)) DESC, p.display_name
             LIMIT 250;
             """,
 
             $"""
             SELECT 's:' || catalog.id::text AS Value,
               catalog.display_name AS Label,
-              COUNT(DISTINCT r.id)::bigint AS Count,
+              COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text))::bigint AS Count,
               CASE WHEN @QueryPattern IS NULL THEN FALSE ELSE
                 catalog.normalized_name LIKE @QueryPattern OR EXISTS (
                   SELECT 1 FROM series_aliases query_alias
@@ -713,7 +762,7 @@ public sealed class AudiobookRepository(
             JOIN series_catalog catalog ON catalog.id = relation.series_id
             WHERE {seriesWhere}
             GROUP BY catalog.id, catalog.normalized_name, catalog.display_name
-            ORDER BY MatchesQuery DESC, COUNT(DISTINCT r.id) DESC, catalog.display_name
+            ORDER BY MatchesQuery DESC, COUNT(DISTINCT COALESCE(NULLIF(LOWER(r.info_hash), ''), 'release:' || r.id::text)) DESC, catalog.display_name
             LIMIT 250;
             """,
 

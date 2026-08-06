@@ -19,7 +19,7 @@ public sealed partial class TitleNormalizer(SeriesNameParser seriesNames)
             ? int.Parse(bitrateMatch.Groups[1].Value, CultureInfo.InvariantCulture)
             : null;
         int? year = null;
-        var yearMatch = Year().Match(cleaned);
+        var yearMatch = BracketedYear().Match(cleaned);
         if (yearMatch.Success)
             year = int.Parse(yearMatch.Groups[1].Value, CultureInfo.InvariantCulture);
 
@@ -31,7 +31,7 @@ public sealed partial class TitleNormalizer(SeriesNameParser seriesNames)
             .ToArray();
 
         var withoutTags = BracketTag().Replace(cleaned, " ");
-        withoutTags = Year().Replace(withoutTags, " ");
+        withoutTags = AudioFormat().Replace(withoutTags, " ");
         withoutTags = MultiSpace().Replace(withoutTags, " ").Trim(' ', '-', '–', '—');
 
         var parts = AuthorTitleSeparator().Split(withoutTags, 2);
@@ -110,8 +110,8 @@ public sealed partial class TitleNormalizer(SeriesNameParser seriesNames)
     [GeneratedRegex(@"(?i)\b(\d{2,4})\s*(?:kbps|кбит/?с|kb/s)\b")]
     private static partial Regex Bitrate();
 
-    [GeneratedRegex(@"\b(19\d{2}|20\d{2})\b")]
-    private static partial Regex Year();
+    [GeneratedRegex(@"(?:\(|\[)[^()\[\]]*\b(19\d{2}|20\d{2})\b[^()\[\]]*(?:\)|\])")]
+    private static partial Regex BracketedYear();
 
     [GeneratedRegex(@"(?i)(?:читает|чтец|исполнител(?:ь|и)|narrator)\s*[:\-]?\s*([^\[\]()]+)")]
     private static partial Regex Narrator();

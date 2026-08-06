@@ -351,11 +351,24 @@ select:focus {
   font-size: 12px;
 }
 
+.source-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .source-badge {
   flex: 0 0 auto;
   padding: 0 9px;
   color: #ddd;
   background: var(--panel-2);
+  text-decoration: none;
+}
+
+a.source-badge:hover {
+  color: #fff;
+  background: #444;
 }
 
 .release-subtitle {
