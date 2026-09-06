@@ -1,0 +1,11 @@
+{
+  "schema": "abred.android.update/v1",
+  "application_id": "com.aistudio.knigavuhe.player",
+  "version_name": "unreleased",
+  "version_code": 0,
+  "mandatory": false,
+  "release_notes": "",
+  "size_bytes": 0,
+  "sha256": "",
+  "download_url": ""
+}
