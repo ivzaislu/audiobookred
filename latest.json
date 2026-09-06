@@ -1,11 +1,11 @@
 {
   "schema": "abred.android.update/v1",
   "application_id": "com.aistudio.audiobookred.player",
-  "version_name": "unreleased",
-  "version_code": 0,
+  "version_name": "0.5.3.8",
+  "version_code": 75,
   "mandatory": false,
   "release_notes": "",
-  "size_bytes": 0,
-  "sha256": "",
-  "download_url": ""
+  "size_bytes": 18321127,
+  "sha256": "70bc5a03cf31e2688771dc2aa31de6988a96f7004fa52adfda9b48382f9a4707",
+  "download_url": "https://github.com/ivzaislu/audiobookred/releases/download/android-v0.5.3.8/abred-android-0.5.3.8.apk"
 }
