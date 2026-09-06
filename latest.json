@@ -1,6 +1,6 @@
 {
   "schema": "abred.android.update/v1",
-  "application_id": "com.aistudio.knigavuhe.player",
+  "application_id": "com.aistudio.audiobookred.player",
   "version_name": "unreleased",
   "version_code": 0,
   "mandatory": false,
