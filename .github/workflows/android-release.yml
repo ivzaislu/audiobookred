@@ -1,0 +1,364 @@
+name: Android production release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Release notes shown in GitHub Release and latest.json'
+        required: true
+        type: string
+      mandatory:
+        description: 'Mark update as mandatory'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Require public main
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == "ivzaislu/audiobookred" ]] || {
+            echo "::error::Production release is allowed only in ivzaislu/audiobookred"
+            exit 1
+          }
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "::error::Production release can only run from main; got $GITHUB_REF"
+            exit 1
+          }
+
+      - uses: actions/checkout@v7
+
+      - name: Resolve release identity
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+
+          VERSION_NAME="$(sed -n -E 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -n -E 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' app/build.gradle.kts | head -n 1)"
+
+          [[ -n "$VERSION_NAME" ]] || {
+            echo "::error::Cannot resolve versionName"
+            exit 1
+          }
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || {
+            echo "::error::Cannot resolve versionCode"
+            exit 1
+          }
+
+          [[ -s latest.json ]] || {
+            echo "::error::latest.json is missing from repository root"
+            exit 1
+          }
+
+          CURRENT_VERSION_CODE="$(
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("latest.json").read_text(encoding="utf-8"))
+          if data.get("schema") != "abred.android.update/v1":
+              raise SystemExit("Unexpected latest.json schema")
+          if data.get("application_id") != "com.aistudio.audiobookred.player":
+              raise SystemExit("Unexpected latest.json application_id")
+          print(int(data["version_code"]))
+          PY
+          )"
+
+          (( VERSION_CODE > CURRENT_VERSION_CODE )) || {
+            echo "::error::versionCode $VERSION_CODE must be greater than published $CURRENT_VERSION_CODE"
+            exit 1
+          }
+
+          TAG="android-v$VERSION_NAME"
+          APK_NAME="abred-android-$VERSION_NAME.apk"
+          META_NAME="abred-android-$VERSION_NAME.json"
+
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "meta_name=$META_NAME" >> "$GITHUB_OUTPUT"
+
+          echo "Release candidate: $VERSION_NAME / versionCode $VERSION_CODE"
+          echo "Published production versionCode: $CURRENT_VERSION_CODE"
+
+      - name: Check signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -Eeuo pipefail
+          for name in \
+            ANDROID_KEYSTORE_BASE64 \
+            ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS \
+            ANDROID_KEY_PASSWORD \
+            ANDROID_SIGNING_CERT_SHA256
+          do
+            [[ -n "${!name:-}" ]] || {
+              echo "::error::Repository secret $name is not configured"
+              exit 1
+            }
+          done
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: '15859902'
+          packages: platform-tools
+
+      - name: Install Android SDK 37 preview
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --channel=3 'platforms;android-37.0' 'build-tools;37.0.0'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -Eeuo pipefail
+          KEYSTORE="$RUNNER_TEMP/audiobookred-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          [[ -s "$KEYSTORE" ]] || {
+            echo "::error::Decoded keystore is empty"
+            exit 1
+          }
+          keytool -list \
+            -keystore "$KEYSTORE" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" >/dev/null
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon --console=plain testDebugUnitTest
+
+      - name: Compile instrumentation tests
+        run: ./gradlew --no-daemon --console=plain compileDebugAndroidTestKotlin
+
+      - name: Android lint
+        run: ./gradlew --no-daemon --console=plain lintDebug
+
+      - name: Verify Room schema
+        run: |
+          set -Eeuo pipefail
+          SCHEMA="app/schemas/com.example.data.local.AbredDatabase/8.json"
+          git ls-files --error-unmatch "$SCHEMA" >/dev/null
+          test -s "$SCHEMA"
+
+      - name: Assemble signed release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/audiobookred-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --console=plain assembleRelease
+
+      - name: Verify APK and prepare release files
+        id: package
+        env:
+          EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          MANDATORY: ${{ inputs.mandatory }}
+          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          VERSION_CODE: ${{ steps.identity.outputs.version_code }}
+          TAG: ${{ steps.identity.outputs.tag }}
+          APK_NAME: ${{ steps.identity.outputs.apk_name }}
+          META_NAME: ${{ steps.identity.outputs.meta_name }}
+        run: |
+          set -Eeuo pipefail
+
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/37.0.0"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+
+          mapfile -t APKS < <(
+            find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print | sort
+          )
+          (( ${#APKS[@]} == 1 )) || {
+            echo "::error::Expected exactly one release APK, found ${#APKS[@]}"
+            exit 1
+          }
+
+          APK="${APKS[0]}"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" |
+            tee "$RUNNER_TEMP/apksigner.txt"
+
+          CERT_RAW="$(
+            sed -n -E \
+              's/^(Signer #[0-9]+|V[0-9.]+ Signer:)[[:space:]]*certificate SHA-256 digest:[[:space:]]*//p' \
+              "$RUNNER_TEMP/apksigner.txt" |
+              head -n 1
+          )"
+          CERT_SHA256="$(
+            printf '%s' "$CERT_RAW" |
+              tr '[:lower:]' '[:upper:]' |
+              tr -d ':[:space:]'
+          )"
+          EXPECTED="$(
+            printf '%s' "$EXPECTED_CERT_SHA256" |
+              sed -E 's/^[[:space:]]*SHA-?256[[:space:]]*:[[:space:]]*//I' |
+              tr '[:lower:]' '[:upper:]' |
+              tr -d ':[:space:]'
+          )"
+
+          [[ "$CERT_SHA256" =~ ^[0-9A-F]{64}$ ]] || {
+            echo "::error::Could not resolve APK signing certificate"
+            exit 1
+          }
+          [[ "$EXPECTED" =~ ^[0-9A-F]{64}$ ]] || {
+            echo "::error::ANDROID_SIGNING_CERT_SHA256 is invalid"
+            exit 1
+          }
+          [[ "$CERT_SHA256" == "$EXPECTED" ]] || {
+            echo "::error::APK signing certificate does not match configured certificate"
+            exit 1
+          }
+
+          PACKAGE_LINE="$("$AAPT" dump badging "$APK" | head -n 1)"
+          APP_ID="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          APK_VERSION_CODE="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          APK_VERSION_NAME="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+
+          [[ "$APP_ID" == "com.aistudio.audiobookred.player" ]] || {
+            echo "::error::Unexpected applicationId: $APP_ID"
+            exit 1
+          }
+          [[ "$APK_VERSION_CODE" == "$VERSION_CODE" ]] || {
+            echo "::error::APK versionCode $APK_VERSION_CODE differs from source $VERSION_CODE"
+            exit 1
+          }
+          [[ "$APK_VERSION_NAME" == "$VERSION_NAME" ]] || {
+            echo "::error::APK versionName $APK_VERSION_NAME differs from source $VERSION_NAME"
+            exit 1
+          }
+
+          mkdir -p dist
+          cp "$APK" "dist/$APK_NAME"
+
+          SHA256="$(sha256sum "dist/$APK_NAME" | awk '{print $1}')"
+          SIZE="$(stat -c '%s' "dist/$APK_NAME")"
+          printf '%s  %s\n' "$SHA256" "$APK_NAME" > "dist/$APK_NAME.sha256"
+          printf '%s\n' "$RELEASE_NOTES" > dist/release-notes.txt
+
+          DOWNLOAD_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK_NAME"
+
+          python3 - \
+            "dist/latest.json" \
+            "dist/$META_NAME" \
+            "dist/release-notes.txt" \
+            "$VERSION_NAME" "$VERSION_CODE" "$SHA256" "$SIZE" "$CERT_SHA256" "$DOWNLOAD_URL" <<'PY'
+          import json
+          import os
+          import sys
+
+          latest_path, metadata_path, notes_path, version_name, version_code, sha256, size, cert, download_url = sys.argv[1:]
+          with open(notes_path, "r", encoding="utf-8") as fh:
+              notes = fh.read().strip()
+
+          if not notes:
+              raise SystemExit("Release notes must not be empty")
+
+          mandatory = os.environ.get("MANDATORY", "false").strip().lower() == "true"
+
+          latest = {
+              "schema": "abred.android.update/v1",
+              "application_id": "com.aistudio.audiobookred.player",
+              "version_name": version_name,
+              "version_code": int(version_code),
+              "mandatory": mandatory,
+              "release_notes": notes,
+              "size_bytes": int(size),
+              "sha256": sha256,
+              "download_url": download_url,
+          }
+
+          metadata = {
+              "schema": "abred.android.release/v2",
+              "application_id": latest["application_id"],
+              "version_name": version_name,
+              "version_code": int(version_code),
+              "apk_asset": f"abred-android-{version_name}.apk",
+              "sha256": sha256,
+              "size_bytes": int(size),
+              "signing_cert_sha256": cert,
+              "download_url": download_url,
+              "source_repository": os.environ["GITHUB_REPOSITORY"],
+              "source_commit": os.environ["GITHUB_SHA"],
+          }
+
+          for path, payload in ((latest_path, latest), (metadata_path, metadata)):
+              with open(path, "w", encoding="utf-8") as fh:
+                  json.dump(payload, fh, ensure_ascii=False, indent=2)
+                  fh.write("\n")
+          PY
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.identity.outputs.tag }}
+          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          APK_NAME: ${{ steps.identity.outputs.apk_name }}
+          META_NAME: ${{ steps.identity.outputs.meta_name }}
+        run: |
+          set -Eeuo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; verifying assets for safe retry"
+            EXISTING_ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+            for asset in "$APK_NAME" "$APK_NAME.sha256" "$META_NAME"; do
+              grep -Fxq "$asset" <<<"$EXISTING_ASSETS" || {
+                echo "::error::Existing release $TAG is incomplete: missing $asset"
+                exit 1
+              }
+            done
+          else
+            gh release create "$TAG" \
+              "dist/$APK_NAME" \
+              "dist/$APK_NAME.sha256" \
+              "dist/$META_NAME" \
+              --target "$GITHUB_SHA" \
+              --title "AudioBookRed $VERSION_NAME" \
+              --notes-file "dist/release-notes.txt"
+          fi
+
+      - name: Publish latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+        run: |
+          set -Eeuo pipefail
+
+          CONTENT="$(base64 -w0 dist/latest.json)"
+          CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/contents/latest.json?ref=main" --jq '.sha')"
+
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/latest.json" \
+            -f message="Publish AudioBookRed $VERSION_NAME update manifest" \
+            -f content="$CONTENT" \
+            -f branch="main" \
+            -f sha="$CURRENT_SHA" >/dev/null
+
+          echo "Published latest.json for AudioBookRed $VERSION_NAME"

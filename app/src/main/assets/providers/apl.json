@@ -1,0 +1,231 @@
+{
+  "id": "apl",
+  "type": "web",
+  "name": "Аудиополка",
+  "baseUrl": "https://audiopolka.club",
+  "headers": {
+    "Referer": "https://audiopolka.club"
+  },
+  "capabilities": {
+    "categories": [
+      "audiobooks",
+      "genres",
+      "authors",
+      "performers"
+    ],
+    "sorting": [
+      "new"
+    ],
+    "search": [
+      "generic"
+    ],
+    "pagination": "PAGE_PATH",
+    "playbackTypes": [
+      "DIRECT_MP3"
+    ],
+    "chapterBased": true,
+    "hasDetailPage": true,
+    "auth": "NONE",
+    "searchMechanisms": {
+      "generic": "FREE_TEXT"
+    },
+    "downloadable": true
+  },
+  "imageRules": [
+    {
+      "type": "retina",
+      "match": "(?i)^https?://[^?]*audiopolka\\.club[^?]*\\.(?:jpg|jpeg|png|webp)(\\?.*)?$",
+      "retinaSuffix": "@2x"
+    }
+  ],
+  "extraction": {
+    "track": {
+      "strategies": [
+        {
+          "type": "css",
+          "itemSelector": ".book-player-playlist-item",
+          "nameSelector": ".book-player-playlist-item-name",
+          "urlSelector": "[data-url], [data-file], .book-player-playlist-item-play[data-url], .book-player-playlist-item[data-url]",
+          "timeSelector": ".book-player-playlist-item-time"
+        },
+        {
+          "type": "javascript",
+          "scriptMarker": "KB.playerInit, playerInit, playlist",
+          "streamPatternFallback": "\"src\"\\s*:\\s*\"([^\"]+\\.mp3)\"|\"url\"\\s*:\\s*\"([^\"]+\\.mp3)\"",
+          "playlistPattern": "\\[\\s*\\{[^}]*\"src\"[^}]*\\}[^}]*\\]",
+          "playlistUrlField": "src",
+          "playlistNameField": "title"
+        },
+        {
+          "type": "audio",
+          "audioSelector": "audio source, audio[src], source[src*='.mp3']",
+          "urlAttribute": "src"
+        }
+      ]
+    },
+    "metadataContainer": ".book-page-content, .book-content, .content, main, body"
+  },
+  "search": {
+    "generic": {
+      "url": "https://audiopolka.club/search/?q={query}",
+      "queryParam": "q",
+      "label": "Поиск",
+      "listOptionId": "generic"
+    }
+  },
+  "categories": {
+    "audiobooks": {
+      "url": "/",
+      "pagination": {
+        "pattern": "/p{N}/",
+        "type": "path"
+      },
+      "label": "Аудиокниги",
+      "sortLabel": "Новые",
+      "selectors": {
+        "paginationItemsPerPage": 24,
+        "container": ".book-list, #BL",
+        "containerType": "id",
+        "item": ".book-list-item, .book-item, .book-card, article.book, [class*='book-item']",
+        "title": ".book-list-item-name-link, .book-list-item-name a, a.book-list-item-name-link, h2 a, h3 a, .book-title a, .title a",
+        "url": ".book-list-item-cover, .book-list-item-name-link, .book-list-item-name a, a.book-list-item-name-link, a[href*='/']:not([href='/']):not([href*='search']):not([href*='popular'])",
+        "description": ".book-description, .description, .excerpt, [class*='description']"
+      }
+    },
+    "genres": {
+      "url": "/",
+      "label": "Жанры",
+      "selectors": {
+        "paginationItemsPerPage": 24,
+        "container": "body",
+        "item": "a[href^='/genre/']",
+        "title": "a",
+        "url": "a",
+        "itemUrlPattern": "/genre/\\d+(?:/.*)?"
+      }
+    },
+    "authors": {
+      "url": "/",
+      "label": "Авторы",
+      "selectors": {
+        "paginationItemsPerPage": 24,
+        "container": "body",
+        "item": "a[href^='/author/']",
+        "title": "a",
+        "url": "a",
+        "itemUrlPattern": "/author/\\d+(?:/.*)?"
+      }
+    },
+    "performers": {
+      "url": "/",
+      "label": "Исполнители",
+      "selectors": {
+        "paginationItemsPerPage": 24,
+        "container": "body",
+        "item": "a[href^='/voice/']",
+        "title": "a",
+        "url": "a",
+        "itemUrlPattern": "/voice/\\d+(?:/.*)?"
+      }
+    }
+  },
+  "sorting": {
+    "new": {
+      "url": "/",
+      "pagination": {
+        "pattern": "/p{N}/",
+        "type": "path"
+      },
+      "label": "Новые",
+      "sortLabel": "Новые",
+      "order": 10,
+      "selectors": {
+        "paginationItemsPerPage": 24,
+        "container": ".book-list, #BL",
+        "containerType": "id",
+        "item": ".book-list-item, .book-item, .book-card, article.book, [class*='book-item']",
+        "title": ".book-list-item-name-link, .book-list-item-name a, a.book-list-item-name-link, h2 a, h3 a, .book-title a, .title a",
+        "url": ".book-list-item-cover, .book-list-item-name-link, .book-list-item-name a, a.book-list-item-name-link, a[href*='/']:not([href='/']):not([href*='search']):not([href*='popular'])",
+        "description": ".book-description, .description, .excerpt, [class*='description']"
+      }
+    }
+  },
+  "scraper": {
+    "patterns": {
+      "idExtraction": "/(\\d+)/",
+      "titleSplitDelimiters": [
+        " - ",
+        " – ",
+        " — "
+      ],
+      "durationHuman": "(\\d+\\s*ч\\.)?(\\s*\\d+\\s*мин\\.)?",
+      "seriesNumber": "Том\\s+(\\d+)",
+      "playlistJson": "KB\\.playerInit\\((\\{.*?\\})\\);",
+      "playbackUrl": "\"src\"\\s*:\\s*\"([^\"]+)\"",
+      "retinaMarkers": [
+        "@2x",
+        "@3x",
+        "@4x"
+      ],
+      "sizeIndicators": [
+        "large",
+        "big",
+        "high",
+        "hd",
+        "full",
+        "original",
+        "max",
+        "hqm"
+      ]
+    },
+    "selectors": {
+      "paginationItemsPerPage": 24,
+      "list": {
+        "root": "#BL",
+        "item": "#BL .book-list-item",
+        "link": ".book-list-item-name-link",
+        "cover": ".book-list-item-cover-img img",
+        "author": ".book-list-item-author-link",
+        "performer": ".book-list-item-reader-link",
+        "genre": ".book-list-item-genre-link",
+        "duration": ".book-list-item-duration-link"
+      },
+      "detail": {
+        "root": ".book-page-main",
+        "title": ".book-page-title a",
+        "cover": ".book-page-cover img#book-page-cover-image",
+        "author": ".book-page-meta-line span[itemprop=\"author\"] a",
+        "performer": ".book-page-meta-line:nth-of-type(2) a",
+        "duration": ".book-page-meta-line:nth-of-type(3)",
+        "series": ".book-page-meta-line a[href^=\"/series/\"]",
+        "seriesCarousel": ".book-page-description-content-carousel-item",
+        "seriesItemTitle": ".book-page-description-series-item-name, .book-page-description-series-item-current",
+        "seriesItemCover": ".book-page-description-series-item-cover img",
+        "seriesItemLink": ".book-page-description-series-item, .book-page-description-series-item-cover",
+        "description": ".book-page-annotation-content",
+        "playlistContainer": ".book-page-player-playlist",
+        "playlistItem": ".book-page-player-playlist .book-player-playlist-item",
+        "playlistItemName": ".book-player-playlist-item-name",
+        "playlistItemTime": ".book-player-playlist-item-time"
+      }
+    },
+    "jsonLd": {
+      "enabled": false,
+      "scriptType": "application/ld+json",
+      "mainEntityPath": ""
+    },
+    "playlist": {
+      "source": "inline",
+      "scriptMarker": "KB.playerInit(",
+      "type": "jsonInScript",
+      "jsonObjectPath": "$",
+      "playlistKey": "playlist",
+      "fields": {
+        "id": "fileId",
+        "title": "title",
+        "durationSeconds": "duration",
+        "url": "src"
+      }
+    }
+  }
+}

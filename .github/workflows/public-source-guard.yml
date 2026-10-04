@@ -1,0 +1,79 @@
+name: Public source guard
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  public-source-guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Reject private-only paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          forbidden_paths="$(git ls-files docs release-notes || true)"
+          if [[ -n "$forbidden_paths" ]]; then
+            echo "::error::Private-only paths are present in the public source tree:"
+            printf '%s\n' "$forbidden_paths"
+            exit 1
+          fi
+
+          for workflow in \
+            .github/workflows/android-debug-prerelease.yml \
+            .github/workflows/android-release-main.yml
+          do
+            if git ls-files --error-unmatch "$workflow" >/dev/null 2>&1; then
+              echo "::error::Private release workflow must not be published: $workflow"
+              exit 1
+            fi
+          done
+
+      - name: Reject tracked secret material
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          tracked_secret_files="$(
+            git ls-files |
+              grep -Ei '(^|/)(local\.properties|\.env($|\.)|[^/]+\.(jks|keystore|p12|pem))$' ||
+              true
+          )"
+
+          if [[ -n "$tracked_secret_files" ]]; then
+            echo "::error::Secret material is tracked:"
+            printf '%s\n' "$tracked_secret_files"
+            exit 1
+          fi
+
+          if git grep -n -E 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' -- .; then
+            echo "::error::A GitHub token-like value is present in tracked content"
+            exit 1
+          fi
+
+          for marker in \
+            '-----BEGIN PRIVATE KEY-----' \
+            '-----BEGIN RSA PRIVATE KEY-----' \
+            '-----BEGIN OPENSSH PRIVATE KEY-----'
+          do
+            if git grep -n -F -- "$marker" -- . ':(exclude).github/workflows/public-source-guard.yml'; then
+              echo "::error::Private-key material is present in tracked content"
+              exit 1
+            fi
+          done
+
+      - name: Reject private repository references
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if git grep -n -F 'ivzaislu/abred' -- . ':(exclude).github/workflows/public-source-guard.yml'; then
+            echo "::error::Private repository reference found in public source"
+            exit 1
+          fi

@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Open book -->
+    <path
+        android:fillColor="#C92C38"
+        android:pathData="M18,69 L43,75 L54,85 L54,94 L43,85 L18,80 Z" />
+    <path
+        android:fillColor="#C92C38"
+        android:pathData="M90,69 L65,75 L54,85 L54,94 L65,85 L90,80 Z" />
+    <path
+        android:fillColor="#C92C38"
+        android:pathData="M21,62 L44,69 L54,79 L54,85 L43,76 L21,70 Z" />
+    <path
+        android:fillColor="#C92C38"
+        android:pathData="M87,62 L64,69 L54,79 L54,85 L65,76 L87,70 Z" />
+
+    <!-- Headphones arc and cups -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#F7F7F4"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M29,57 C29,35 39,24 54,24 C69,24 79,35 79,57" />
+    <path
+        android:fillColor="#F7F7F4"
+        android:pathData="M24,53 C20,53 18,57 18,64 L18,69 C18,76 21,79 26,79 L31,79 L31,53 Z" />
+    <path
+        android:fillColor="#F7F7F4"
+        android:pathData="M84,53 C88,53 90,57 90,64 L90,69 C90,76 87,79 82,79 L77,79 L77,53 Z" />
+
+    <!-- Waveform -->
+    <path android:fillColor="#C92C38" android:pathData="M38,51 h4 v15 h-4 z" />
+    <path android:fillColor="#C92C38" android:pathData="M45,45 h4 v27 h-4 z" />
+    <path android:fillColor="#C92C38" android:pathData="M52,38 h4 v40 h-4 z" />
+    <path android:fillColor="#C92C38" android:pathData="M59,45 h4 v27 h-4 z" />
+    <path android:fillColor="#C92C38" android:pathData="M66,51 h4 v15 h-4 z" />
+</vector>

@@ -1,0 +1,199 @@
+name: Android signed APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-signed-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -Eeuo pipefail
+          for name in \
+            ANDROID_KEYSTORE_BASE64 \
+            ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS \
+            ANDROID_KEY_PASSWORD \
+            ANDROID_SIGNING_CERT_SHA256
+          do
+            [[ -n "${!name:-}" ]] || {
+              echo "::error::Repository secret $name is not configured"
+              exit 1
+            }
+          done
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: '15859902'
+          packages: platform-tools
+
+      - name: Install Android SDK 37 preview
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --channel=3 'platforms;android-37.0' 'build-tools;37.0.0'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -Eeuo pipefail
+          KEYSTORE="$RUNNER_TEMP/audiobookred-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          [[ -s "$KEYSTORE" ]] || {
+            echo "::error::Decoded keystore is empty"
+            exit 1
+          }
+          keytool -list \
+            -keystore "$KEYSTORE" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" >/dev/null
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon --console=plain testDebugUnitTest
+
+      - name: Compile instrumentation tests
+        run: ./gradlew --no-daemon --console=plain compileDebugAndroidTestKotlin
+
+      - name: Android lint
+        run: ./gradlew --no-daemon --console=plain lintDebug
+
+      - name: Verify Room schema
+        run: |
+          set -Eeuo pipefail
+          SCHEMA="app/schemas/com.example.data.local.AbredDatabase/8.json"
+          git ls-files --error-unmatch "$SCHEMA" >/dev/null
+          test -s "$SCHEMA"
+
+      - name: Assemble signed release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/audiobookred-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --console=plain assembleRelease
+
+      - name: Verify APK and prepare artifact
+        id: apk
+        env:
+          EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -Eeuo pipefail
+
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/37.0.0"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+
+          mapfile -t APKS < <(
+            find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print | sort
+          )
+          (( ${#APKS[@]} == 1 )) || {
+            echo "::error::Expected exactly one release APK, found ${#APKS[@]}"
+            exit 1
+          }
+
+          APK="${APKS[0]}"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" |
+            tee "$RUNNER_TEMP/apksigner.txt"
+
+          CERT_RAW="$(
+            sed -n -E \
+              's/^(Signer #[0-9]+|V[0-9.]+ Signer:)[[:space:]]*certificate SHA-256 digest:[[:space:]]*//p' \
+              "$RUNNER_TEMP/apksigner.txt" |
+              head -n 1
+          )"
+          CERT_SHA256="$(
+            printf '%s' "$CERT_RAW" |
+              tr '[:lower:]' '[:upper:]' |
+              tr -d ':[:space:]'
+          )"
+          EXPECTED="$(
+            printf '%s' "$EXPECTED_CERT_SHA256" |
+              sed -E 's/^[[:space:]]*SHA-?256[[:space:]]*:[[:space:]]*//I' |
+              tr '[:lower:]' '[:upper:]' |
+              tr -d ':[:space:]'
+          )"
+
+          [[ "$CERT_SHA256" =~ ^[0-9A-F]{64}$ ]] || {
+            echo "::error::Could not resolve APK signing certificate"
+            exit 1
+          }
+          [[ "$EXPECTED" =~ ^[0-9A-F]{64}$ ]] || {
+            echo "::error::ANDROID_SIGNING_CERT_SHA256 is invalid"
+            exit 1
+          }
+          [[ "$CERT_SHA256" == "$EXPECTED" ]] || {
+            echo "::error::APK signing certificate does not match configured certificate"
+            exit 1
+          }
+
+          PACKAGE_LINE="$("$AAPT" dump badging "$APK" | head -n 1)"
+          APP_ID="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          VERSION_CODE="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          VERSION_NAME="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+
+          [[ "$APP_ID" == "com.aistudio.audiobookred.player" ]] || {
+            echo "::error::Unexpected applicationId: $APP_ID"
+            exit 1
+          }
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || {
+            echo "::error::Invalid versionCode: $VERSION_CODE"
+            exit 1
+          }
+          [[ -n "$VERSION_NAME" ]] || {
+            echo "::error::Empty versionName"
+            exit 1
+          }
+
+          mkdir -p dist
+          APK_NAME="abred-android-${VERSION_NAME}.apk"
+          cp "$APK" "dist/$APK_NAME"
+          sha256sum "dist/$APK_NAME" > "dist/$APK_NAME.sha256"
+
+          cat > dist/build-info.txt <<EOF
+          applicationId=$APP_ID
+          versionName=$VERSION_NAME
+          versionCode=$VERSION_CODE
+          sourceCommit=$GITHUB_SHA
+          signingCertSha256=$CERT_SHA256
+          EOF
+
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobookred-signed-${{ github.run_number }}
+          path: |
+            dist/${{ steps.apk.outputs.apk_name }}
+            dist/${{ steps.apk.outputs.apk_name }}.sha256
+            dist/build-info.txt
+          if-no-files-found: error
+          retention-days: 14

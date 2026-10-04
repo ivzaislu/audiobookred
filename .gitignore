@@ -1,0 +1,24 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Native/intermediate Android output
+.cxx/
+.externalNativeBuild/
+
+# Signing material and local secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+.env
+.env.*
+
+# Logs / OS
+*.log
+.DS_Store

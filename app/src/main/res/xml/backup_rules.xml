@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="abred_profile_identity.xml" />
+    <exclude domain="sharedpref" path="abred_client.xml" />
+    <exclude domain="sharedpref" path="audiobookred_playback_profile_switch.xml" />
+    <exclude domain="sharedpref" path="abred_external_service_credentials.xml" />
+    <exclude domain="sharedpref" path="rutracker_cloudflare.xml" />
+    <exclude domain="sharedpref" path="abred_standalone_migrations.xml" />
+    <exclude domain="sharedpref" path="abred_normalized_library_migration.xml" />
+    <exclude domain="file" path="downloads/" />
+</full-backup-content>
