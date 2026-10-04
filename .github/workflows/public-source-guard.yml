@@ -26,15 +26,60 @@ jobs:
             exit 1
           fi
 
-          for workflow in \
-            .github/workflows/android-debug-prerelease.yml \
-            .github/workflows/android-release-main.yml
+          for workflow in             .github/workflows/android-debug-prerelease.yml             .github/workflows/android-release-main.yml             .github/workflows/publish-public-source.yml
           do
             if git ls-files --error-unmatch "$workflow" >/dev/null 2>&1; then
-              echo "::error::Private release workflow must not be published: $workflow"
+              echo "::error::Private workflow must not be published: $workflow"
               exit 1
             fi
           done
+
+      - name: Validate release candidate manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          [[ -s .release/release.json ]] || {
+            echo "::error::.release/release.json is required"
+            exit 1
+          }
+
+          extra_release_files="$(git ls-files .release | grep -v '^\.release/release\.json$' || true)"
+          [[ -z "$extra_release_files" ]] || {
+            echo "::error::Unexpected files under .release:"
+            printf '%s\n' "$extra_release_files"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          build = Path("app/build.gradle.kts").read_text(encoding="utf-8")
+          name_match = re.search(r'versionName\s*=\s*"([^"]+)"', build)
+          code_match = re.search(r'versionCode\s*=\s*(\d+)', build)
+          if not name_match or not code_match:
+              raise SystemExit("Cannot resolve app version from app/build.gradle.kts")
+
+          candidate = json.loads(Path(".release/release.json").read_text(encoding="utf-8"))
+          if candidate.get("schema") != "audiobookred.release-candidate/v1":
+              raise SystemExit("Unexpected release candidate schema")
+          if candidate.get("application_id") != "com.aistudio.audiobookred.player":
+              raise SystemExit("Unexpected release candidate application_id")
+          if candidate.get("version_name") != name_match.group(1):
+              raise SystemExit("release candidate version_name differs from app source")
+          if int(candidate.get("version_code", -1)) != int(code_match.group(1)):
+              raise SystemExit("release candidate version_code differs from app source")
+          if not str(candidate.get("release_notes", "")).strip():
+              raise SystemExit("release candidate notes are empty")
+          if not re.fullmatch(r"[0-9a-f]{40}", str(candidate.get("source_commit", ""))):
+              raise SystemExit("release candidate source_commit is invalid")
+
+          latest = json.loads(Path("latest.json").read_text(encoding="utf-8"))
+          if int(candidate["version_code"]) < int(latest["version_code"]):
+              raise SystemExit("release candidate is older than latest.json")
+          PY
 
       - name: Reject tracked secret material
         shell: bash
@@ -58,10 +103,7 @@ jobs:
             exit 1
           fi
 
-          for marker in \
-            '-----BEGIN PRIVATE KEY-----' \
-            '-----BEGIN RSA PRIVATE KEY-----' \
-            '-----BEGIN OPENSSH PRIVATE KEY-----'
+          for marker in             '-----BEGIN PRIVATE KEY-----'             '-----BEGIN RSA PRIVATE KEY-----'             '-----BEGIN OPENSSH PRIVATE KEY-----'
           do
             if git grep -n -F -- "$marker" -- . ':(exclude).github/workflows/public-source-guard.yml'; then
               echo "::error::Private-key material is present in tracked content"

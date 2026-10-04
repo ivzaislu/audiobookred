@@ -3,10 +3,6 @@ name: Android production release
 on:
   workflow_dispatch:
     inputs:
-      release_notes:
-        description: 'Release notes shown in GitHub Release and latest.json'
-        required: true
-        type: string
       mandatory:
         description: 'Mark update as mandatory'
         required: true
@@ -21,12 +17,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 10
+    outputs:
+      version_name: ${{ steps.identity.outputs.version_name }}
+      version_code: ${{ steps.identity.outputs.version_code }}
+      tag: ${{ steps.identity.outputs.tag }}
+      apk_name: ${{ steps.identity.outputs.apk_name }}
+      meta_name: ${{ steps.identity.outputs.meta_name }}
 
     steps:
-      - name: Require public main
+      - name: Require exact public main HEAD
+        shell: bash
         run: |
           set -Eeuo pipefail
           [[ "$GITHUB_REPOSITORY" == "ivzaislu/audiobookred" ]] || {
@@ -39,49 +42,72 @@ jobs:
           }
 
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Resolve release identity
+      - name: Verify release candidate
         id: identity
-        env:
-          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -Eeuo pipefail
 
-          VERSION_NAME="$(sed -n -E 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
-          VERSION_CODE="$(sed -n -E 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' app/build.gradle.kts | head -n 1)"
-
-          [[ -n "$VERSION_NAME" ]] || {
-            echo "::error::Cannot resolve versionName"
-            exit 1
-          }
-          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || {
-            echo "::error::Cannot resolve versionCode"
+          REMOTE_MAIN="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          [[ "$REMOTE_MAIN" == "$GITHUB_SHA" ]] || {
+            echo "::error::Workflow commit $GITHUB_SHA is not current main HEAD $REMOTE_MAIN"
             exit 1
           }
 
+          [[ -s .release/release.json ]] || {
+            echo "::error::Missing .release/release.json; publish source from the private main first"
+            exit 1
+          }
           [[ -s latest.json ]] || {
-            echo "::error::latest.json is missing from repository root"
+            echo "::error::latest.json is missing"
             exit 1
           }
 
-          CURRENT_VERSION_CODE="$(
-            python3 - <<'PY'
+          python3 - <<'PY'
           import json
+          import re
           from pathlib import Path
-          data = json.loads(Path("latest.json").read_text(encoding="utf-8"))
-          if data.get("schema") != "abred.android.update/v1":
+
+          build = Path("app/build.gradle.kts").read_text(encoding="utf-8")
+          name_match = re.search(r'versionName\s*=\s*"([^"]+)"', build)
+          code_match = re.search(r'versionCode\s*=\s*(\d+)', build)
+          if not name_match or not code_match:
+              raise SystemExit("Cannot resolve app version")
+
+          candidate = json.loads(Path(".release/release.json").read_text(encoding="utf-8"))
+          latest = json.loads(Path("latest.json").read_text(encoding="utf-8"))
+
+          if candidate.get("schema") != "audiobookred.release-candidate/v1":
+              raise SystemExit("Unexpected release candidate schema")
+          if candidate.get("application_id") != "com.aistudio.audiobookred.player":
+              raise SystemExit("Unexpected application_id")
+          if candidate.get("version_name") != name_match.group(1):
+              raise SystemExit("Candidate version_name differs from app source")
+          if int(candidate.get("version_code", -1)) != int(code_match.group(1)):
+              raise SystemExit("Candidate version_code differs from app source")
+          if not str(candidate.get("release_notes", "")).strip():
+              raise SystemExit("Release notes are empty")
+          if not re.fullmatch(r"[0-9a-f]{40}", str(candidate.get("source_commit", ""))):
+              raise SystemExit("Candidate source_commit is invalid")
+          if latest.get("schema") != "abred.android.update/v1":
               raise SystemExit("Unexpected latest.json schema")
-          if data.get("application_id") != "com.aistudio.audiobookred.player":
+          if latest.get("application_id") != "com.aistudio.audiobookred.player":
               raise SystemExit("Unexpected latest.json application_id")
-          print(int(data["version_code"]))
+          if int(candidate["version_code"]) <= int(latest["version_code"]):
+              raise SystemExit(
+                  f'Candidate versionCode {candidate["version_code"]} must be greater than '
+                  f'published {latest["version_code"]}'
+              )
+
+          print(candidate["version_name"])
+          print(candidate["version_code"])
           PY
-          )"
 
-          (( VERSION_CODE > CURRENT_VERSION_CODE )) || {
-            echo "::error::versionCode $VERSION_CODE must be greater than published $CURRENT_VERSION_CODE"
-            exit 1
-          }
-
+          VERSION_NAME="$(python3 -c 'import json; print(json.load(open(".release/release.json", encoding="utf-8"))["version_name"])')"
+          VERSION_CODE="$(python3 -c 'import json; print(int(json.load(open(".release/release.json", encoding="utf-8"))["version_code"]))')"
           TAG="android-v$VERSION_NAME"
           APK_NAME="abred-android-$VERSION_NAME.apk"
           META_NAME="abred-android-$VERSION_NAME.json"
@@ -91,9 +117,21 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
           echo "meta_name=$META_NAME" >> "$GITHUB_OUTPUT"
-
           echo "Release candidate: $VERSION_NAME / versionCode $VERSION_CODE"
-          echo "Published production versionCode: $CURRENT_VERSION_CODE"
+
+  instrumentation-gate:
+    needs: preflight
+    uses: ./.github/workflows/android-instrumentation.yml
+
+  release:
+    needs:
+      - preflight
+      - instrumentation-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Check signing secrets
         env:
@@ -102,14 +140,10 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+        shell: bash
         run: |
           set -Eeuo pipefail
-          for name in \
-            ANDROID_KEYSTORE_BASE64 \
-            ANDROID_KEYSTORE_PASSWORD \
-            ANDROID_KEY_ALIAS \
-            ANDROID_KEY_PASSWORD \
-            ANDROID_SIGNING_CERT_SHA256
+          for name in             ANDROID_KEYSTORE_BASE64             ANDROID_KEYSTORE_PASSWORD             ANDROID_KEY_ALIAS             ANDROID_KEY_PASSWORD             ANDROID_SIGNING_CERT_SHA256
           do
             [[ -n "${!name:-}" ]] || {
               echo "::error::Repository secret $name is not configured"
@@ -128,6 +162,7 @@ jobs:
           packages: platform-tools
 
       - name: Install Android SDK 37 preview
+        shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --channel=3 'platforms;android-37.0' 'build-tools;37.0.0'
@@ -139,30 +174,23 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        shell: bash
         run: |
           set -Eeuo pipefail
           KEYSTORE="$RUNNER_TEMP/audiobookred-release.jks"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           chmod 600 "$KEYSTORE"
-          [[ -s "$KEYSTORE" ]] || {
-            echo "::error::Decoded keystore is empty"
-            exit 1
-          }
-          keytool -list \
-            -keystore "$KEYSTORE" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          [[ -s "$KEYSTORE" ]] || { echo "::error::Decoded keystore is empty"; exit 1; }
+          keytool -list             -keystore "$KEYSTORE"             -storepass "$ANDROID_KEYSTORE_PASSWORD"             -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
       - name: Unit tests
         run: ./gradlew --no-daemon --console=plain testDebugUnitTest
-
-      - name: Compile instrumentation tests
-        run: ./gradlew --no-daemon --console=plain compileDebugAndroidTestKotlin
 
       - name: Android lint
         run: ./gradlew --no-daemon --console=plain lintDebug
 
       - name: Verify Room schema
+        shell: bash
         run: |
           set -Eeuo pipefail
           SCHEMA="app/schemas/com.example.data.local.AbredDatabase/8.json"
@@ -181,13 +209,13 @@ jobs:
         id: package
         env:
           EXPECTED_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
-          RELEASE_NOTES: ${{ inputs.release_notes }}
           MANDATORY: ${{ inputs.mandatory }}
-          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
-          VERSION_CODE: ${{ steps.identity.outputs.version_code }}
-          TAG: ${{ steps.identity.outputs.tag }}
-          APK_NAME: ${{ steps.identity.outputs.apk_name }}
-          META_NAME: ${{ steps.identity.outputs.meta_name }}
+          VERSION_NAME: ${{ needs.preflight.outputs.version_name }}
+          VERSION_CODE: ${{ needs.preflight.outputs.version_code }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          APK_NAME: ${{ needs.preflight.outputs.apk_name }}
+          META_NAME: ${{ needs.preflight.outputs.meta_name }}
+        shell: bash
         run: |
           set -Eeuo pipefail
 
@@ -195,29 +223,20 @@ jobs:
           APKSIGNER="$BUILD_TOOLS/apksigner"
           AAPT="$BUILD_TOOLS/aapt"
 
-          mapfile -t APKS < <(
-            find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print | sort
-          )
+          mapfile -t APKS < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print | sort)
           (( ${#APKS[@]} == 1 )) || {
             echo "::error::Expected exactly one release APK, found ${#APKS[@]}"
             exit 1
           }
 
           APK="${APKS[0]}"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" |
-            tee "$RUNNER_TEMP/apksigner.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
 
           CERT_RAW="$(
-            sed -n -E \
-              's/^(Signer #[0-9]+|V[0-9.]+ Signer:)[[:space:]]*certificate SHA-256 digest:[[:space:]]*//p' \
-              "$RUNNER_TEMP/apksigner.txt" |
+            sed -n -E               's/^(Signer #[0-9]+|V[0-9.]+ Signer:)[[:space:]]*certificate SHA-256 digest:[[:space:]]*//p'               "$RUNNER_TEMP/apksigner.txt" |
               head -n 1
           )"
-          CERT_SHA256="$(
-            printf '%s' "$CERT_RAW" |
-              tr '[:lower:]' '[:upper:]' |
-              tr -d ':[:space:]'
-          )"
+          CERT_SHA256="$(printf '%s' "$CERT_RAW" | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
           EXPECTED="$(
             printf '%s' "$EXPECTED_CERT_SHA256" |
               sed -E 's/^[[:space:]]*SHA-?256[[:space:]]*:[[:space:]]*//I' |
@@ -225,36 +244,18 @@ jobs:
               tr -d ':[:space:]'
           )"
 
-          [[ "$CERT_SHA256" =~ ^[0-9A-F]{64}$ ]] || {
-            echo "::error::Could not resolve APK signing certificate"
-            exit 1
-          }
-          [[ "$EXPECTED" =~ ^[0-9A-F]{64}$ ]] || {
-            echo "::error::ANDROID_SIGNING_CERT_SHA256 is invalid"
-            exit 1
-          }
-          [[ "$CERT_SHA256" == "$EXPECTED" ]] || {
-            echo "::error::APK signing certificate does not match configured certificate"
-            exit 1
-          }
+          [[ "$CERT_SHA256" =~ ^[0-9A-F]{64}$ ]] || { echo "::error::Could not resolve APK signing certificate"; exit 1; }
+          [[ "$EXPECTED" =~ ^[0-9A-F]{64}$ ]] || { echo "::error::ANDROID_SIGNING_CERT_SHA256 is invalid"; exit 1; }
+          [[ "$CERT_SHA256" == "$EXPECTED" ]] || { echo "::error::APK signing certificate mismatch"; exit 1; }
 
           PACKAGE_LINE="$("$AAPT" dump badging "$APK" | head -n 1)"
           APP_ID="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
           APK_VERSION_CODE="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
           APK_VERSION_NAME="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
 
-          [[ "$APP_ID" == "com.aistudio.audiobookred.player" ]] || {
-            echo "::error::Unexpected applicationId: $APP_ID"
-            exit 1
-          }
-          [[ "$APK_VERSION_CODE" == "$VERSION_CODE" ]] || {
-            echo "::error::APK versionCode $APK_VERSION_CODE differs from source $VERSION_CODE"
-            exit 1
-          }
-          [[ "$APK_VERSION_NAME" == "$VERSION_NAME" ]] || {
-            echo "::error::APK versionName $APK_VERSION_NAME differs from source $VERSION_NAME"
-            exit 1
-          }
+          [[ "$APP_ID" == "com.aistudio.audiobookred.player" ]] || { echo "::error::Unexpected applicationId: $APP_ID"; exit 1; }
+          [[ "$APK_VERSION_CODE" == "$VERSION_CODE" ]] || { echo "::error::APK versionCode differs from release candidate"; exit 1; }
+          [[ "$APK_VERSION_NAME" == "$VERSION_NAME" ]] || { echo "::error::APK versionName differs from release candidate"; exit 1; }
 
           mkdir -p dist
           cp "$APK" "dist/$APK_NAME"
@@ -262,26 +263,27 @@ jobs:
           SHA256="$(sha256sum "dist/$APK_NAME" | awk '{print $1}')"
           SIZE="$(stat -c '%s' "dist/$APK_NAME")"
           printf '%s  %s\n' "$SHA256" "$APK_NAME" > "dist/$APK_NAME.sha256"
-          printf '%s\n' "$RELEASE_NOTES" > dist/release-notes.txt
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          candidate = json.loads(Path(".release/release.json").read_text(encoding="utf-8"))
+          Path("dist/release-notes.txt").write_text(
+              candidate["release_notes"].strip() + "\n",
+              encoding="utf-8",
+          )
+          PY
 
           DOWNLOAD_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK_NAME"
 
-          python3 - \
-            "dist/latest.json" \
-            "dist/$META_NAME" \
-            "dist/release-notes.txt" \
-            "$VERSION_NAME" "$VERSION_CODE" "$SHA256" "$SIZE" "$CERT_SHA256" "$DOWNLOAD_URL" <<'PY'
+          python3 -             "dist/latest.json"             "dist/$META_NAME"             ".release/release.json"             "$VERSION_NAME" "$VERSION_CODE" "$SHA256" "$SIZE" "$CERT_SHA256" "$DOWNLOAD_URL" <<'PY'
           import json
           import os
           import sys
 
-          latest_path, metadata_path, notes_path, version_name, version_code, sha256, size, cert, download_url = sys.argv[1:]
-          with open(notes_path, "r", encoding="utf-8") as fh:
-              notes = fh.read().strip()
-
-          if not notes:
-              raise SystemExit("Release notes must not be empty")
-
+          latest_path, metadata_path, candidate_path, version_name, version_code, sha256, size, cert, download_url = sys.argv[1:]
+          candidate = json.load(open(candidate_path, encoding="utf-8"))
+          notes = candidate["release_notes"].strip()
           mandatory = os.environ.get("MANDATORY", "false").strip().lower() == "true"
 
           latest = {
@@ -295,7 +297,6 @@ jobs:
               "sha256": sha256,
               "download_url": download_url,
           }
-
           metadata = {
               "schema": "abred.android.release/v2",
               "application_id": latest["application_id"],
@@ -306,8 +307,8 @@ jobs:
               "size_bytes": int(size),
               "signing_cert_sha256": cert,
               "download_url": download_url,
-              "source_repository": os.environ["GITHUB_REPOSITORY"],
-              "source_commit": os.environ["GITHUB_SHA"],
+              "public_source_commit": os.environ["GITHUB_SHA"],
+              "private_source_commit": candidate["source_commit"],
           }
 
           for path, payload in ((latest_path, latest), (metadata_path, metadata)):
@@ -319,10 +320,11 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.identity.outputs.tag }}
-          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
-          APK_NAME: ${{ steps.identity.outputs.apk_name }}
-          META_NAME: ${{ steps.identity.outputs.meta_name }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION_NAME: ${{ needs.preflight.outputs.version_name }}
+          APK_NAME: ${{ needs.preflight.outputs.apk_name }}
+          META_NAME: ${{ needs.preflight.outputs.meta_name }}
+        shell: bash
         run: |
           set -Eeuo pipefail
 
@@ -336,29 +338,20 @@ jobs:
               }
             done
           else
-            gh release create "$TAG" \
-              "dist/$APK_NAME" \
-              "dist/$APK_NAME.sha256" \
-              "dist/$META_NAME" \
-              --target "$GITHUB_SHA" \
-              --title "AudioBookRed $VERSION_NAME" \
-              --notes-file "dist/release-notes.txt"
+            gh release create "$TAG"               "dist/$APK_NAME"               "dist/$APK_NAME.sha256"               "dist/$META_NAME"               --target "$GITHUB_SHA"               --title "AudioBookRed $VERSION_NAME"               --notes-file "dist/release-notes.txt"
           fi
 
       - name: Publish latest.json
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          VERSION_NAME: ${{ needs.preflight.outputs.version_name }}
+        shell: bash
         run: |
           set -Eeuo pipefail
 
           CONTENT="$(base64 -w0 dist/latest.json)"
           CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/contents/latest.json?ref=main" --jq '.sha')"
 
-          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/latest.json" \
-            -f message="Publish AudioBookRed $VERSION_NAME update manifest" \
-            -f content="$CONTENT" \
-            -f branch="main" \
-            -f sha="$CURRENT_SHA" >/dev/null
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/latest.json"             -f message="Publish AudioBookRed $VERSION_NAME update manifest"             -f content="$CONTENT"             -f branch="main"             -f sha="$CURRENT_SHA" >/dev/null
 
           echo "Published latest.json for AudioBookRed $VERSION_NAME"

@@ -2,19 +2,34 @@ name: Android instrumentation
 
 on:
   workflow_dispatch:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/java/com/example/MainActivity.kt'
+      - 'app/src/main/java/com/example/update/**'
+      - 'app/src/test/java/com/example/update/**'
+      - 'app/src/main/java/com/example/data/parser/*Challenge*.kt'
+      - 'app/src/main/java/com/example/data/parser/*Cloudflare*.kt'
+      - 'app/src/main/java/com/example/data/parser/AbredRuTrackerParser.kt'
+      - 'app/src/main/java/com/example/data/parser/AbredAudiobooParser.kt'
+      - 'app/src/main/java/com/example/ui/*Challenge*.kt'
+      - 'app/src/test/java/com/example/data/parser/*Challenge*.kt'
+      - 'app/src/test/java/com/example/data/parser/*Cloudflare*.kt'
+      - 'app/src/test/java/com/example/ui/*Challenge*.kt'
+      - 'app/src/main/res/values/styles.xml'
+      - 'app/src/androidTest/**'
+      - '.github/workflows/android-instrumentation.yml'
 
 permissions:
   contents: read
-
-concurrency:
-  group: android-instrumentation-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   connected-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - uses: actions/checkout@v7
 
@@ -35,8 +50,7 @@ jobs:
 
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
-            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
@@ -44,7 +58,7 @@ jobs:
         with:
           cache-disabled: true
 
-      - name: Run instrumentation tests
+      - name: Run instrumentation tests on GitHub-hosted emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -53,7 +67,5 @@ jobs:
           profile: pixel_7
           disk-size: 4096M
           disable-animations: true
-          emulator-options: >-
-            -no-snapshot-save -no-window -gpu swiftshader_indirect
-            -noaudio -no-boot-anim -camera-back none -no-metrics
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           script: ./gradlew --no-daemon --no-build-cache connectedDebugAndroidTest
