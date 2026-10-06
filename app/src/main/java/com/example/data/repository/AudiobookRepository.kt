@@ -5,8 +5,6 @@ import com.example.data.model.*
 import com.example.data.parser.AndroidLiveParserLocator
 import com.example.data.source.StandaloneSourceRegistry
 import com.example.data.torrserve.RuTrackerTorrServePlaybackResolver
-import com.example.data.torrserve.TorrServeTorrentFile
-import java.security.MessageDigest
 import java.util.LinkedHashMap
 import kotlinx.coroutines.CancellationException
 
@@ -400,30 +398,6 @@ class AudiobookRepository(
         }
     }
 
-    private fun normalizeSearchValue(value: String): String = value
-        .lowercase()
-        .replace('ё', 'е')
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-        .trim()
-
-    private fun interleaveAll(groups: List<List<LiveCatalogItemDto>>): List<LiveCatalogItemDto> {
-        if (groups.isEmpty()) return emptyList()
-        val result = ArrayList<LiveCatalogItemDto>(groups.sumOf { it.size })
-        var index = 0
-        while (true) {
-            var added = false
-            for (group in groups) {
-                group.getOrNull(index)?.let {
-                    result += it
-                    added = true
-                }
-            }
-            if (!added) break
-            index++
-        }
-        return result
-    }
-
     private suspend fun localBook(id: String, source: String? = null): BookDetailDto {
         val local = localParser()
         require(local.canParseBook(id, source)) { "selfapk не может открыть локальную книгу: $id" }
@@ -459,53 +433,6 @@ class AudiobookRepository(
         return LocalDownloadKey(source, externalId)
     }
 
-    private fun localManifestId(bookSourceId: String, book: BookDetailDto): String {
-        val payload = buildString {
-            append(bookSourceId).append('\n')
-            book.chapters.sortedBy { it.position }.forEach { chapter ->
-                append(chapter.id).append('|')
-                append(chapter.position).append('|')
-                append(chapter.durationSeconds).append('|')
-                append(chapter.streamUrl).append('\n')
-            }
-        }
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(payload.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
-        return "abred-local-${digest.take(24)}"
-    }
-
-    private fun torrServeDownloadFilename(
-        index: Int,
-        file: TorrServeTorrentFile,
-    ): String {
-        val original = file.path
-            .substringAfterLast('/')
-            .substringAfterLast('\\')
-            .trim()
-            .ifBlank { "audio" }
-        return "${(index + 1).toString().padStart(4, '0')} - $original"
-    }
-
-    private fun torrServeMediaType(file: TorrServeTorrentFile): String = when (
-        file.path.substringAfterLast('.', "").lowercase()
-    ) {
-        "m4a", "m4b" -> "audio/mp4"
-        "aac" -> "audio/aac"
-        "ogg", "opus" -> "audio/ogg"
-        "flac" -> "audio/flac"
-        "wav" -> "audio/wav"
-        else -> "audio/mpeg"
-    }
-
-    private fun downloadFilename(index: Int, chapter: ChapterDto): String {
-        val title = chapter.title.trim().ifBlank { "Часть ${index + 1}" }
-        return "${(index + 1).toString().padStart(4, '0')} - $title.mp3"
-    }
-
-    private fun sourceName(source: String): String =
-        StandaloneSourceRegistry.displayNameOrNull(source) ?: source
-
     private fun monotonicMs(): Long = System.nanoTime() / 1_000_000L
 
     private companion object {
@@ -519,21 +446,3 @@ class AudiobookRepository(
             AggregateSearchLimiter(AGGREGATE_SEARCH_CONCURRENCY)
     }
 }
-
-private fun LiveCatalogItemDto.toBookCard(): BookCardDto = BookCardDto(
-    id = key,
-    title = title,
-    authors = authors.filter(String::isNotBlank).map { PersonDto(id = "", name = it) },
-    narrators = narrators.filter(String::isNotBlank).map { PersonDto(id = "", name = it) },
-    genres = genres.filter(String::isNotBlank).map { GenreDto(id = "", name = it) },
-    coverUrl = coverUrl,
-    durationSeconds = durationSeconds,
-    rating = rating,
-    sourceMeta = sourceMeta,
-    isFavorite = false,
-    progressPercent = 0.0,
-    sourceCodes = listOf(source),
-    primarySource = source,
-    sourceSeriesName = seriesName,
-    sourceSeriesPosition = seriesPosition,
-)

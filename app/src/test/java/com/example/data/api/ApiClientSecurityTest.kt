@@ -50,7 +50,15 @@ class ApiClientSecurityTest {
             .header("Range", "bytes=100-")
             .build()
         val stripped = BackendHeaderPolicy.strip(request)
-        BackendHeaderPolicy.names.forEach { assertNull(stripped.header(it)) }
+        listOf(
+            "X-Client-Id",
+            "X-Device-Id",
+            "X-Device-Name",
+            "X-App-Version",
+            "X-Profile-Id",
+            "X-Device-Token",
+            "X-Profile-Key",
+        ).forEach { assertNull(stripped.header(it)) }
         assertEquals("bytes=100-", stripped.header("Range"))
     }
 
@@ -156,7 +164,7 @@ class ApiClientSecurityTest {
     fun relativePlaceholderIpAndUnusualPortUrlsAreRejectedInStandaloneMode() {
         assertNull(ApiClient.coverImageUrl("/covers/example.jpg"))
         assertNull(ApiClient.externalHttpUrl("/covers/example.jpg"))
-        assertNull(ApiClient.externalHttpUrl(ApiClient.baseUrl.trimEnd('/') + "/covers/example.jpg"))
+        assertNull(ApiClient.externalHttpUrl("https://unused.invalid/covers/example.jpg"))
         assertNull(ApiClient.externalHttpUrl("http://203.0.113.10:8000/covers/example.jpg"))
         assertNull(ApiClient.externalHttpUrl("https://203.0.113.10/audio.mp3"))
         assertNull(ApiClient.externalHttpUrl("https://cdn.example.test:8443/audio.mp3"))

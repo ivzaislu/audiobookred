@@ -300,38 +300,6 @@ class UserDataImportManager @Inject constructor(
         return backup
     }
 
-    private fun validateBackup(backup: UserDataBackup) {
-        if (backup.schema != USER_DATA_BACKUP_SCHEMA) {
-            throw IOException("Неподдерживаемый формат резервной копии: ${backup.schema}")
-        }
-        if (
-            !backupApplicationIdIsAccepted(
-                backupApplicationId = backup.applicationId,
-                currentApplicationId = BuildConfig.APPLICATION_ID,
-                debugBuild = BuildConfig.DEBUG,
-            )
-        ) {
-            throw IOException("Резервная копия создана для другого приложения")
-        }
-    }
-
-    private fun checkpointsFromBackup(backup: UserDataBackup): List<PlaybackResumeStore.Snapshot> =
-        backup.playbackCheckpoints
-            .filter { it.bookId.isNotBlank() }
-            .map { checkpoint ->
-                PlaybackResumeStore.Snapshot(
-                    bookId = checkpoint.bookId,
-                    sourceCode = checkpoint.sourceCode,
-                    chapterId = checkpoint.chapterId,
-                    chapterIndex = checkpoint.chapterIndex,
-                    positionMs = checkpoint.positionMs,
-                    speed = checkpoint.speed,
-                    progressPercent = checkpoint.progressPercent,
-                    savedAtMs = checkpoint.savedAtMs,
-                    dirty = true,
-                )
-            }
-
     /**
      * Applies the Room-owned portion of one validated backup.
      * Caller must already own this database's Room transaction.
@@ -440,39 +408,6 @@ class UserDataImportManager @Inject constructor(
         val settingsOk = settingsStore.replace(settings)
         return resumeOk && sourceOk && settingsOk
     }
-
-    private fun settingsFromBackup(value: BackupSettings, fallbackTheme: AppThemeMode): PlayerSettings {
-        val theme = runCatching {
-            AppThemeMode.valueOf(value.themeMode.trim().uppercase(Locale.US))
-        }.getOrDefault(fallbackTheme)
-        return PlayerSettings(
-            defaultSpeed = value.defaultSpeed,
-            rememberBookSpeed = value.rememberBookSpeed,
-            rewindSeconds = value.rewindSeconds,
-            forwardSeconds = value.forwardSeconds,
-            autoNextChapter = value.autoNextChapter,
-            // Historical backup-v1 cadence is intentionally ignored. Current
-            // runtime always uses the fixed internal checkpoint cadence.
-            showProgressPercent = value.showProgressPercent,
-            skipSilenceEnabled = value.skipSilenceEnabled,
-            smartRewindAfterPause = value.smartRewindAfterPause,
-            pinBottomNavigation = value.pinBottomNavigation,
-            // Historical backup-v1 show_continue_series/show_series_navigation
-            // values are intentionally ignored: both behaviors are always enabled
-            // in the current runtime and are no longer configurable settings.
-            downloadWifiOnly = value.downloadWifiOnly,
-            catalogCacheEnabled = value.catalogCacheEnabled,
-            themeMode = theme,
-        )
-    }
-
-    private fun part(value: String): String =
-        URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
-
-    private fun bookmarksKey(bookId: String): String = "bookmarks:${part(bookId)}"
-
-    private fun progressKey(bookId: String, sourceCode: String?): String =
-        "progress:${part(bookId)}:${part(sourceCode.orEmpty())}"
 
     companion object {
         const val LEGACY_LIBRARY_KEY = "library:v1"

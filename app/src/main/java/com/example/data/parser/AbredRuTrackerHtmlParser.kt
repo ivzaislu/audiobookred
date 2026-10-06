@@ -384,9 +384,6 @@ internal object AbredRuTrackerHtmlParser {
                     bookSourceId = sourceId,
                     sourceCode = RUTRACKER_SOURCE,
                     sourceName = RUTRACKER_SOURCE_NAME,
-                    externalId = topicId,
-                    externalUrl = pageUrl,
-                    durationSeconds = duration,
                     magnetUri = magnet,
                 )
             ),

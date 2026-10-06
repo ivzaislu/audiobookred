@@ -14,7 +14,6 @@ data class LiveCatalogItemDto(
     val title: String,
     @Json(name = "cover_url") val coverUrl: String = "",
     @Json(name = "duration_seconds") val durationSeconds: Long = 0,
-    val rating: String = "",
     @Json(name = "source_meta") val sourceMeta: String = "",
     val authors: List<String> = emptyList(),
     val narrators: List<String> = emptyList(),

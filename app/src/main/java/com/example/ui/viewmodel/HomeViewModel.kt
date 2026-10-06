@@ -271,11 +271,6 @@ class HomeViewModel @Inject constructor(
             .filter { it.progressPercent < COMPLETED_PROGRESS_PERCENT }
             .take(HOME_RAIL_LIMIT)
 
-        val favoriteBooks = favorites
-            .map { it.copy(isFavorite = true) }
-            .distinctBy(BookCardDto::id)
-            .take(HOME_RAIL_LIMIT)
-
         val visibleSeries = series
             .asSequence()
             .sortedWith(
@@ -308,13 +303,10 @@ class HomeViewModel @Inject constructor(
 
         val rails = buildList {
             if (recent.isNotEmpty()) {
-                add(localRail("local-recent", "recent", "Недавно слушали", recent))
-            }
-            if (favoriteBooks.isNotEmpty()) {
-                add(localRail("local-favorites", "favorite", "Избранное", favoriteBooks))
+                add(localRail("recent", recent))
             }
             if (downloadedBooks.isNotEmpty()) {
-                add(localRail("local-downloads", "downloaded", "Скачанные", downloadedBooks))
+                add(localRail("downloaded", downloadedBooks))
             }
         }
 
@@ -346,16 +338,10 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun localRail(
-        id: String,
         kind: String,
-        title: String,
         items: List<BookCardDto>,
     ) = HomeRailDto(
-        id = id,
         kind = kind,
-        title = title,
-        targetType = "",
-        targetId = "",
         items = items,
     )
 

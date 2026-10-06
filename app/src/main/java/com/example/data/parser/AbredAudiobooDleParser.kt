@@ -192,12 +192,7 @@ internal object AbredAudiobooDleParser {
             bookSourceId = "live:$AUDIOBOO_SOURCE:$externalPath",
             sourceCode = AUDIOBOO_SOURCE,
             sourceName = "Audioboo",
-            externalId = externalPath,
-            externalUrl = pageUrl,
-            chaptersCount = chapters.size,
-            durationSeconds = totalDuration,
             seriesName = seriesName,
-            seriesPosition = seriesPosition,
         )
         return metadata.copy(
             durationSeconds = totalDuration,

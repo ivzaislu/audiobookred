@@ -176,6 +176,25 @@ class AudiobookDownloadManager(
     }
 }
 
+internal fun downloadWorkerFailureIsObsoleteOrStopped(
+    current: DownloadBookEntity?,
+    expectedManifestId: String,
+): Boolean =
+    current == null ||
+        current.manifestId != expectedManifestId ||
+        current.deletedAtMs != null ||
+        current.state == "paused" ||
+        current.state == "completed" ||
+        current.state == "purged"
+
+internal fun shouldPersistDownloadProgress(
+    nowElapsedMs: Long,
+    lastPersistElapsedMs: Long,
+    intervalMs: Long = 1_000L,
+): Boolean =
+    nowElapsedMs >= lastPersistElapsedMs &&
+        nowElapsedMs - lastPersistElapsedMs >= intervalMs.coerceAtLeast(1L)
+
 internal object DownloadHttpPolicy {
     private val contentRange = Regex("^bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)$", RegexOption.IGNORE_CASE)
 
@@ -333,8 +352,13 @@ class BookDownloadWorker @AssistedInject constructor(
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (stale: PermanentDownloadException) {
-                store.markBookState(bookSourceId, expectedManifestId, "failed", stale.message.orEmpty())
-                Result.failure()
+                val current = store.book(bookSourceId)
+                if (downloadWorkerFailureIsObsoleteOrStopped(current, expectedManifestId)) {
+                    Result.success()
+                } else {
+                    store.markBookState(bookSourceId, expectedManifestId, "failed", stale.message.orEmpty())
+                    Result.failure()
+                }
             } catch (error: Exception) {
                 if (!store.canPublishCompletedFiles()) {
                     store.markBookState(
@@ -372,7 +396,7 @@ class BookDownloadWorker @AssistedInject constructor(
         message: String,
     ): Result {
         val current = store.book(bookSourceId)
-        if (current == null || current.manifestId != expectedManifestId || current.deletedAtMs != null) {
+        if (downloadWorkerFailureIsObsoleteOrStopped(current, expectedManifestId)) {
             return Result.success()
         }
         return if (runAttemptCount < MAX_RETRIES) {
@@ -664,7 +688,7 @@ class BookDownloadWorker @AssistedInject constructor(
                             }
                             output.write(buffer, 0, count)
                             written += count.toLong()
-                            if (written - lastPersistBytes >= PROGRESS_BYTES || now - lastPersistAt >= PROGRESS_MS) {
+                            if (shouldPersistDownloadProgress(now, lastPersistAt)) {
                                 store.markFileState(
                                     file.bookSourceId,
                                     expectedManifestId,
@@ -803,7 +827,6 @@ class BookDownloadWorker @AssistedInject constructor(
         private const val MAX_UNKNOWN_FILE_BYTES = 8L * 1024L * 1024L * 1024L
         private const val SPACE_CHECK_BYTES = 512L * 1024L
         private const val SPACE_CHECK_MS = 1_000L
-        private const val PROGRESS_BYTES = 512L * 1024L
         private const val PROGRESS_MS = 1_000L
     }
 }

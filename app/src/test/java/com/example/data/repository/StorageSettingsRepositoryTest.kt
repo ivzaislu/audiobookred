@@ -27,4 +27,11 @@ class StorageSettingsRepositoryTest {
 
         assertEquals(0L, storageDirectoryBytes(root))
     }
+    private fun storageDirectoryBytes(root: java.io.File): Long {
+        if (!root.exists()) return 0L
+        return root.walkTopDown()
+            .filter(java.io.File::isFile)
+            .sumOf { file -> file.length().coerceAtLeast(0L) }
+    }
+
 }

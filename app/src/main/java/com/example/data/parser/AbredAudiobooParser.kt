@@ -198,7 +198,6 @@ internal class AbredAudiobooParser(context: Context) {
             name = seriesName,
             kind = "source_series",
             provider = AUDIOBOO_SOURCE,
-            externalId = externalId,
             booksCount = total,
             totalCount = total,
             books = cards,

@@ -15,7 +15,6 @@ internal fun BookCardDto.toDetailShell(): BookDetailDto = BookDetailDto(
     genres = genres,
     coverUrl = coverUrl,
     durationSeconds = durationSeconds,
-    rating = rating,
     isFavorite = isFavorite,
     progressPercent = progressPercent,
     sourceCodes = sourceCodes,
@@ -24,6 +23,5 @@ internal fun BookCardDto.toDetailShell(): BookDetailDto = BookDetailDto(
     sourceSeriesName = sourceSeriesName,
     sourceSeriesPosition = sourceSeriesPosition,
     audioSeries = audioSeries,
-    canonicalSeries = canonicalSeries,
     series = series,
 )

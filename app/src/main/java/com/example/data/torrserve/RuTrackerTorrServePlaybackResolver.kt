@@ -103,17 +103,8 @@ class RuTrackerTorrServePlaybackResolver @Inject constructor(
             )
         }
 
-        val updatedVariants = book.sourceVariants.map { sourceVariant ->
-            if (sourceVariant.bookSourceId == variant.bookSourceId) {
-                sourceVariant.copy(chaptersCount = chapters.size)
-            } else {
-                sourceVariant
-            }
-        }
-
         val resolvedBook = book.copy(
             selectedBookSourceId = variant.bookSourceId,
-            sourceVariants = updatedVariants,
             chapters = chapters,
         )
 

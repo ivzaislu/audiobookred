@@ -122,13 +122,6 @@ class StorageSettingsRepository @Inject constructor(
     }
 }
 
-internal fun storageDirectoryBytes(root: File): Long {
-    if (!root.exists()) return 0L
-    return root.walkTopDown()
-        .filter(File::isFile)
-        .sumOf { file -> file.length().coerceAtLeast(0L) }
-}
-
 data class StorageSnapshot(
     val roomCacheBytes: Long,
     val posterCacheBytes: Long,

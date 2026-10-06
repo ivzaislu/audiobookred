@@ -265,8 +265,6 @@ class BookDetailRepository @Inject constructor(
                     bookSourceId = stored.bookSourceId,
                     sourceCode = stored.sourceCode,
                     sourceName = stored.sourceName,
-                    chaptersCount = files.size,
-                    durationSeconds = duration,
                 )
             ),
             chapters = files.map { file ->

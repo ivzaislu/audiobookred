@@ -13,7 +13,6 @@ class BookCardDetailShellTest {
             authors = listOf(PersonDto("author-1", "Author")),
             coverUrl = "https://example.test/cover.jpg",
             durationSeconds = 123L,
-            rating = "4.8",
             isFavorite = true,
             progressPercent = 42.5,
             sourceCodes = listOf("a", "b"),
@@ -27,7 +26,6 @@ class BookCardDetailShellTest {
         assertEquals(card.authors, detail.authors)
         assertEquals(card.coverUrl, detail.coverUrl)
         assertEquals(card.durationSeconds, detail.durationSeconds)
-        assertEquals(card.rating, detail.rating)
         assertEquals(card.isFavorite, detail.isFavorite)
         assertEquals(card.progressPercent, detail.progressPercent, 0.0)
         assertEquals(card.sourceCodes, detail.sourceCodes)

@@ -72,7 +72,6 @@ class RuTrackerTorrServePlaybackResolverTest {
                 )
             )
             assertTrue(resolved.chapters[0].streamUrl.contains("index=1"))
-            assertEquals(2, resolved.sourceVariants.single().chaptersCount)
             assertEquals(2, server.requestCount)
         }
     }

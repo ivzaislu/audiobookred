@@ -14,7 +14,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 
 /** Legacy backend headers are always stripped from public-provider traffic. */
 internal object BackendHeaderPolicy {
-    val names = listOf(
+    private val names = listOf(
         "X-Client-Id",
         "X-Device-Id",
         "X-Device-Name",
@@ -68,9 +68,6 @@ object ApiClient {
     // client per effective read timeout; callers that need extra interceptors can
     // still derive an independent client with newBuilder().
     private val httpClientsByReadTimeout = mutableMapOf<Long, OkHttpClient>()
-
-    /** Kept public for security tests and old cached-origin rejection only. */
-    val baseUrl: String get() = BLOCKED_LEGACY_ORIGIN
 
     /** Shared standalone transport for parsers, media, covers and downloads. */
     fun createHttpClient(readTimeoutSeconds: Long = 30L): OkHttpClient {
@@ -217,11 +214,9 @@ object ApiClient {
         }
     }
 
-    internal fun isSameBackendOrigin(targetUrl: String): Boolean = sameOrigin(baseUrl, targetUrl)
-
     internal fun isDisallowedStandaloneTarget(targetUrl: String): Boolean {
         if (!isSupportedHttpUrl(targetUrl)) return true
-        if (isSameBackendOrigin(targetUrl)) return true
+        if (sameOrigin(BLOCKED_LEGACY_ORIGIN, targetUrl)) return true
         return try {
             val uri = URI(targetUrl)
             val host = uri.host.orEmpty()

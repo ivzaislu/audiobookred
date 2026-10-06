@@ -23,20 +23,6 @@ data class AudioSeriesBriefDto(
     @Json(name = "source_name") val sourceName: String = ""
 )
 
-data class CanonicalWorkDto(
-    val id: String,
-    val provider: String = "fantlab",
-    @Json(name = "external_id") val externalId: String = "",
-    @Json(name = "external_url") val externalUrl: String = "",
-    val title: String = "",
-    @Json(name = "original_title") val originalTitle: String = "",
-    val authors: List<String> = emptyList(),
-    @Json(name = "published_year") val publishedYear: Int? = null,
-    @Json(name = "work_type") val workType: String = "",
-    val language: String = "",
-    val description: String = ""
-)
-
 data class ChapterDto(
     val id: String,
     val position: Int,
@@ -49,12 +35,7 @@ data class SourceVariantDto(
     @Json(name = "book_source_id") val bookSourceId: String,
     @Json(name = "source_code") val sourceCode: String,
     @Json(name = "source_name") val sourceName: String,
-    @Json(name = "external_id") val externalId: String = "",
-    @Json(name = "external_url") val externalUrl: String = "",
-    @Json(name = "chapters_count") val chaptersCount: Int = 0,
-    @Json(name = "duration_seconds") val durationSeconds: Long = 0,
     @Json(name = "series_name") val seriesName: String = "",
-    @Json(name = "series_position") val seriesPosition: Int? = null,
     @Json(name = "magnet_uri") val magnetUri: String = ""
 )
 
@@ -66,18 +47,15 @@ data class BookCardDto(
     val genres: List<GenreDto> = emptyList(),
     @Json(name = "cover_url") val coverUrl: String = "",
     @Json(name = "duration_seconds") val durationSeconds: Long = 0,
-    val rating: String = "",
     @Json(name = "source_meta") val sourceMeta: String = "",
     @Json(name = "is_favorite") val isFavorite: Boolean = false,
     @Json(name = "progress_percent") val progressPercent: Double = 0.0,
     @Json(name = "source_codes") val sourceCodes: List<String> = emptyList(),
     @Json(name = "primary_source") val primarySource: String = "",
-    @Json(name = "canonical_work_id") val canonicalWorkId: String? = null,
     @Json(name = "canonical_title") val canonicalTitle: String = "",
     @Json(name = "source_series_name") val sourceSeriesName: String = "",
     @Json(name = "source_series_position") val sourceSeriesPosition: Int? = null,
     @Json(name = "audio_series") val audioSeries: List<AudioSeriesBriefDto> = emptyList(),
-    @Json(name = "canonical_series") val canonicalSeries: List<SeriesBriefDto> = emptyList(),
     val series: List<SeriesBriefDto> = emptyList()
 ) {
     val authorText: String get() = authors.joinToString(", ") { it.name }.ifBlank { "Автор не указан" }
@@ -92,7 +70,6 @@ data class BookDetailDto(
     val genres: List<GenreDto> = emptyList(),
     @Json(name = "cover_url") val coverUrl: String = "",
     @Json(name = "duration_seconds") val durationSeconds: Long = 0,
-    val rating: String = "",
     @Json(name = "is_favorite") val isFavorite: Boolean = false,
     @Json(name = "progress_percent") val progressPercent: Double = 0.0,
     @Json(name = "source_codes") val sourceCodes: List<String> = emptyList(),
@@ -106,22 +83,19 @@ data class BookDetailDto(
     @Json(name = "source_series_name") val sourceSeriesName: String = "",
     @Json(name = "source_series_position") val sourceSeriesPosition: Int? = null,
     @Json(name = "audio_series") val audioSeries: List<AudioSeriesBriefDto> = emptyList(),
-    @Json(name = "canonical_series") val canonicalSeries: List<SeriesBriefDto> = emptyList(),
     val series: List<SeriesBriefDto> = emptyList(),
-    @Json(name = "canonical_work") val canonicalWork: CanonicalWorkDto? = null,
     val chapters: List<ChapterDto> = emptyList()
 ) {
     val authorText: String get() = authors.joinToString(", ") { it.name }.ifBlank { "Автор не указан" }
     val narratorText: String get() = narrators.joinToString(", ") { it.name }
     fun asCard() = BookCardDto(
         id = id, title = title, authors = authors, narrators = narrators, genres = genres,
-        coverUrl = coverUrl, durationSeconds = durationSeconds, rating = rating,
+        coverUrl = coverUrl, durationSeconds = durationSeconds,
         isFavorite = isFavorite, progressPercent = progressPercent,
         sourceCodes = sourceCodes, primarySource = primarySource,
         sourceSeriesName = sourceSeriesName.ifBlank { seriesName },
         sourceSeriesPosition = sourceSeriesPosition ?: seriesPosition,
         audioSeries = audioSeries,
-        canonicalSeries = canonicalSeries,
         series = series
     )
 }
@@ -133,23 +107,12 @@ data class BookListResponse(
     val total: Int = 0
 )
 
-data class SeriesCardDto(
-    val id: String,
-    val name: String,
-    val kind: String = "cycle",
-    val provider: String = "fantlab",
-    @Json(name = "external_id") val externalId: String = "",
-    @Json(name = "books_count") val booksCount: Int = 0,
-    @Json(name = "total_count") val totalCount: Int = 0
-)
-
 data class SeriesEntryDto(
     @Json(name = "external_work_id") val externalWorkId: String,
     val title: String,
     val authors: List<String> = emptyList(),
     val position: Double? = null,
     @Json(name = "published_year") val publishedYear: Int? = null,
-    @Json(name = "work_type") val workType: String = "",
     val available: Boolean = false,
     val book: BookCardDto? = null
 )
@@ -159,12 +122,9 @@ data class SeriesDetailDto(
     val name: String,
     val kind: String = "cycle",
     val provider: String = "fantlab",
-    @Json(name = "external_id") val externalId: String = "",
     @Json(name = "books_count") val booksCount: Int = 0,
     @Json(name = "total_count") val totalCount: Int = 0,
     val description: String = "",
-    val parents: List<SeriesCardDto> = emptyList(),
-    val children: List<SeriesCardDto> = emptyList(),
     val books: List<BookCardDto> = emptyList(),
     val entries: List<SeriesEntryDto> = emptyList()
 )

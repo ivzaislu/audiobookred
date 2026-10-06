@@ -56,6 +56,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         with:
+          # Emulator jobs are disk-bound on GitHub-hosted runners. Avoid restoring
+          # hundreds of MiB of Gradle state before the AVD is created.
           cache-disabled: true
 
       - name: Run instrumentation tests on GitHub-hosted emulator
@@ -69,3 +71,6 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           script: ./gradlew --no-daemon --no-build-cache connectedDebugAndroidTest
+
+      # No APK or test artifact is uploaded. This emulator-backed suite can be
+      # launched manually or called as the mandatory production-release gate.

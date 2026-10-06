@@ -7,14 +7,13 @@ import coil.annotation.ExperimentalCoilApi
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.example.data.api.ApiClient
+import com.example.data.parser.AudiobooCloudflareSession
 import java.io.IOException
 import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 
-private const val FASTPIC_SIGNED_EXPIRY_SKEW_SECONDS = 60L
 
 /**
  * Shared image pipeline for book covers.
@@ -89,8 +88,9 @@ object PosterImageCache {
         imageLoader.diskCache?.clear()
     }
 
-    private fun build(context: Context): ImageLoader =
-        ImageLoader.Builder(context)
+    private fun build(context: Context): ImageLoader {
+        AudiobooCloudflareSession.initialize(context)
+        return ImageLoader.Builder(context)
             .okHttpClient { buildImageHttpClient() }
             .memoryCache {
                 MemoryCache.Builder(context)
@@ -108,6 +108,7 @@ object PosterImageCache {
             // posters can be reused until the small LRU cache evicts them.
             .respectCacheHeaders(false)
             .build()
+    }
 
     private fun buildImageHttpClient(): OkHttpClient =
         // Derive from the shared standalone transport so cover traffic gets the
@@ -130,13 +131,18 @@ object PosterImageCache {
                 // as Media3/download traffic before applying any host-specific
                 // browser profile below.
                 val providerRequest = ApiClient.applyStandaloneProviderHeaders(request)
-                if (!isFastPicHost(providerRequest.url.host)) {
-                    return@addInterceptor chain.proceed(providerRequest)
+                val sessionRequest = applyAudiobooCoverHeaders(
+                    request = providerRequest,
+                    userAgent = AudiobooCloudflareSession.userAgent(),
+                    cookieHeader = AudiobooCloudflareSession.cookieHeader(),
+                )
+                if (!isFastPicHost(sessionRequest.url.host)) {
+                    return@addInterceptor chain.proceed(sessionRequest)
                 }
 
-                val normalizedUrl = ApiClient.coverImageUrl(providerRequest.url.toString())
+                val normalizedUrl = ApiClient.coverImageUrl(sessionRequest.url.toString())
                     ?: throw IOException("Некорректный FastPic URL")
-                val normalizedRequest = providerRequest.newBuilder()
+                val normalizedRequest = sessionRequest.newBuilder()
                     .url(normalizedUrl)
                     .build()
 
@@ -195,7 +201,13 @@ object PosterImageCache {
                 if (ApiClient.isDisallowedStandaloneTarget(request.url.toString())) {
                     throw IOException("Недопустимый редирект обложки для standalone APK")
                 }
-                chain.proceed(ApiClient.applyStandaloneProviderHeaders(request))
+                val providerRequest = ApiClient.applyStandaloneProviderHeaders(request)
+                val sessionRequest = applyAudiobooCoverHeaders(
+                    request = providerRequest,
+                    userAgent = AudiobooCloudflareSession.userAgent(),
+                    cookieHeader = AudiobooCloudflareSession.cookieHeader(),
+                )
+                chain.proceed(sessionRequest)
             }
             .build()
 
@@ -301,98 +313,6 @@ object PosterImageCache {
             host.equals("fastpic.ru", ignoreCase = true) ||
             host.endsWith(".fastpic.ru", ignoreCase = true)
 }
-
-internal fun fastPicCanonicalImageUrl(raw: String): String? {
-    val url = ApiClient.coverImageUrl(raw)?.toHttpUrlOrNull() ?: return null
-    val hostMatch = Regex("""^i(\d+)\.fastpic\.org$""", RegexOption.IGNORE_CASE)
-        .matchEntire(url.host)
-        ?: return null
-    val segments = url.pathSegments
-    if (segments.size != 5) return null
-    if (segments[0] != "big" && segments[0] != "thumb") return null
-    if (!segments[1].matches(Regex("""\d{4}"""))) return null
-    if (!segments[2].matches(Regex("""\d{4}"""))) return null
-    if (!segments[3].matches(Regex("""[0-9a-fA-F]{2}"""))) return null
-    if (segments[4].isBlank()) return null
-
-    return url.newBuilder()
-        .scheme("https")
-        .host("i" + hostMatch.groupValues[1] + ".fastpic.org")
-        .query(null)
-        .fragment(null)
-        .build()
-        .toString()
-}
-
-internal fun fastPicViewerUrls(raw: String): List<String> {
-    val source = fastPicCanonicalImageUrl(raw)?.toHttpUrlOrNull() ?: return emptyList()
-    val shard = Regex("""^i(\d+)\.fastpic\.org$""", RegexOption.IGNORE_CASE)
-        .matchEntire(source.host)
-        ?.groupValues
-        ?.getOrNull(1)
-        ?: return emptyList()
-    val segments = source.pathSegments
-    val tail = shard + "/" + segments[1] + "/" + segments[2] + "/" + segments[4]
-    return listOf(
-        "https://fastpic.org/fullview/" + tail,
-        "https://fastpic.org/view/" + tail + ".html",
-    )
-}
-
-internal fun fastPicFullviewUrl(raw: String): String? =
-    fastPicViewerUrls(raw).firstOrNull()
-
-internal fun fastPicSignedUrlFromHtml(
-    sourceUrl: String,
-    html: String,
-): String? {
-    val source = fastPicCanonicalImageUrl(sourceUrl)?.toHttpUrlOrNull() ?: return null
-    val candidates = buildList {
-        FASTPIC_LOADING_IMG_REGEX.findAll(html).forEach { match ->
-            match.groupValues.getOrNull(1)?.let(::add)
-        }
-        FASTPIC_IMAGE_SRC_REGEX.findAll(html).forEach { match ->
-            match.groupValues.getOrNull(1)?.let(::add)
-        }
-    }
-
-    for (raw in candidates) {
-        val normalized = raw.trim()
-            .replace("&amp;", "&")
-            .replace("\\/", "/")
-            .replace("\\u0026", "&")
-            .let { value -> if (value.startsWith("//")) "https:" + value else value }
-        val candidate = normalized.toHttpUrlOrNull() ?: continue
-        if (candidate.scheme != "https" || candidate.port != 443) continue
-        if (candidate.username.isNotBlank() || candidate.password.isNotBlank()) continue
-        if (candidate.fragment != null) continue
-        if (!candidate.host.equals(source.host, ignoreCase = true)) continue
-        if (candidate.encodedPath != source.encodedPath) continue
-        val expiry = fastPicSignedExpirySeconds(candidate.toString()) ?: continue
-        if (expiry <= currentEpochSeconds() + FASTPIC_SIGNED_EXPIRY_SKEW_SECONDS) continue
-        return candidate.toString()
-    }
-    return null
-}
-
-internal fun fastPicSignedExpirySeconds(raw: String): Long? {
-    val url = raw.toHttpUrlOrNull() ?: return null
-    val md5 = url.queryParameter("md5").orEmpty()
-    val expires = url.queryParameter("expires")?.toLongOrNull() ?: return null
-    return expires.takeIf { md5.isNotBlank() }
-}
-
-private fun currentEpochSeconds(): Long = System.currentTimeMillis() / 1000L
-
-private val FASTPIC_LOADING_IMG_REGEX = Regex(
-    """loading_img\s*=\s*['"]([^'"]+)['"]""",
-    RegexOption.IGNORE_CASE,
-)
-
-private val FASTPIC_IMAGE_SRC_REGEX = Regex(
-    """<img\b[^>]*\bclass=['"][^'"]*\bimage\b[^'"]*['"][^>]*\bsrc=['"]([^'"]+)['"]""",
-    RegexOption.IGNORE_CASE,
-)
 
 private const val POSTER_LOG_TAG = "AbredPoster"
 

@@ -51,7 +51,6 @@ class LiveCatalogModelsTest {
         assertEquals("", item.externalUrl)
         assertEquals("", item.coverUrl)
         assertEquals(0L, item.durationSeconds)
-        assertEquals("", item.rating)
         assertEquals("", item.sourceMeta)
         assertTrue(item.authors.isEmpty())
         assertTrue(item.narrators.isEmpty())

@@ -3,6 +3,7 @@ package com.example.data.player
 import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.Player
+import com.example.BuildConfig
 
 /**
  * Event-only logcat trace for intermittent restart/focus reports.
@@ -14,6 +15,8 @@ internal fun tracePlaybackEvent(
     player: Player? = null,
     details: String = "",
 ) {
+    if (!BuildConfig.DEBUG) return
+
     val snapshot = if (player == null) {
         ""
     } else {

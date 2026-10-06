@@ -1,24 +1,22 @@
 package com.example.ui
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.DownloadForOffline
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.MySeriesDto
-import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.viewmodel.HomeViewModel
 
@@ -51,11 +49,18 @@ internal fun PreparedHomeScreen(
         if (clean.isNotEmpty()) onSearch(clean)
     }
     val continueBook = state.continueListening.firstOrNull()
-    val nextSeries = state.mySeries.firstOrNull { !it.isCompleted && (it.nextBook != null || it.currentBook != null) }
+    val nextSeries = state.mySeries.firstOrNull {
+        !it.isCompleted && (it.nextBook != null || it.currentBook != null)
+    }
     val recentRail = state.rails.firstOrNull { it.kind == "recent" }
     val downloadedRail = state.rails.firstOrNull { it.kind == "downloaded" }
-    val hasVisibleContent = continueBook != null || state.newBooks.isNotEmpty() || state.popularBooks.isNotEmpty() ||
-        nextSeries != null || recentRail != null || downloadedRail != null
+    val hasVisibleContent =
+        continueBook != null ||
+            state.newBooks.isNotEmpty() ||
+            state.popularBooks.isNotEmpty() ||
+            nextSeries != null ||
+            recentRail != null ||
+            downloadedRail != null
 
     PullToRefreshBox(
         isRefreshing = (state.newRefreshing || state.popularRefreshing) && hasVisibleContent,
@@ -69,10 +74,9 @@ internal fun PreparedHomeScreen(
             verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs),
         ) {
             item(key = "home-header") {
-                AbredOverlaySearchHeader(
-                    sectionTitle = "Главная",
-                    searchExpanded = searchExpanded,
+                HomeSearchHeader(
                     query = query,
+                    searchExpanded = searchExpanded,
                     onQueryChange = { query = it },
                     onToggleSearch = {
                         if (searchExpanded) {
@@ -83,24 +87,12 @@ internal fun PreparedHomeScreen(
                         }
                     },
                     onSearch = submitSearch,
-                    modifier = Modifier.padding(
-                        start = AbredSpacing.ScreenHorizontal,
-                        end = AbredSpacing.ScreenHorizontal,
-                        top = AbredSpacing.ScreenVertical,
-                        bottom = 0.dp,
-                    ),
-                    placeholder = "Поиск",
                 )
             }
 
             continueBook?.let { book ->
                 item(key = "home-continue") {
-                    AbredSectionHeader(
-                        title = "Продолжить",
-                        icon = Icons.Default.PlayArrow,
-                        topPadding = 0.dp,
-                    )
-                    ContinueHeroCard(
+                    HomeContinueSection(
                         book = book,
                         showProgressPercent = showProgressPercent,
                         onOpen = { onBook(book.id) },
@@ -110,56 +102,40 @@ internal fun PreparedHomeScreen(
             }
 
             item(key = "home-new") {
-                AbredSectionHeader(title = "Новинки")
-                DiscoveryShelfState(
+                HomeNewSection(
                     books = state.newBooks,
                     refreshing = state.newRefreshing,
                     error = state.newError,
-                    keyPrefix = "new",
                     showProgressPercent = showProgressPercent,
                     onBook = onBook,
                 )
             }
 
             item(key = "home-popular") {
-                AbredSectionHeader(
-                    title = "Популярное",
-                    trailing = {
-                        PopularPeriodSelector(
-                            selected = state.popularPeriod,
-                            onSelect = homeViewModel::selectPopularPeriod,
-                        )
-                    },
-                )
-                DiscoveryShelfState(
+                HomePopularSection(
                     books = state.popularBooks,
                     refreshing = state.popularRefreshing,
                     error = state.popularError,
-                    keyPrefix = "popular-${state.popularPeriod.name}",
+                    selectedPeriod = state.popularPeriod,
+                    onSelectPeriod = homeViewModel::selectPopularPeriod,
                     showProgressPercent = showProgressPercent,
                     onBook = onBook,
                 )
             }
 
             nextSeries?.let { series ->
-                item(key = "home-next-series-${series.id}") {
-                    AbredSectionHeader(
-                        title = "Следующая в цикле",
-                        icon = Icons.Default.CollectionsBookmark,
+                item(key = "home-next-series-" + series.id) {
+                    HomeNextSeriesSection(
+                        series = series,
+                        onOpen = { onSeries(series) },
                     )
-                    NextSeriesCard(series = series, onClick = { onSeries(series) })
                 }
             }
 
             recentRail?.takeIf { it.items.isNotEmpty() }?.let { rail ->
                 item(key = "home-recent") {
-                    AbredSectionHeader(
-                        title = "Недавно слушали",
-                        icon = Icons.Default.History,
-                    )
-                    HomePosterShelf(
+                    HomeRecentSection(
                         books = rail.items.take(10),
-                        keyPrefix = "recent",
                         showProgressPercent = showProgressPercent,
                         onBook = onBook,
                     )
@@ -168,17 +144,16 @@ internal fun PreparedHomeScreen(
 
             downloadedRail?.takeIf { it.items.isNotEmpty() }?.let { rail ->
                 item(key = "home-downloads") {
-                    AbredSectionHeader(
-                        title = "Скачанные",
-                        icon = Icons.Default.DownloadForOffline,
-                    )
-                    HomePosterShelf(
+                    HomeDownloadsSection(
                         books = rail.items.take(10),
-                        keyPrefix = "downloaded",
                         showProgressPercent = showProgressPercent,
                         onBook = { bookId ->
                             val offlineId = state.downloadedBookSourceIds[bookId]
-                            if (offlineId != null) onDownloadedBook(offlineId) else onBook(bookId)
+                            if (offlineId != null) {
+                                onDownloadedBook(offlineId)
+                            } else {
+                                onBook(bookId)
+                            }
                         },
                     )
                 }
@@ -186,27 +161,13 @@ internal fun PreparedHomeScreen(
 
             if (state.loading && !hasVisibleContent) {
                 item(key = "home-local-loading") {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = AbredSpacing.Xl),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
-                    }
+                    HomeLocalLoadingState()
                 }
             }
 
             state.error?.takeIf { !hasVisibleContent }?.let { message ->
                 item(key = "home-local-error") {
-                    Text(
-                        message,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = AbredSpacing.Lg, vertical = AbredSpacing.Md),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        maxLines = if (abredLargeFontScale()) 5 else 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    HomeLocalErrorState(message)
                 }
             }
         }

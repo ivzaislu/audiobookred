@@ -17,6 +17,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 
 data class LibrarySnapshot(
     val favorites: List<BookCardDto> = emptyList(),
@@ -39,11 +40,15 @@ class LibraryRepository(
     private val resumeStore: PlaybackResumeStore,
     private val listeningStateStore: ListeningStateStore,
 ) {
-    fun observe(): Flow<LibrarySnapshot> = combine(
-        local.observe(),
-        downloadStore.observeBooks(),
-    ) { localSnapshot, downloads ->
-        buildSnapshot(localSnapshot, downloads)
+    fun observe(): Flow<LibrarySnapshot> {
+        val localSnapshots = local.observe()
+            .map { localSnapshot -> buildSnapshot(localSnapshot, emptyList()) }
+        return combine(
+            localSnapshots,
+            downloadStore.observeBooks(),
+        ) { localSnapshot, downloads ->
+            localSnapshot.copy(downloads = downloads)
+        }
     }
 
     suspend fun recordPlaybackStarted(book: BookDetailDto) {

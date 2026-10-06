@@ -301,12 +301,7 @@ class AbredMyAudiobooksParserTest {
         assertEquals("live:myaudiobooks:$externalPath", variant.bookSourceId)
         assertEquals("myaudiobooks", variant.sourceCode)
         assertEquals("MY-AUDIOBOOKS", variant.sourceName)
-        assertEquals(externalPath, variant.externalId)
-        assertEquals(pageUrl, variant.externalUrl)
-        assertEquals(2, variant.chaptersCount)
-        assertEquals(11 * 3600L + 60L + 11L, variant.durationSeconds)
         assertEquals("Мастер Трав", variant.seriesName)
-        assertEquals(4, variant.seriesPosition)
         assertEquals(
             "https://9giiu0g54k8c.redirectto.cc/s01/1/2/3/4/5/8/1.mp3",
             detail.chapters[1].streamUrl,

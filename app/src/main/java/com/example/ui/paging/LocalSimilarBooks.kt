@@ -199,7 +199,6 @@ internal object LocalSimilarBooks {
         genres = genres.filter(String::isNotBlank).map { GenreDto(id = "", name = it) },
         coverUrl = coverUrl,
         durationSeconds = durationSeconds,
-        rating = rating,
         sourceMeta = sourceMeta,
         sourceCodes = listOf(source),
         primarySource = source,

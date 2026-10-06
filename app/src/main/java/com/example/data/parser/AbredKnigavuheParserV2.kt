@@ -115,12 +115,6 @@ internal class AbredKnigavuheParserV2 {
         )
         return metadata.copy(
             durationSeconds = resolvedDuration,
-            sourceVariants = metadata.sourceVariants.map { variant ->
-                variant.copy(
-                    chaptersCount = chapters.size,
-                    durationSeconds = resolvedDuration,
-                )
-            },
             chapters = chapters,
         ).also { detail ->
             synchronized(detailCache) { detailCache[bookId] = CacheEntry(monotonicMs(), detail) }
@@ -184,7 +178,6 @@ internal class AbredKnigavuheParserV2 {
             name = seriesName,
             kind = "source_series",
             provider = KNIGAVUHE_SOURCE,
-            externalId = externalId,
             booksCount = allItems.size,
             totalCount = totalCount,
             books = cards,
@@ -258,7 +251,6 @@ internal class AbredKnigavuheParserV2 {
             genres = genres.map { GenreDto("", it) },
             coverUrl = coverUrl,
             durationSeconds = durationSeconds,
-            rating = rating,
             sourceCodes = listOf(KNIGAVUHE_SOURCE),
             primarySource = KNIGAVUHE_SOURCE,
             sourceSeriesName = resolvedSeriesName,

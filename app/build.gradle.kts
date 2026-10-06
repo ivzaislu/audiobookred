@@ -38,8 +38,8 @@ android {
         applicationId = "com.aistudio.audiobookred.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = 93
-        versionName = "0.5.3.8.5.3"
+        versionCode = 94
+        versionName = "0.5.3.8.5.4"
         testInstrumentationRunner = "com.example.MigrationTestRunner"
         // Public raw.githubusercontent.com/latest.json. No token is embedded in APK.
         buildConfigField("String", "UPDATE_MANIFEST_URL", buildConfigString(updateManifestUrl))
@@ -130,5 +130,8 @@ dependencies {
     testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

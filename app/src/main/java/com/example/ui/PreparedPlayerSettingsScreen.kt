@@ -2,19 +2,13 @@ package com.example.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.AbredSpacing
@@ -102,7 +96,7 @@ internal fun PreparedPlayerSettingsScreen(
                     AnimatedSelectionFilterChip(
                         selected = settings.rewindSeconds == seconds,
                         onClick = { vm.setRewindSeconds(seconds) },
-                        label = { Text("$seconds сек") },
+                        label = { Text(seconds.toString() + " сек") },
                     )
                 }
             }
@@ -117,7 +111,7 @@ internal fun PreparedPlayerSettingsScreen(
                     AnimatedSelectionFilterChip(
                         selected = settings.forwardSeconds == seconds,
                         onClick = { vm.setForwardSeconds(seconds) },
-                        label = { Text("$seconds сек") },
+                        label = { Text(seconds.toString() + " сек") },
                     )
                 }
             }
@@ -136,70 +130,3 @@ internal fun PreparedPlayerSettingsScreen(
         item { Spacer(Modifier.height(AbredSpacing.Md)) }
     }
 }
-
-@Composable
-private fun PlayerChoiceCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
-) {
-    AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(icon)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(AbredSpacing.Xxs))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(AbredSpacing.Sm))
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
-            content = content,
-        )
-    }
-}
-
-@Composable
-private fun PlayerSettingsSwitch(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(icon, active = checked)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(AbredSpacing.Xxs))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        }
-    }
-}
-
-private fun playerSpeedLabel(speed: Float): String =
-    if (speed % 1f == 0f) "${speed.toInt()}×" else "${speed}×"

@@ -231,12 +231,7 @@ internal object AbredAplHtmlParser {
                     bookSourceId = sourceIdentity,
                     sourceCode = AUDIOPOLKA_SOURCE,
                     sourceName = "Audiopolka",
-                    externalId = parsed.second,
-                    externalUrl = externalUrl,
-                    chaptersCount = chapters.size,
-                    durationSeconds = duration,
                     seriesName = seriesName,
-                    seriesPosition = seriesPosition,
                 )
             ),
             description = description,
@@ -251,7 +246,6 @@ internal object AbredAplHtmlParser {
             throw PreviewOnlyAudiopolkaBook(
                 reason = "audiopolka_preview_only",
                 previewBook = detail.copy(
-                    sourceVariants = detail.sourceVariants.map { it.copy(chaptersCount = 0) },
                     chapters = emptyList(),
                 ),
             )

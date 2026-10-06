@@ -137,112 +137,40 @@ internal fun PagingSeriesScreen(
             }
 
             item(key = "series-summary") {
-                val total = metadata?.totalCount?.coerceAtLeast(entries.itemCount) ?: entries.itemCount
-                val booksCount = metadata?.booksCount ?: 0
-                val typeLabel = metadata?.let(::seriesTypeLabel).orEmpty()
-                val countLabel = when {
-                    metadata == null && refreshState is LoadState.Loading -> "Загрузка…"
-                    total > 0 -> "Доступно аудио: $booksCount из $total"
-                    metadata?.kind == "source_series" -> "Аудиосерия источника"
-                    else -> "Литературный цикл"
-                }
-                Text(
-                    if (typeLabel.isBlank() || countLabel == "Загрузка…") countLabel else "$typeLabel · $countLabel",
-                    modifier = Modifier.padding(
-                        horizontal = AbredSpacing.ScreenHorizontal,
-                        vertical = AbredSpacing.Xxs,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                PagingSeriesSummary(
+                    metadata = metadata,
+                    itemCount = entries.itemCount,
+                    refreshState = refreshState,
                 )
             }
 
             if (switchOptions.size > 1) {
                 item(key = "series-switcher") {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = AbredSpacing.Xxs, bottom = AbredSpacing.Xs),
-                    ) {
-                        Text(
-                            "Варианты цикла",
-                            modifier = Modifier.padding(
-                                horizontal = AbredSpacing.ScreenHorizontal,
-                                vertical = AbredSpacing.Xxs,
-                            ),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = AbredSpacing.ScreenHorizontal),
-                            horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
-                        ) {
-                            items(
-                                count = switchOptions.size,
-                                key = { index -> switchOptions[index].request.storageKey },
-                            ) { index ->
-                                val option = switchOptions[index]
-                                AnimatedSelectionFilterChip(
-                                    selected = option.request.storageKey == request.storageKey,
-                                    onClick = {
-                                        if (option.request.storageKey != request.storageKey) {
-                                            pagingVm.clearMetadata()
-                                            request = option.request
-                                            uiScope.launch { listState.scrollToItem(0) }
-                                        }
-                                    },
-                                    label = {
-                                        Text(
-                                            "${option.typeLabel} · ${option.title}",
-                                            modifier = Modifier.widthIn(max = 240.dp),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
+                    PagingSeriesSwitcher(
+                        options = switchOptions,
+                        request = request,
+                        onSelect = { nextRequest ->
+                            pagingVm.clearMetadata()
+                            request = nextRequest
+                            uiScope.launch { listState.scrollToItem(0) }
+                        },
+                    )
                 }
             }
 
             metadata?.description?.takeIf { it.isNotBlank() }?.let { description ->
                 item(key = "series-description") {
-                    Text(
-                        description,
-                        modifier = Modifier.padding(
-                            horizontal = AbredSpacing.ScreenHorizontal,
-                            vertical = AbredSpacing.Xs,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    PagingSeriesDescription(description)
                 }
             }
 
             metadata?.takeIf { it.name.isNotBlank() }?.let { detail ->
                 item(key = "search-other-series") {
-                    OutlinedButton(
-                        onClick = { onSearchOtherSources(detail.name, detail.provider) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                horizontal = AbredSpacing.ScreenHorizontal,
-                                vertical = AbredSpacing.Xs,
-                            ),
-                        shape = MaterialTheme.shapes.medium,
-                    ) {
-                        Text(
-                            "Поиск цикла в других источниках",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    PagingSeriesSearchOtherSources(
+                        name = detail.name,
+                        provider = detail.provider,
+                        onSearchOtherSources = onSearchOtherSources,
+                    )
                 }
             }
 
@@ -307,193 +235,4 @@ internal fun PagingSeriesScreen(
         }
         ScrollToTopButton(listState)
     }
-}
-
-@Composable
-private fun SeriesPagingError(message: String, onRetry: () -> Unit) {
-    AbredEmptyState(
-        icon = Icons.Default.CloudOff,
-        title = "Не удалось загрузить цикл",
-        message = message,
-        action = { Button(onClick = onRetry) { Text("Повторить") } },
-    )
-}
-
-@Composable
-private fun SeriesEntryPlaceholder() {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Xxs),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-        ),
-    ) {
-        Row(
-            Modifier.padding(AbredSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Text("Загрузка…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun SeriesEntryRow(
-    entry: com.example.data.model.SeriesEntryDto,
-    onBook: (String) -> Unit,
-) {
-    val book = entry.book
-    val enabled = book != null && entry.available
-    val title = entry.title.ifBlank { book?.title.orEmpty() }
-    val sourceLabel = book?.sourceDisplayLabel().orEmpty()
-    val progress = book?.progressPercent?.coerceIn(0.0, 100.0) ?: 0.0
-    val meta = buildList {
-        entry.position?.let { add("№ ${formatSeriesPosition(it)}") }
-        if (entry.authors.isNotEmpty()) add(entry.authors.joinToString(", "))
-        entry.publishedYear?.let { add(it.toString()) }
-    }.joinToString(" · ")
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Xxs)
-            .then(if (enabled) Modifier.clickable { onBook(book!!.id) } else Modifier),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = if (enabled) {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerLowest
-            },
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-        border = if (enabled) {
-            abredBookCardBorder()
-        } else {
-            BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            )
-        },
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(AbredSpacing.Sm),
-            verticalAlignment = Alignment.Top,
-        ) {
-            AbredBookCover(
-                model = book?.coverUrl,
-                modifier = Modifier
-                    .width(AbredSizes.BookRowCoverWidth)
-                    .height(AbredSizes.BookRowCoverHeight),
-            )
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = AbredSizes.BookRowCoverHeight),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            bottom = if (sourceLabel.isNotBlank()) {
-                                AbredSizes.BookCardSourceReserve
-                            } else {
-                                0.dp
-                            },
-                        ),
-                ) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        Text(
-                            title,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (enabled) {
-                            Spacer(Modifier.width(AbredSpacing.Xs))
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                null,
-                                Modifier.size(AbredSizes.IconSmall),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    if (meta.isNotBlank()) {
-                        Spacer(Modifier.height(AbredSpacing.Xxs))
-                        Text(
-                            meta,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-
-                    book?.narratorText?.takeIf { it.isNotBlank() }?.let { narrator ->
-                        Spacer(Modifier.height(AbredSpacing.Xxs))
-                        Text(
-                            "Читает: $narrator",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-
-                    if (!enabled) {
-                        Spacer(Modifier.height(AbredSpacing.Xs))
-                        Text(
-                            "Нет доступного аудио",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-
-                    if (enabled && progress > 0.05) {
-                        Spacer(Modifier.height(AbredSpacing.Xs))
-                        AbredBookProgress(progress)
-                    }
-                }
-
-                if (sourceLabel.isNotBlank()) {
-                    AbredBookSourceLabel(
-                        text = sourceLabel,
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun formatSeriesPosition(value: Double): String =
-    if (value % 1.0 == 0.0) value.toInt().toString() else value.toString()
-
-private fun seriesTypeLabel(detail: com.example.data.model.SeriesDetailDto): String = when {
-    detail.kind == "source_series" -> when (detail.provider.lowercase()) {
-        "audiopolka" -> "Audiopolka"
-        "audioboo" -> "Audioboo"
-        "uknig" -> "уКниг"
-        "knigavuhe" -> "Книга в ухе"
-        else -> detail.provider.ifBlank { "Источник" }
-    }
-    detail.provider.equals("fantlab", true) -> "FantLab"
-    detail.provider.equals("litres", true) -> "LitRes"
-    detail.provider.equals("fantlab/litres", true) || detail.provider.equals("litres/fantlab", true) -> "FantLab/LitRes"
-    else -> detail.provider.ifBlank { "Литературный цикл" }
 }
