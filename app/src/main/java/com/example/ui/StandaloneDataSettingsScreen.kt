@@ -81,8 +81,6 @@ internal fun StandaloneDataSettingsScreen(
         item(key = "backup-header") {
             AbredSubpageHeader(
                 title = "Данные и резервная копия",
-                subtitle = "Перенос библиотеки и настроек между установками",
-                icon = Icons.Default.ImportExport,
                 onBack = onBack,
                 enabled = !busy,
             )

@@ -121,6 +121,10 @@ class ApiClientSecurityTest {
             mapOf("Referer" to "https://baza-knig.info/"),
             ApiClient.standaloneProviderRequestHeaders("bazaknig"),
         )
+        assertEquals(
+            mapOf("Referer" to "https://audiokniga.life/"),
+            ApiClient.standaloneProviderRequestHeaders("audioknigalife"),
+        )
         assertTrue(ApiClient.standaloneProviderRequestHeaders("uknig").isEmpty())
     }
 

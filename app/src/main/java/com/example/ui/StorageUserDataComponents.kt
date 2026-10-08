@@ -22,21 +22,17 @@ import com.example.ui.viewmodel.StorageUiState
 @Composable
 internal fun LocalUserDataCard(state: StorageUiState) {
     AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(Icons.Default.LibraryBooks)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Библиотека на устройстве",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    formatStorageBytes(state.profileBytes),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        Column {
+            Text(
+                "Библиотека на устройстве",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                formatStorageBytes(state.profileBytes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Spacer(Modifier.height(AbredSpacing.Sm))
         DataCountRow("Избранное", state.favoriteBooks.toString(), "История", state.historyBooks.toString())
@@ -69,19 +65,18 @@ private fun DataCountRow(
 
 @Composable
 private fun DataCountTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+    Column(
+        modifier = modifier.padding(vertical = AbredSpacing.Xxs),
     ) {
-        Column(Modifier.padding(AbredSpacing.Sm)) {
-            Text(value, fontWeight = FontWeight.Bold)
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

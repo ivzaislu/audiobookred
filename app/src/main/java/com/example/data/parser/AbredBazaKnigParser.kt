@@ -146,7 +146,11 @@ internal class AbredBazaKnigParser {
         require(canLoadSourceSeries(bookId, provider)) {
             "Baza-Knig source series is unavailable for $bookId"
         }
-        val detail = book(bookId)
+        val parsed = parseLiveBookKey(bookId) ?: error("Invalid Baza-Knig book id: $bookId")
+        val detail = cached(bookId) ?: run {
+            val bookUrl = AbredBazaKnigHtmlParser.bookUrl(parsed.second)
+            AbredBazaKnigHtmlParser.parseMetadata(fetchText(bookUrl), bookUrl, bookId)
+        }
         val membership = detail.audioSeries.firstOrNull { it.provider == BAZAKNIG_SOURCE }
             ?: error("Baza-Knig book has no source series: $bookId")
         val externalId = membership.externalId.takeIf(String::isNotBlank)

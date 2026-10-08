@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.model.GenreDto
 import com.example.data.parser.AndroidLiveParserLocator
 import com.example.data.parser.RUTRACKER_SOURCE
+import com.example.data.settings.SourceAvailabilityStore
 import com.example.data.source.StandaloneSourceRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -12,14 +13,25 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private fun allCatalogSourceCodes(): Set<String> =
+    StandaloneSourceRegistry.activeSources.mapTo(linkedSetOf()) { it.code }
+
+private fun firstEnabledCatalogSource(enabledSources: Set<String>): String =
+    StandaloneSourceRegistry.activeSources
+        .firstOrNull { it.code in enabledSources }
+        ?.code
+        ?: StandaloneSourceRegistry.DEFAULT_SOURCE_CODE
 
 /** Catalog request state backed by on-device Abred providers. */
 data class CatalogUiState(
     val genres: List<GenreDto> = emptyList(),
     val selectedGenreId: String? = null,
     val selectedSource: String = StandaloneSourceRegistry.DEFAULT_SOURCE_CODE,
+    val enabledSources: Set<String> = allCatalogSourceCodes(),
     val query: String = "",
     val searchAllSources: Boolean = true,
 ) {
@@ -35,12 +47,47 @@ data class CatalogUiState(
 }
 
 @HiltViewModel
-class CatalogViewModel @Inject constructor() : ViewModel() {
-    private val _state = MutableStateFlow(CatalogUiState())
+class CatalogViewModel @Inject constructor(
+    private val sourceAvailabilityStore: SourceAvailabilityStore,
+) : ViewModel() {
+    private val initialEnabledSources = sourceAvailabilityStore.enabled.value
+    private val _state = MutableStateFlow(
+        CatalogUiState(
+            selectedSource = StandaloneSourceRegistry.DEFAULT_SOURCE_CODE
+                .takeIf { it in initialEnabledSources }
+                ?: firstEnabledCatalogSource(initialEnabledSources),
+            enabledSources = initialEnabledSources,
+        )
+    )
     private var ruTrackerGenreBeforeSearch: String? = null
     val state: StateFlow<CatalogUiState> = _state.asStateFlow()
 
-    init { refreshMetadata() }
+    init {
+        viewModelScope.launch {
+            sourceAvailabilityStore.enabled.collect { enabledSources ->
+                var sourceChanged = false
+                _state.update { current ->
+                    val selectedSource = current.selectedSource
+                        .takeIf { it in enabledSources }
+                        ?: firstEnabledCatalogSource(enabledSources)
+                    sourceChanged = selectedSource != current.selectedSource
+                    current.copy(
+                        selectedSource = selectedSource,
+                        enabledSources = enabledSources,
+                        selectedGenreId = if (sourceChanged) null else current.selectedGenreId,
+                        genres = if (sourceChanged) emptyList() else current.genres,
+                    )
+                }
+                if (sourceChanged) {
+                    ruTrackerGenreBeforeSearch = null
+                    refreshMetadata(
+                        selectFirstGenre = _state.value.selectedSource == RUTRACKER_SOURCE,
+                    )
+                }
+            }
+        }
+        refreshMetadata()
+    }
 
     fun refreshMetadata() {
         refreshMetadata(selectFirstGenre = false)
@@ -48,7 +95,8 @@ class CatalogViewModel @Inject constructor() : ViewModel() {
 
     private fun refreshMetadata(selectFirstGenre: Boolean) {
         val source = _state.value.selectedSource
-            .takeIf(StandaloneSourceRegistry::supportsGenres)
+            .takeIf { it in _state.value.enabledSources }
+            ?.takeIf(StandaloneSourceRegistry::supportsGenres)
             ?: return
         viewModelScope.launch {
             val genres = try {
@@ -59,7 +107,9 @@ class CatalogViewModel @Inject constructor() : ViewModel() {
                 emptyList()
             }
             _state.update { current ->
-                if (current.selectedSource != source) return@update current
+                if (current.selectedSource != source || source !in current.enabledSources) {
+                    return@update current
+                }
 
                 val firstGenreId = if (
                     selectFirstGenre &&
@@ -129,6 +179,7 @@ class CatalogViewModel @Inject constructor() : ViewModel() {
         val source = StandaloneSourceRegistry
             .normalize(genreId.substringBefore(':'))
             .takeIf(StandaloneSourceRegistry::supportsGenres)
+            ?.takeIf { it in _state.value.enabledSources }
             ?: return
         _state.update {
             it.copy(
@@ -149,6 +200,7 @@ class CatalogViewModel @Inject constructor() : ViewModel() {
         val normalized = StandaloneSourceRegistry.normalize(source)
             .takeIf(String::isNotBlank)
             ?.takeIf(StandaloneSourceRegistry::isActive)
+            ?.takeIf { it in _state.value.enabledSources }
             ?: return
         _state.update {
             val sourceChanged = normalized != it.selectedSource

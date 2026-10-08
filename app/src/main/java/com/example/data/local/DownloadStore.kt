@@ -535,39 +535,6 @@ class DownloadStore(
         publishedBytes
     }
 
-    suspend fun migrateCompletedPrivateFilesToPublic() {
-        if (!completedStorage.canPublish()) return
-        for (book in dao.books()) {
-            for (file in dao.files(book.bookSourceId)) {
-                if (file.state != "completed") continue
-                val expectedBytes = expectedBytes(file)
-                val physical = completedStorage.inspect(
-                    bookSourceId = book.bookSourceId,
-                    bookTitle = book.title,
-                    file = file,
-                    expectedBytes = expectedBytes,
-                )
-                if (physical.privateCompletedBytes == null) continue
-                if (physical.publicBytes != null) {
-                    completedStorage.deletePrivateArtifacts(file)
-                    continue
-                }
-                try {
-                    publishCompletedFile(file, book.manifestId)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    // Best-effort upgrade: the private completed file remains playable.
-                    Log.w(
-                        TAG,
-                        "Completed-file public migration failed for ${book.bookSourceId} file=${file.fileId}",
-                        error,
-                    )
-                }
-            }
-        }
-    }
-
     suspend fun diskBytes(): Long {
         var total = 0L
         for (book in dao.books()) {

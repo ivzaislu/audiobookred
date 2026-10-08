@@ -125,7 +125,11 @@ internal class AbredUknigParser {
         limit: Int = 30,
     ): SeriesDetailDto {
         require(canLoadSourceSeries(bookId, provider)) { "уКниг source series is unavailable for $bookId" }
-        val detail = book(bookId)
+        val parsed = parseLiveBookKey(bookId) ?: error("Invalid live book key: $bookId")
+        val detail = cached(bookId) ?: run {
+            val bookUrl = AbredUknigHtmlParser.bookUrl(parsed.second)
+            AbredUknigHtmlParser.parseMetadata(fetchText(bookUrl), bookUrl, bookId)
+        }
         val membership = detail.audioSeries.firstOrNull { it.provider == UKNIG_SOURCE }
         val externalId = membership?.externalId?.takeIf(String::isNotBlank)
             ?: error("уКниг book has no source series id: $bookId")

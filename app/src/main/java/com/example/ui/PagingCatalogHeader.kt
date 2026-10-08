@@ -122,6 +122,7 @@ internal fun CatalogHeaderContent(
         ) {
             CatalogSourceSelector(
                 selectedSource = state.selectedSource,
+                enabledSources = state.enabledSources,
                 onSource = onSource,
                 modifier = Modifier.weight(0.46f),
                 active = state.selectedSourceIsApplied,

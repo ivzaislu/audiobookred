@@ -123,6 +123,7 @@ object ApiClient {
     ) {
         "bazaknig" -> mapOf("Referer" to BAZAKNIG_REFERER)
         "myaudiobooks" -> mapOf("Referer" to MYAUDIOBOOKS_REFERER)
+        "audioknigalife" -> mapOf("Referer" to "https://audiokniga.life/")
         else -> emptyMap()
     }
 

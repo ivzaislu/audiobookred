@@ -213,20 +213,16 @@ private fun ExternalServiceHeader(
     subtitle: String,
     icon: ImageVector,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbredSettingsIcon(icon)
-        Spacer(Modifier.width(AbredSpacing.Sm))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    Column {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

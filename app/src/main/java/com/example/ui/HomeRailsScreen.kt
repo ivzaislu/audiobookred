@@ -49,15 +49,18 @@ internal fun PreparedHomeScreen(
         if (clean.isNotEmpty()) onSearch(clean)
     }
     val continueBook = state.continueListening.firstOrNull()
+        .takeIf { state.showContinue }
     val nextSeries = state.mySeries.firstOrNull {
         !it.isCompleted && (it.nextBook != null || it.currentBook != null)
     }
     val recentRail = state.rails.firstOrNull { it.kind == "recent" }
-    val downloadedRail = state.rails.firstOrNull { it.kind == "downloaded" }
+    val downloadedRail = state.rails
+        .firstOrNull { it.kind == "downloaded" }
+        .takeIf { state.showDownloads }
     val hasVisibleContent =
         continueBook != null ||
-            state.newBooks.isNotEmpty() ||
-            state.popularBooks.isNotEmpty() ||
+            (state.showNew && state.newBooks.isNotEmpty()) ||
+            (state.showPopular && state.popularBooks.isNotEmpty()) ||
             nextSeries != null ||
             recentRail != null ||
             downloadedRail != null
@@ -101,26 +104,30 @@ internal fun PreparedHomeScreen(
                 }
             }
 
-            item(key = "home-new") {
-                HomeNewSection(
-                    books = state.newBooks,
-                    refreshing = state.newRefreshing,
-                    error = state.newError,
-                    showProgressPercent = showProgressPercent,
-                    onBook = onBook,
-                )
+            if (state.showNew) {
+                item(key = "home-new") {
+                    HomeNewSection(
+                        books = state.newBooks,
+                        refreshing = state.newRefreshing,
+                        error = state.newError,
+                        showProgressPercent = showProgressPercent,
+                        onBook = onBook,
+                    )
+                }
             }
 
-            item(key = "home-popular") {
-                HomePopularSection(
-                    books = state.popularBooks,
-                    refreshing = state.popularRefreshing,
-                    error = state.popularError,
-                    selectedPeriod = state.popularPeriod,
-                    onSelectPeriod = homeViewModel::selectPopularPeriod,
-                    showProgressPercent = showProgressPercent,
-                    onBook = onBook,
-                )
+            if (state.showPopular) {
+                item(key = "home-popular") {
+                    HomePopularSection(
+                        books = state.popularBooks,
+                        refreshing = state.popularRefreshing,
+                        error = state.popularError,
+                        selectedPeriod = state.popularPeriod,
+                        onSelectPeriod = homeViewModel::selectPopularPeriod,
+                        showProgressPercent = showProgressPercent,
+                        onBook = onBook,
+                    )
+                }
             }
 
             nextSeries?.let { series ->

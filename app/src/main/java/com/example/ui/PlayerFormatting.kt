@@ -55,8 +55,13 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 
-internal fun chapterDisplayLabel(title: String?, chapterIndex: Int): String {
+internal fun chapterDisplayLabel(
+    title: String?,
+    chapterIndex: Int,
+    simplify: Boolean = false,
+): String {
     val fallback = "Глава ${chapterIndex + 1}"
+    if (simplify) return fallback
     val clean = title?.trim().orEmpty()
     if (clean.isBlank()) return fallback
     return if (clean.startsWith("Глава", ignoreCase = true)) clean else "$fallback · $clean"

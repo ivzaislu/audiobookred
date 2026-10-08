@@ -175,7 +175,15 @@ internal class AbredMyAudiobooksParser {
         require(canLoadSourceSeries(bookId, provider)) {
             "MY-AUDIOBOOKS source series is unavailable for $bookId"
         }
-        val detail = book(bookId)
+        val parsed = parseLiveBookKey(bookId) ?: error("Invalid live book key: $bookId")
+        val externalPath = parsed.second
+        val pageUrl = AbredMyAudiobooksHtmlParser.bookUrl(externalPath)
+        val detail = cached(bookId) ?: AbredMyAudiobooksHtmlParser.parseMetadata(
+            fetchText(pageUrl),
+            pageUrl,
+            bookId,
+            externalPath,
+        )
         val membership = detail.audioSeries.firstOrNull { it.provider == MYAUDIOBOOKS_SOURCE }
             ?: error("MY-AUDIOBOOKS book has no source series: $bookId")
         val externalId = membership.externalId.takeIf(String::isNotBlank)

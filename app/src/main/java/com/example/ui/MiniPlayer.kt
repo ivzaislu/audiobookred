@@ -59,6 +59,7 @@ import kotlin.math.roundToInt
 internal fun MiniPlayer(
     state: PlayerUiState,
     showProgressPercent: Boolean,
+    simplifyChapterTitles: Boolean,
     onPreviousChapter: () -> Unit,
     onTogglePlayback: () -> Unit,
     onNextChapter: () -> Unit,
@@ -149,7 +150,11 @@ internal fun MiniPlayer(
                     Spacer(Modifier.height(AbredSpacing.Xxs))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            chapterDisplayLabel(chapter?.title, state.chapterIndex),
+                            chapterDisplayLabel(
+                                title = chapter?.title,
+                                chapterIndex = state.chapterIndex,
+                                simplify = simplifyChapterTitles,
+                            ),
                             modifier = Modifier.weight(1f),
                             maxLines = Int.MAX_VALUE,
                             style = MaterialTheme.typography.bodySmall,

@@ -38,8 +38,8 @@ android {
         applicationId = "com.aistudio.audiobookred.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = 94
-        versionName = "0.5.3.8.5.4"
+        versionCode = 95
+        versionName = "0.5.3.8.5.5"
         testInstrumentationRunner = "com.example.MigrationTestRunner"
         // Public raw.githubusercontent.com/latest.json. No token is embedded in APK.
         buildConfigField("String", "UPDATE_MANIFEST_URL", buildConfigString(updateManifestUrl))

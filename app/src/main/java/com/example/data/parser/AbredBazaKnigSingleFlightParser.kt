@@ -51,10 +51,9 @@ internal class AbredBazaKnigSingleFlightParser(
         page: Int = 1,
         limit: Int = 30,
     ): SeriesDetailDto {
-        // Prime/wait for the shared detail request first. delegate.sourceSeries()
-        // then reuses the provider's detail cache instead of issuing a second
-        // HTML + playlist request while the detail screen is still loading.
-        book(bookId)
+        // Series browsing needs only book metadata. Do not prime the full detail
+        // pipeline here: playlist/media failures must not make a valid series
+        // destination unavailable.
         return delegate.sourceSeries(bookId, provider, page, limit)
     }
 }

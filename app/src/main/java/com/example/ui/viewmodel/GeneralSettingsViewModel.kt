@@ -8,6 +8,7 @@ import com.example.data.backup.UserDataImportManager
 import com.example.data.download.AudiobookDownloadManager
 import com.example.data.settings.AppThemeMode
 import com.example.data.settings.PlayerSettingsStore
+import com.example.data.settings.SourceAvailabilityStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -32,6 +33,7 @@ data class UserDataImportUiState(
 @HiltViewModel
 class GeneralSettingsViewModel @Inject constructor(
     private val settingsStore: PlayerSettingsStore,
+    private val sourceAvailabilityStore: SourceAvailabilityStore,
     private val downloadManager: AudiobookDownloadManager,
     private val userDataExportManager: UserDataExportManager,
     private val userDataImportManager: UserDataImportManager,
@@ -118,6 +120,7 @@ class GeneralSettingsViewModel @Inject constructor(
 
     fun resetSettings() {
         settingsStore.reset()
+        sourceAvailabilityStore.reset()
         val wifiOnly = settingsStore.state.value.downloadWifiOnly
         viewModelScope.launch {
             downloadManager.updateNetworkPolicy(wifiOnly)

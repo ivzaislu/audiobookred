@@ -40,8 +40,6 @@ internal fun StandaloneStorageSettingsScreen(
         item(key = "storage-settings-header") {
             AbredSubpageHeader(
                 title = "Хранилище",
-                subtitle = "Кэш, локальные данные и скачанные аудиокниги",
-                icon = Icons.Default.Storage,
                 onBack = onBack,
             )
         }
@@ -52,7 +50,6 @@ internal fun StandaloneStorageSettingsScreen(
             LocalSwitchCard(
                 title = "Кэшировать каталог и страницы",
                 subtitle = "Быстрее открывать уже просмотренные экраны и карточки книг.",
-                icon = Icons.Default.Cached,
                 checked = settings.catalogCacheEnabled,
                 onChecked = vm::setCatalogCacheEnabled,
             )
@@ -67,7 +64,6 @@ internal fun StandaloneStorageSettingsScreen(
             LocalSwitchCard(
                 title = "Только по Wi‑Fi",
                 subtitle = "Ожидающие и новые загрузки не будут использовать мобильную сеть.",
-                icon = Icons.Default.Wifi,
                 checked = settings.downloadWifiOnly,
                 onChecked = vm::setDownloadWifiOnly,
             )

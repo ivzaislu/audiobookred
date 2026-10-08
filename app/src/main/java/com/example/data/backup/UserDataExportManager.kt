@@ -15,6 +15,7 @@ import com.example.data.settings.BookSourcePreferenceStore
 import com.example.data.settings.PROGRESS_SAVE_INTERVAL_SECONDS
 import com.example.data.settings.PlayerSettings
 import com.example.data.settings.PlayerSettingsStore
+import com.example.data.settings.SourceAvailabilityStore
 import com.example.data.storage.PublicAppDocumentStorage
 import com.squareup.moshi.Json
 import com.squareup.moshi.Moshi
@@ -39,6 +40,7 @@ class UserDataExportManager @Inject constructor(
     private val resumeStore: PlaybackResumeStore,
     private val sourcePreferenceStore: BookSourcePreferenceStore,
     private val settingsStore: PlayerSettingsStore,
+    private val sourceAvailabilityStore: SourceAvailabilityStore,
 ) {
     data class ExportResult(
         val bytes: Int,
@@ -105,6 +107,7 @@ class UserDataExportManager @Inject constructor(
                 .sortedByDescending(BackupPlaybackCheckpoint::savedAtMs)
             val sourcePreferenceSnapshot = sourcePreferenceStore.snapshot()
             val settingsSnapshot = settingsStore.state.value
+            val sourceAvailabilitySnapshot = sourceAvailabilityStore.snapshot()
 
             val roomSnapshot = database.withTransaction {
                 readRoomSnapshot(checkpointSnapshot)
@@ -127,6 +130,9 @@ class UserDataExportManager @Inject constructor(
                 return@repeat
             }
             if (settingsSnapshot != settingsStore.state.value) {
+                return@repeat
+            }
+            if (sourceAvailabilitySnapshot != sourceAvailabilityStore.snapshot()) {
                 return@repeat
             }
 
@@ -159,7 +165,10 @@ class UserDataExportManager @Inject constructor(
                 playbackCheckpoints = checkpointSnapshot,
                 bookMetadata = roomSnapshot.bookMetadata,
                 sourcePreferences = sourcePreferences,
-                settings = BackupSettings.from(settingsSnapshot),
+                settings = BackupSettings.from(
+                    value = settingsSnapshot,
+                    enabledSources = sourceAvailabilitySnapshot,
+                ),
             )
         }
 

@@ -30,21 +30,17 @@ import com.example.ui.viewmodel.GeneralSettingsViewModel
 @Composable
 internal fun BackupContentsCard() {
     AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(Icons.Default.Security)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Что переносится",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "Пользовательские данные и настройки приложения",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        Column {
+            Text(
+                "Что переносится",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Пользовательские данные и настройки приложения",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Spacer(Modifier.height(AbredSpacing.Xs))
         Text(

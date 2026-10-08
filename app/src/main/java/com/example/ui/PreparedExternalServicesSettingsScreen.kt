@@ -53,8 +53,6 @@ internal fun PreparedExternalServicesSettingsScreen(
         item(key = "external-services-header") {
             AbredSubpageHeader(
                 title = "RuTracker и TorrServe",
-                subtitle = "Учётные данные источника и torrent-сервера",
-                icon = Icons.Default.Link,
                 onBack = onBack,
             )
         }

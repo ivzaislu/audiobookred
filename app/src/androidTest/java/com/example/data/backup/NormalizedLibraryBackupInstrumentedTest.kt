@@ -17,6 +17,7 @@ import com.example.data.model.SeriesProgressBookDto
 import com.example.data.player.PlaybackResumeStore
 import com.example.data.settings.BookSourcePreferenceStore
 import com.example.data.settings.PlayerSettingsStore
+import com.example.data.settings.SourceAvailabilityStore
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.runBlocking
@@ -77,6 +78,7 @@ class NormalizedLibraryBackupInstrumentedTest {
             resumeStore = PlaybackResumeStore(context),
             sourcePreferenceStore = BookSourcePreferenceStore(context),
             settingsStore = PlayerSettingsStore(context),
+            sourceAvailabilityStore = SourceAvailabilityStore(context),
         )
 
         val backup = manager.buildBackup()
@@ -123,6 +125,7 @@ class NormalizedLibraryBackupInstrumentedTest {
             resumeStore = resumeStore,
             sourcePreferenceStore = sourcePreferenceStore,
             settingsStore = PlayerSettingsStore(context),
+            sourceAvailabilityStore = SourceAvailabilityStore(context),
         )
 
         val backup = manager.buildBackup()
@@ -152,6 +155,7 @@ class NormalizedLibraryBackupInstrumentedTest {
             resumeStore = PlaybackResumeStore(context),
             sourcePreferenceStore = BookSourcePreferenceStore(context),
             settingsStore = PlayerSettingsStore(context),
+            sourceAvailabilityStore = SourceAvailabilityStore(context),
         )
 
         AbredDatabase.get(context).withTransaction {
@@ -200,6 +204,7 @@ class NormalizedLibraryBackupInstrumentedTest {
             resumeStore = PlaybackResumeStore(context),
             sourcePreferenceStore = BookSourcePreferenceStore(context),
             settingsStore = PlayerSettingsStore(context),
+            sourceAvailabilityStore = SourceAvailabilityStore(context),
         )
         val database = AbredDatabase.get(context)
 

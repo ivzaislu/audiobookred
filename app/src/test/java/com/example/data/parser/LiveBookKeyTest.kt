@@ -21,6 +21,10 @@ class LiveBookKeyTest {
             "myaudiobooks" to "fantastika/123458-master-trav-iv.html",
             parseLiveBookKey("myaudiobooks:fantastika/123458-master-trav-iv.html"),
         )
+        assertEquals(
+            "audioknigalife" to "fantastika/912-labirint-otrazhenij.html",
+            parseLiveBookKey("audioknigalife:fantastika/912-labirint-otrazhenij.html"),
+        )
         assertEquals("rutracker" to "6862086", parseLiveBookKey("rutracker:6862086"))
     }
 
@@ -32,6 +36,7 @@ class LiveBookKeyTest {
                 "myaudiobooks:detective/64061-audiokniga-smert-tam-eshhe-ne-pobyvala-reks-staut.html"
             )
         )
+        assertTrue(sourceSeriesCapabilityAllows("audioknigalife:litrpg/797-igrat-chtoby-zhit-sryv.html"))
         assertFalse(sourceSeriesCapabilityAllows("myaudiobooks:bad-id"))
     }
 
@@ -53,6 +58,9 @@ class LiveBookKeyTest {
             "myaudiobooks:fantastika/../123458-book.html",
             "myaudiobooks:fantastika/123458-book.html?x=1",
             "myaudiobooks:fantastika/123458-book.html%2fextra",
+            "audioknigalife:912-book.html",
+            "audioknigalife:fantastika/../912-book.html",
+            "audioknigalife:fantastika/912-book.html?x=1",
             "rutracker:not-a-number",
             "rutracker:6862086?x=1",
         ).forEach { value ->

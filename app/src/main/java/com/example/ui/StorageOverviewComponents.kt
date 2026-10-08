@@ -22,15 +22,11 @@ import com.example.ui.viewmodel.StorageUiState
 @Composable
 internal fun StorageOverviewCard(state: StorageUiState) {
     AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(Icons.Default.PieChart)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Text(
-                "Использование памяти",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        Text(
+            "Использование памяти",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
         Spacer(Modifier.height(AbredSpacing.Sm))
         StorageMetric("Очищаемый кэш", formatStorageBytes(state.cacheBytes), emphasized = true)
         StorageMetric("Локальная библиотека", formatStorageBytes(state.profileBytes))

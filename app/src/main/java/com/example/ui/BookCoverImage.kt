@@ -21,7 +21,10 @@ import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.image.PosterImageCache
+import coil.ImageLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Защитный слой для обложек. Producer должен присылать корректный cover_url,
@@ -42,10 +45,15 @@ internal fun BookCoverImage(
     contentScale: ContentScale = ContentScale.Fit,
 ) {
     val context = LocalContext.current
-    val imageLoader = remember(context.applicationContext) {
-        PosterImageCache.imageLoader(context.applicationContext)
-    }
+    val appContext = context.applicationContext
+    var imageLoader by remember(appContext) { mutableStateOf<ImageLoader?>(null) }
     val requestModel = remember(model) { PosterImageCache.requestUrl(model) }
+
+    LaunchedEffect(appContext) {
+        imageLoader = withContext(Dispatchers.IO) {
+            PosterImageCache.imageLoader(appContext)
+        }
+    }
     var retryAttempt by remember(requestModel) { mutableStateOf(0) }
     var failedAttempt by remember(requestModel) { mutableStateOf<Int?>(null) }
     var permanentlyRejected by remember(requestModel) {
@@ -92,10 +100,11 @@ internal fun BookCoverImage(
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        if (!permanentlyRejected && imageRequest != null) {
+        val readyImageLoader = imageLoader
+        if (!permanentlyRejected && imageRequest != null && readyImageLoader != null) {
             AsyncImage(
                 model = imageRequest,
-                imageLoader = imageLoader,
+                imageLoader = readyImageLoader,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,

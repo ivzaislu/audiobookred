@@ -7,8 +7,6 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.example.data.backup.UserDataImportManager
 import com.example.data.backup.UserDataRestoreGate
-import com.example.data.local.AbredDatabase
-import com.example.data.local.DownloadStore
 import com.example.data.local.NormalizedLibraryBackfill
 import com.example.data.maintenance.AppMaintenanceScheduler
 import com.example.data.parser.AndroidLiveParserLocator
@@ -33,9 +31,6 @@ class AbredApplication : Application(), Configuration.Provider {
     lateinit var userDataImportManager: Provider<UserDataImportManager>
 
     @Inject
-    lateinit var downloadStore: Provider<DownloadStore>
-
-    @Inject
     lateinit var normalizedLibraryBackfill: Provider<NormalizedLibraryBackfill>
 
     @Inject
@@ -54,7 +49,7 @@ class AbredApplication : Application(), Configuration.Provider {
         // migration marker and normalized rows commit atomically, so later
         // launches never read library:v1 as an authority again.
         val normalizedLibraryStartedAt = SystemClock.elapsedRealtime()
-        val normalizedLibraryReady = migrateNormalizedLibraryOnce()
+        migrateNormalizedLibraryOnce()
         logStartupStep("normalized-library-migration", normalizedLibraryStartedAt)
 
         // A restore can span SharedPreferences and Room, which cannot share one
@@ -75,19 +70,12 @@ class AbredApplication : Application(), Configuration.Provider {
         )
         logStartupStep("parser-locator", parserStartedAt)
 
-        scheduleDeferredStartupWork(normalizedLibraryReady)
+        scheduleDeferredStartupWork()
         logStartupStep("main-thread-total", startupStartedAt)
     }
 
-    private fun scheduleDeferredStartupWork(normalizedLibraryReady: Boolean) {
+    private fun scheduleDeferredStartupWork() {
         startupScope.launch {
-            if (normalizedLibraryReady) {
-                val purgeStartedAt = SystemClock.elapsedRealtime()
-                purgeLegacyBoundedCatalogOnce()
-                logStartupStep("legacy-catalog-purge", purgeStartedAt)
-
-            }
-
             val maintenanceStartedAt = SystemClock.elapsedRealtime()
             runCatching {
                 AppMaintenanceScheduler.enqueue(this@AbredApplication)
@@ -95,16 +83,6 @@ class AbredApplication : Application(), Configuration.Provider {
                 Log.e(STARTUP_LOG_TAG, "Failed to enqueue deferred app maintenance", error)
             }
             logStartupStep("maintenance-enqueue", maintenanceStartedAt)
-
-            // Existing private downloads can be large. Start durable lifecycle
-            // maintenance first so a multi-gigabyte migration never delays recovery.
-            val publicDownloadsStartedAt = SystemClock.elapsedRealtime()
-            runCatching {
-                downloadStore.get().migrateCompletedPrivateFilesToPublic()
-            }.onFailure { error ->
-                Log.e(STARTUP_LOG_TAG, "Completed download migration failed", error)
-            }
-            logStartupStep("public-download-migration", publicDownloadsStartedAt)
         }
     }
 
@@ -131,62 +109,18 @@ class AbredApplication : Application(), Configuration.Provider {
         }
     }
 
-    private fun migrateNormalizedLibraryOnce(): Boolean {
-        // After the first successful v8 startup, avoid constructing the migration
-        // graph and opening Room on every normal cold start. The durable Room
-        // marker is still checked whenever this lightweight marker is absent.
-        if (NormalizedLibraryBackfill.isMigrationComplete(this)) return true
+    private fun migrateNormalizedLibraryOnce() {
+        // Keep the v7 -> v8 normalized-library bridge. After the first successful
+        // run, the lightweight marker avoids constructing Room/migration objects
+        // on normal cold starts.
+        if (NormalizedLibraryBackfill.isMigrationComplete(this)) return
 
-        return runCatching {
+        runCatching {
             runBlocking(Dispatchers.IO) {
                 normalizedLibraryBackfill.get().migrateOnce()
             }
-            true
         }.onFailure { error ->
             Log.e(STARTUP_LOG_TAG, "Normalized library migration failed", error)
-        }.isSuccess
-    }
-
-    /**
-     * Pre-standalone builds kept a manually filled 100..2000-book catalog
-     * window. Standalone runtime no longer reads that window, so cleanup may run
-     * after the first frame.
-     *
-     * Only the retired window/state rows are touched here. local_books and
-     * book_retention remain under their normal runtime ownership: pruning them
-     * from deferred startup work could race progress/bookmark/download retention
-     * updates that intentionally do not use the whole-library mutex.
-     */
-    private suspend fun purgeLegacyBoundedCatalogOnce() {
-        val prefs = getSharedPreferences(STANDALONE_MIGRATION_PREFS, MODE_PRIVATE)
-
-        // The retired backend migrator used the same preference file. Its
-        // completion bit has no reader anymore; remove only that obsolete key
-        // while keeping the catalog-purge marker until the v9 schema cleanup.
-        if (prefs.contains(LEGACY_SYNC_MIGRATION_MARKER)) {
-            prefs.edit().remove(LEGACY_SYNC_MIGRATION_MARKER).apply()
-        }
-
-        if (prefs.getBoolean(LEGACY_CATALOG_PURGED, false)) return
-
-        val result = runCatching {
-            val sqlite = AbredDatabase.get(this).openHelper.writableDatabase
-            sqlite.beginTransaction()
-            try {
-                sqlite.execSQL("DELETE FROM catalog_window")
-                sqlite.execSQL(
-                    "UPDATE catalog_cache_state SET serverTotal = 0, lastSyncedAtMs = 0 WHERE id = 1"
-                )
-                sqlite.setTransactionSuccessful()
-            } finally {
-                sqlite.endTransaction()
-            }
-        }
-        result.onFailure { error ->
-            Log.e(STARTUP_LOG_TAG, "Legacy bounded catalog purge failed", error)
-        }
-        if (result.isSuccess) {
-            prefs.edit().putBoolean(LEGACY_CATALOG_PURGED, true).apply()
         }
     }
 
@@ -196,9 +130,6 @@ class AbredApplication : Application(), Configuration.Provider {
     }
 
     private companion object {
-        const val STANDALONE_MIGRATION_PREFS = "abred_standalone_migrations"
-        const val LEGACY_CATALOG_PURGED = "legacy_bounded_catalog_purged_v1"
-        const val LEGACY_SYNC_MIGRATION_MARKER = "legacy_sync_state_migrated_v1"
         const val STARTUP_LOG_TAG = "AbredStartup"
     }
 }

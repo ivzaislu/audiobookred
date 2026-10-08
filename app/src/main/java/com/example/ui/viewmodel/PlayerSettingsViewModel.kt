@@ -17,6 +17,7 @@ class PlayerSettingsViewModel @Inject constructor(
     fun setRewindSeconds(value: Int) = settingsStore.setRewindSeconds(value)
     fun setForwardSeconds(value: Int) = settingsStore.setForwardSeconds(value)
     fun setAutoNextChapter(value: Boolean) = settingsStore.setAutoNextChapter(value)
+    fun setSimplifyChapterTitles(value: Boolean) = settingsStore.setSimplifyChapterTitles(value)
     fun setShowProgressPercent(value: Boolean) = settingsStore.setShowProgressPercent(value)
     fun setSkipSilenceEnabled(value: Boolean) = settingsStore.setSkipSilenceEnabled(value)
     fun setSmartRewindAfterPause(value: Boolean) = settingsStore.setSmartRewindAfterPause(value)

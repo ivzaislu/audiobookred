@@ -2,7 +2,6 @@ package com.example.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Text
@@ -33,8 +32,6 @@ internal fun PreparedPlayerSettingsScreen(
         item(key = "player-settings-header") {
             AbredSubpageHeader(
                 title = "Плеер",
-                subtitle = "Воспроизведение, перемотка и поведение аудиокниг",
-                icon = Icons.Default.Headphones,
                 onBack = onBack,
             )
         }
@@ -42,7 +39,6 @@ internal fun PreparedPlayerSettingsScreen(
         item { AbredSettingsSectionTitle("Для аудиокниг") }
         item {
             PlayerSettingsSwitch(
-                icon = Icons.Default.Replay,
                 title = "Умная перемотка после паузы",
                 subtitle = "После долгой паузы немного отматывать назад, чтобы легче вспомнить контекст.",
                 checked = settings.smartRewindAfterPause,
@@ -50,25 +46,29 @@ internal fun PreparedPlayerSettingsScreen(
             )
         }
 
+        item { AbredSettingsSectionTitle("Главы") }
+        item {
+            PlayerSettingsSwitch(
+                title = "Короткие названия глав",
+                subtitle = "Показывать в мини-плеере и плеере «Глава 1», «Глава 2» и так далее вместо исходных названий.",
+                checked = settings.simplifyChapterTitles,
+                onCheckedChange = vm::setSimplifyChapterTitles,
+            )
+        }
+
         item { AbredSettingsSectionTitle("Скорость") }
         item {
             PlayerChoiceCard(
-                icon = Icons.Default.Speed,
                 title = "Скорость по умолчанию",
                 subtitle = "Используется для книг без собственной сохранённой скорости.",
-            ) {
-                items(listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)) { speed ->
-                    AnimatedSelectionFilterChip(
-                        selected = kotlin.math.abs(settings.defaultSpeed - speed) < 0.01f,
-                        onClick = { vm.setDefaultSpeed(speed) },
-                        label = { Text(playerSpeedLabel(speed)) },
-                    )
-                }
-            }
+                selected = settings.defaultSpeed,
+                options = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f),
+                optionLabel = ::playerSpeedLabel,
+                onSelected = vm::setDefaultSpeed,
+            )
         }
         item {
             PlayerSettingsSwitch(
-                icon = Icons.Default.History,
                 title = "Помнить скорость для каждой книги",
                 subtitle = "Восстанавливать скорость вместе с локальной позицией прослушивания.",
                 checked = settings.rememberBookSpeed,
@@ -77,7 +77,6 @@ internal fun PreparedPlayerSettingsScreen(
         }
         item {
             PlayerSettingsSwitch(
-                icon = Icons.Default.SkipNext,
                 title = "Автоматически включать следующую главу",
                 subtitle = "После окончания главы сразу продолжать воспроизведение.",
                 checked = settings.autoNextChapter,
@@ -88,39 +87,28 @@ internal fun PreparedPlayerSettingsScreen(
         item { AbredSettingsSectionTitle("Перемотка") }
         item {
             PlayerChoiceCard(
-                icon = Icons.Default.Replay10,
                 title = "Назад",
                 subtitle = "Шаг кнопки перемотки назад.",
-            ) {
-                items(listOf(5, 10, 15, 30)) { seconds ->
-                    AnimatedSelectionFilterChip(
-                        selected = settings.rewindSeconds == seconds,
-                        onClick = { vm.setRewindSeconds(seconds) },
-                        label = { Text(seconds.toString() + " сек") },
-                    )
-                }
-            }
+                selected = settings.rewindSeconds,
+                options = listOf(5, 10, 15, 30),
+                optionLabel = { it.toString() + " сек" },
+                onSelected = vm::setRewindSeconds,
+            )
         }
         item {
             PlayerChoiceCard(
-                icon = Icons.Default.Forward30,
                 title = "Вперёд",
                 subtitle = "Шаг кнопки перемотки вперёд.",
-            ) {
-                items(listOf(10, 15, 30, 60)) { seconds ->
-                    AnimatedSelectionFilterChip(
-                        selected = settings.forwardSeconds == seconds,
-                        onClick = { vm.setForwardSeconds(seconds) },
-                        label = { Text(seconds.toString() + " сек") },
-                    )
-                }
-            }
+                selected = settings.forwardSeconds,
+                options = listOf(10, 15, 30, 60),
+                optionLabel = { it.toString() + " сек" },
+                onSelected = vm::setForwardSeconds,
+            )
         }
 
         item { AbredSettingsSectionTitle("Прогресс") }
         item {
             PlayerSettingsSwitch(
-                icon = Icons.Default.TrendingUp,
                 title = "Показывать процент прослушанного",
                 subtitle = "Отображать процент и полоску прогресса в интерфейсе.",
                 checked = settings.showProgressPercent,

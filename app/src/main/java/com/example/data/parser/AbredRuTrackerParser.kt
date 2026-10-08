@@ -232,7 +232,10 @@ internal class AbredRuTrackerParser(
                 AbredRuTrackerHtmlParser.topicUrl(item.externalId)
             }
             AbredRuTrackerHtmlParser.parseCardPreview(
-                rawHtml = session.fetchText(pageUrl),
+                rawHtml = session.fetchText(
+                    pageUrl,
+                    callTimeoutMs = RUTRACKER_PREVIEW_TIMEOUT_MS,
+                ),
                 pageUrl = pageUrl,
             ).also { parsed ->
                 // Do not pin a completely empty preview for the whole process.
@@ -286,6 +289,7 @@ internal data class RuTrackerAudioForum(val id: Int, val name: String)
 internal const val RUTRACKER_SEARCH_PAGE_SIZE = 50
 private const val RUTRACKER_SEARCH_BUFFER_MAX = 12
 private const val RUTRACKER_PREVIEW_CONCURRENCY = 4
+private const val RUTRACKER_PREVIEW_TIMEOUT_MS = 2_500L
 private const val RUTRACKER_PREVIEW_CACHE_MAX = 240
 internal const val RUTRACKER_FORUM_PAGE_SIZE = 50
 

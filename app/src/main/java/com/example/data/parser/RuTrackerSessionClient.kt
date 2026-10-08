@@ -6,6 +6,7 @@ import com.example.data.settings.ExternalServiceCredentialsStore
 import java.io.IOException
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -49,13 +50,13 @@ internal class RuTrackerSessionClient(
         val credentials = credentialsStore.ruTrackerCredentials()
         return credentials.login.isNotBlank() && credentials.password.isNotBlank()
     }
-    suspend fun fetchText(url: String): String {
+    suspend fun fetchText(url: String, callTimeoutMs: Long? = null): String {
         var challenges = 0
         var authenticationAttempts = 0
         var rateLimitRetries = 0
         while (true) {
             val cookieRevision = RuTrackerCloudflareSession.cookieRevision()
-            val attempt = execute(url)
+            val attempt = execute(url, callTimeoutMs)
             if (!attempt.challenged) {
                 if (attempt.code == 429) {
                     if (rateLimitRetries++ < RUTRACKER_RATE_LIMIT_RETRIES) {
@@ -164,8 +165,11 @@ internal class RuTrackerSessionClient(
         false
     }
 
-    private suspend fun execute(url: String): FetchAttempt =
-        execute(requestBuilder(url, "$RUTRACKER_FORUM_URL/").get().build())
+    private suspend fun execute(url: String, callTimeoutMs: Long? = null): FetchAttempt =
+        execute(
+            requestBuilder(url, "$RUTRACKER_FORUM_URL/").get().build(),
+            callTimeoutMs,
+        )
 
     private fun requestBuilder(
         url: String,
@@ -177,8 +181,15 @@ internal class RuTrackerSessionClient(
         .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
         .header("Referer", referer)
 
-    private suspend fun execute(request: Request): FetchAttempt = withContext(Dispatchers.IO) {
-        http.newCall(request).execute().use { response ->
+    private suspend fun execute(
+        request: Request,
+        callTimeoutMs: Long? = null,
+    ): FetchAttempt = withContext(Dispatchers.IO) {
+        val call = http.newCall(request)
+        callTimeoutMs
+            ?.takeIf { it > 0L }
+            ?.let { call.timeout().timeout(it, TimeUnit.MILLISECONDS) }
+        call.execute().use { response ->
             val responseBody = response.body
             val body = decodeRuTrackerHtml(
                 bytes = responseBody?.bytes() ?: ByteArray(0),

@@ -27,8 +27,6 @@ internal fun CacheControlCard(
 ) {
     AbredSettingsCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(Icons.Default.DeleteSweep)
-            Spacer(Modifier.width(AbredSpacing.Sm))
             Column(Modifier.weight(1f)) {
                 Text(
                     "Очистка кэша",

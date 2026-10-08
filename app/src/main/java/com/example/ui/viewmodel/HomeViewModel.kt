@@ -11,23 +11,29 @@ import com.example.data.model.MySeriesDto
 import com.example.data.repository.AudiobookRepository
 import com.example.data.repository.LibraryRepository
 import com.example.data.repository.LibrarySnapshot
+import com.example.data.settings.HomePopularDefaultPeriod
+import com.example.data.settings.PlayerSettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val HOME_NEW_SECTION = "new"
 private const val HOME_POPULAR_TODAY_SECTION = "popular:today"
 private const val HOME_POPULAR_WEEK_SECTION = "popular:week"
 private const val HOME_POPULAR_MONTH_SECTION = "popular:month"
 
-internal const val HOME_NEW_TTL_MS = 60L * 60L * 1_000L
-internal const val HOME_POPULAR_TTL_MS = 12L * 60L * 60L * 1_000L
+internal const val HOME_CACHE_DAY_MS = 24L * 60L * 60L * 1_000L
+
+internal fun homeDiscoveryTtlMs(days: Int): Long =
+    days.coerceAtLeast(1).toLong() * HOME_CACHE_DAY_MS
 
 internal fun shouldRefreshHomeDiscovery(
     savedAtMs: Long?,
@@ -38,6 +44,12 @@ internal fun shouldRefreshHomeDiscovery(
     if (force || savedAtMs == null) return true
     val age = (nowMs - savedAtMs).coerceAtLeast(0L)
     return age >= ttlMs
+}
+
+private fun HomePopularDefaultPeriod.toHomePopularPeriod(): HomePopularPeriod = when (this) {
+    HomePopularDefaultPeriod.TODAY -> HomePopularPeriod.Today
+    HomePopularDefaultPeriod.WEEK -> HomePopularPeriod.Week
+    HomePopularDefaultPeriod.MONTH -> HomePopularPeriod.Month
 }
 
 enum class HomePopularPeriod(
@@ -64,6 +76,10 @@ data class HomeUiState(
     val newBooks: List<BookCardDto> = emptyList(),
     val popularBooks: List<BookCardDto> = emptyList(),
     val popularPeriod: HomePopularPeriod = HomePopularPeriod.Week,
+    val showNew: Boolean = true,
+    val showPopular: Boolean = true,
+    val showContinue: Boolean = true,
+    val showDownloads: Boolean = true,
     val newRefreshing: Boolean = false,
     val popularRefreshing: Boolean = false,
     val newError: String? = null,
@@ -73,12 +89,25 @@ data class HomeUiState(
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val settingsStore: PlayerSettingsStore,
     application: Application,
 ) : ViewModel() {
     private val discoveryRepository = AudiobookRepository()
     private val discoveryCache = HomeDiscoveryCacheStore(application.applicationContext)
+    private val initialSettings = settingsStore.state.value
+    private var appliedDefaultPopularPeriod = initialSettings.homePopularDefaultPeriod
+    private var appliedCacheDays = initialSettings.homeCacheDays
 
-    private val _state = MutableStateFlow(HomeUiState(loading = true))
+    private val _state = MutableStateFlow(
+        HomeUiState(
+            loading = true,
+            popularPeriod = initialSettings.homePopularDefaultPeriod.toHomePopularPeriod(),
+            showNew = initialSettings.homeShowNew,
+            showPopular = initialSettings.homeShowPopular,
+            showContinue = initialSettings.homeShowContinue,
+            showDownloads = initialSettings.homeShowDownloads,
+        )
+    )
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     private var latestSnapshot: LibrarySnapshot? = null
@@ -86,6 +115,67 @@ class HomeViewModel @Inject constructor(
     private var popularJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            settingsStore.state.collect { settings ->
+                val defaultPeriodChanged =
+                    settings.homePopularDefaultPeriod != appliedDefaultPopularPeriod
+                if (defaultPeriodChanged) {
+                    appliedDefaultPopularPeriod = settings.homePopularDefaultPeriod
+                }
+
+                val previous = _state.value
+                val nextPeriod = if (defaultPeriodChanged) {
+                    settings.homePopularDefaultPeriod.toHomePopularPeriod()
+                } else {
+                    previous.popularPeriod
+                }
+                val showNewChanged = previous.showNew != settings.homeShowNew
+                val showPopularChanged = previous.showPopular != settings.homeShowPopular
+                val cacheDaysChanged = settings.homeCacheDays != appliedCacheDays
+                if (cacheDaysChanged) appliedCacheDays = settings.homeCacheDays
+
+                _state.update {
+                    it.copy(
+                        popularPeriod = nextPeriod,
+                        showNew = settings.homeShowNew,
+                        showPopular = settings.homeShowPopular,
+                        showContinue = settings.homeShowContinue,
+                        showDownloads = settings.homeShowDownloads,
+                        newBooks = if (settings.homeShowNew) it.newBooks else emptyList(),
+                        newRefreshing = if (settings.homeShowNew) it.newRefreshing else false,
+                        newError = if (settings.homeShowNew) it.newError else null,
+                        popularBooks = if (settings.homeShowPopular && !defaultPeriodChanged) {
+                            it.popularBooks
+                        } else {
+                            emptyList()
+                        },
+                        popularRefreshing = if (settings.homeShowPopular) {
+                            it.popularRefreshing
+                        } else {
+                            false
+                        },
+                        popularError = if (settings.homeShowPopular && !defaultPeriodChanged) {
+                            it.popularError
+                        } else {
+                            null
+                        },
+                    )
+                }
+
+                if (!settings.homeShowNew) {
+                    newJob?.cancel()
+                } else if (showNewChanged || cacheDaysChanged) {
+                    startNewRefresh(force = false)
+                }
+
+                if (!settings.homeShowPopular) {
+                    popularJob?.cancel()
+                } else if (showPopularChanged || defaultPeriodChanged || cacheDaysChanged) {
+                    popularJob?.cancel()
+                    startPopularRefresh(nextPeriod, force = false)
+                }
+            }
+        }
         viewModelScope.launch {
             try {
                 repository.observe().collect { snapshot ->
@@ -103,20 +193,23 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
-        ensureDiscoveryFresh()
     }
 
     /** Called when Home becomes visible again. Fresh cache means no network call. */
     fun ensureDiscoveryFresh() {
-        startNewRefresh(force = false)
-        startPopularRefresh(_state.value.popularPeriod, force = false)
+        if (_state.value.showNew) startNewRefresh(force = false)
+        if (_state.value.showPopular) {
+            startPopularRefresh(_state.value.popularPeriod, force = false)
+        }
     }
 
     /** Pull-to-refresh keeps current content visible while refreshing in place. */
     fun refresh() {
         latestSnapshot?.let(::applyLocalSnapshot)
-        startNewRefresh(force = true)
-        startPopularRefresh(_state.value.popularPeriod, force = true)
+        if (_state.value.showNew) startNewRefresh(force = true)
+        if (_state.value.showPopular) {
+            startPopularRefresh(_state.value.popularPeriod, force = true)
+        }
     }
 
     fun selectPopularPeriod(period: HomePopularPeriod) {
@@ -149,6 +242,16 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun loadNew(force: Boolean) {
+        if (!_state.value.showNew) {
+            _state.update {
+                it.copy(
+                    newBooks = emptyList(),
+                    newRefreshing = false,
+                    newError = null,
+                )
+            }
+            return
+        }
         val cached = try {
             discoveryCache.read(HOME_NEW_SECTION)
         } catch (cancelled: CancellationException) {
@@ -165,13 +268,16 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        if (!shouldRefreshHomeDiscovery(cached?.savedAtMs, System.currentTimeMillis(), HOME_NEW_TTL_MS, force)) {
+        val ttlMs = homeDiscoveryTtlMs(settingsStore.state.value.homeCacheDays)
+        if (!shouldRefreshHomeDiscovery(cached?.savedAtMs, System.currentTimeMillis(), ttlMs, force)) {
             return
         }
 
         _state.update { it.copy(newRefreshing = true, newError = null) }
         try {
-            val fresh = discoveryRepository.homeKnigavuhe(HOME_NEW_SECTION, HOME_DISCOVERY_LIMIT)
+            val fresh = withContext(Dispatchers.IO) {
+                discoveryRepository.homeKnigavuhe(HOME_NEW_SECTION, HOME_DISCOVERY_LIMIT)
+            }
             if (fresh.items.isNotEmpty()) {
                 discoveryCache.write(HOME_NEW_SECTION, fresh)
                 _state.update { it.copy(newBooks = fresh.items, newError = null) }
@@ -191,6 +297,16 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun loadPopular(period: HomePopularPeriod, force: Boolean) {
+        if (!_state.value.showPopular) {
+            _state.update { current ->
+                if (current.popularPeriod != period) current else current.copy(
+                    popularBooks = emptyList(),
+                    popularRefreshing = false,
+                    popularError = null,
+                )
+            }
+            return
+        }
         val section = period.section
         val cached = try {
             discoveryCache.read(section)
@@ -210,7 +326,8 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        if (!shouldRefreshHomeDiscovery(cached?.savedAtMs, System.currentTimeMillis(), HOME_POPULAR_TTL_MS, force)) {
+        val ttlMs = homeDiscoveryTtlMs(settingsStore.state.value.homeCacheDays)
+        if (!shouldRefreshHomeDiscovery(cached?.savedAtMs, System.currentTimeMillis(), ttlMs, force)) {
             return
         }
 
@@ -218,7 +335,9 @@ class HomeViewModel @Inject constructor(
             if (current.popularPeriod != period) current else current.copy(popularRefreshing = true, popularError = null)
         }
         try {
-            val fresh = discoveryRepository.homeKnigavuhe(section, HOME_DISCOVERY_LIMIT)
+            val fresh = withContext(Dispatchers.IO) {
+                discoveryRepository.homeKnigavuhe(section, HOME_DISCOVERY_LIMIT)
+            }
             if (fresh.items.isNotEmpty()) {
                 discoveryCache.write(section, fresh)
                 _state.update { current ->

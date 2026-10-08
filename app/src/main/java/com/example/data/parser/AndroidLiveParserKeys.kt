@@ -31,6 +31,12 @@ private fun isValidLiveBookExternalId(source: String, externalId: String): Boole
             externalId.none { it.isISOControl() || it.isWhitespace() || it == ':' } &&
             !containsEncodedRouteControl(externalId) &&
             Regex("^[^/?#]+/\\d+[^/?#]*\\.html$", RegexOption.IGNORE_CASE).matches(externalId)
+    AUDIOKNIGA_LIFE_SOURCE ->
+        !externalId.contains("..") &&
+            !externalId.contains('\\') &&
+            externalId.none { it.isISOControl() || it.isWhitespace() || it == ':' } &&
+            !containsEncodedRouteControl(externalId) &&
+            Regex("^(?:[^/?#]+/)+\\d+[^/?#]*\\.html$", RegexOption.IGNORE_CASE).matches(externalId)
     KNIGAVUHE_SOURCE -> isSafeSinglePathSegment(externalId)
     BAZAKNIG_SOURCE ->
         !externalId.contains("..") &&

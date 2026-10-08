@@ -10,7 +10,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,30 +22,15 @@ import com.example.ui.viewmodel.StorageUiState
 internal fun LocalSwitchCard(
     title: String,
     subtitle: String,
-    icon: ImageVector,
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
 ) {
-    AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(icon, active = checked)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Switch(checked = checked, onCheckedChange = onChecked)
-        }
-    }
+    AbredSettingsSwitchRow(
+        title = title,
+        subtitle = subtitle,
+        checked = checked,
+        onCheckedChange = onChecked,
+    )
 }
 
 @Composable

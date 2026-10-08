@@ -36,6 +36,9 @@ class AndroidLiveParserHub internal constructor(
     private val myaudiobooks by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AbredMyAudiobooksParser()
     }
+    private val audioknigalife by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AbredAudioknigaLifeParser()
+    }
     private val rutracker by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AbredRuTrackerParser(
             context = appContext,
@@ -135,6 +138,23 @@ class AndroidLiveParserHub internal constructor(
                 genreBooksBlock = { id, page, limit -> myaudiobooks.genreBooks(id, page, limit) },
                 canLoadSourceSeriesBlock = { bookId, provider -> myaudiobooks.canLoadSourceSeries(bookId, provider) },
                 sourceSeriesBlock = { bookId, provider, page, limit -> myaudiobooks.sourceSeries(bookId, provider, page, limit) },
+            ),
+            LiveProviderAdapter(
+                sourceCode = AUDIOKNIGA_LIFE_SOURCE,
+                genresBlock = { audioknigalife.genres() },
+                catalogBlock = { page -> audioknigalife.catalog(page) },
+                searchBlock = { query, _, _ -> audioknigalife.search(query) },
+                bookBlock = { bookId -> audioknigalife.book(bookId) },
+                canBrowseAuthorBlock = { id -> audioknigalife.canBrowseAuthor(id) },
+                canBrowseNarratorBlock = { id -> audioknigalife.canBrowseNarrator(id) },
+                canBrowseGenreBlock = { id -> audioknigalife.canBrowseGenre(id) },
+                authorBooksBlock = { id, page, limit -> audioknigalife.authorBooks(id, page, limit) },
+                narratorBooksBlock = { id, page, limit -> audioknigalife.narratorBooks(id, page, limit) },
+                genreBooksBlock = { id, page, limit -> audioknigalife.genreBooks(id, page, limit) },
+                canLoadSourceSeriesBlock = { bookId, provider -> audioknigalife.canLoadSourceSeries(bookId, provider) },
+                sourceSeriesBlock = { bookId, provider, page, limit ->
+                    audioknigalife.sourceSeries(bookId, provider, page, limit)
+                },
             ),
             LiveProviderAdapter(
                 sourceCode = RUTRACKER_SOURCE,

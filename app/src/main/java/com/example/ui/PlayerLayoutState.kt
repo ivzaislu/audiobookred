@@ -12,6 +12,7 @@ internal data class PlayerLayoutState(
     val forwardSeconds: Int,
     val sleepTimer: SleepTimerState,
     val skipSilenceEnabled: Boolean,
+    val simplifyChapterTitles: Boolean,
     val overall: Double,
     val largeText: Boolean,
     val extraLargeText: Boolean,

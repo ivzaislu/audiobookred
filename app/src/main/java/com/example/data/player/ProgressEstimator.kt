@@ -17,15 +17,48 @@ fun estimateOverallProgressPercent(
     positionMs: Long,
     currentDurationMs: Long,
     completed: Boolean = false
-): Double = estimateOverallProgressPercent(
-    chapterDurationsMs = book.chapters.map { it.durationSeconds.coerceAtLeast(0L) * 1_000L },
-    totalDurationMs = book.durationSeconds.coerceAtLeast(0L) * 1_000L,
-    storedProgressPercent = book.progressPercent,
-    chapterIndex = chapterIndex,
-    positionMs = positionMs,
-    currentDurationMs = currentDurationMs,
-    completed = completed,
-)
+): Double {
+    if (completed) return 100.0
+    if (book.chapters.isEmpty()) return book.progressPercent.coerceIn(0.0, 100.0)
+
+    val index = chapterIndex.coerceIn(0, book.chapters.lastIndex)
+    var beforeDurationMs = 0L
+    var beforeDurationsKnown = true
+    var summedDurationMs = 0L
+    var allDurationsKnown = true
+
+    book.chapters.forEachIndexed { chapter, item ->
+        val durationMs = item.durationSeconds.coerceAtLeast(0L) * 1_000L
+        summedDurationMs += durationMs
+        if (durationMs <= 0L) allDurationsKnown = false
+        if (chapter < index) {
+            beforeDurationMs += durationMs
+            if (durationMs <= 0L) beforeDurationsKnown = false
+        }
+    }
+
+    val declaredTotalMs = book.durationSeconds.coerceAtLeast(0L) * 1_000L
+    val totalMs = when {
+        declaredTotalMs > 0L -> declaredTotalMs
+        allDurationsKnown -> summedDurationMs
+        book.chapters.size == 1 && currentDurationMs > 0L -> currentDurationMs
+        else -> 0L
+    }
+    val currentChapterDurationMs =
+        book.chapters[index].durationSeconds.coerceAtLeast(0L) * 1_000L
+
+    return calculateOverallProgressPercent(
+        chapterCount = book.chapters.size,
+        chapterIndex = index,
+        beforeDurationMs = beforeDurationMs,
+        beforeDurationsKnown = beforeDurationsKnown,
+        currentChapterDurationMs = currentChapterDurationMs,
+        totalDurationMs = totalMs,
+        positionMs = positionMs,
+        currentDurationMs = currentDurationMs,
+        untouchedFallbackPercent = book.progressPercent,
+    )
+}
 
 /** Same estimator for playback owners that already have chapter metadata, not a full DTO. */
 internal fun estimateOverallProgressPercent(

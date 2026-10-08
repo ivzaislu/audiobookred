@@ -17,8 +17,6 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-internal const val LIBRARY_RETENTION_REPAIR_MARKER_KEY = "maintenance:library-retention-reconciled:v1"
-
 internal fun mergeLibraryRetentionRows(
     existing: List<BookRetentionEntity>,
     favoriteIds: Set<String>,
@@ -68,7 +66,6 @@ class LocalCacheStore(context: Context) {
     private val dao = db.cachedPayloads()
     private val catalogDao = db.localCatalog()
     private val normalizedLibraryDao = db.normalizedLibrary()
-    private val trashDao = db.libraryTrash()
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val bookAdapter = moshi.adapter(BookDetailDto::class.java)
     private val bookCardAdapter = moshi.adapter(BookCardDto::class.java)
@@ -205,17 +202,31 @@ class LocalCacheStore(context: Context) {
     }
 
     /** Standalone catalog cache is page-based only; legacy catalog_window is never read. */
-    suspend fun readCatalog(query: String, genreId: String?, source: String?, page: Int): BookListResponse? =
-        read(catalogKey(query, genreId, source, page), browseAdapter)?.response
+    suspend fun readCatalog(
+        query: String,
+        genreId: String?,
+        source: String?,
+        sourceAvailabilityKey: String,
+        page: Int,
+    ): BookListResponse? =
+        read(
+            catalogKey(query, genreId, source, sourceAvailabilityKey, page),
+            browseAdapter,
+        )?.response
 
     suspend fun writeCatalog(
         query: String,
         genreId: String?,
         source: String?,
+        sourceAvailabilityKey: String,
         page: Int,
-        response: BookListResponse
+        response: BookListResponse,
     ) {
-        write(catalogKey(query, genreId, source, page), BrowsePayload(response), browseAdapter)
+        write(
+            catalogKey(query, genreId, source, sourceAvailabilityKey, page),
+            BrowsePayload(response),
+            browseAdapter,
+        )
     }
 
     suspend fun readBrowse(kind: String, id: String, page: Int): BookListResponse? =
@@ -481,9 +492,6 @@ class LocalCacheStore(context: Context) {
         return removed
     }
 
-    suspend fun purgeExpiredLibraryTrash(nowMs: Long = System.currentTimeMillis()): Int =
-        trashDao.purgeExpired(nowMs)
-
     suspend fun upsertBookmarkState(value: BookmarkDto) {
         val current = readBookmarks(value.bookId).orEmpty()
         writeBookmarks(
@@ -513,61 +521,6 @@ class LocalCacheStore(context: Context) {
 
     suspend fun setDownloadedReference(bookId: String, downloaded: Boolean) {
         markRetention(bookId) { current -> current.copy(downloadedRef = downloaded) }
-    }
-
-    /**
-     * One-time repair for historical favorite/history retention drift.
-     *
-     * Current favorite/history point mutations, normalized backfill and backup
-     * restore all update normalized rows and retention inside Room transactions,
-     * so this is not part of the ongoing crash-consistency contract.
-     */
-    suspend fun repairLibraryRetentionFromNormalizedOnce(): Boolean {
-        val now = System.currentTimeMillis()
-        return db.withTransaction {
-            if (dao.get(LIBRARY_RETENTION_REPAIR_MARKER_KEY) != null) {
-                return@withTransaction false
-            }
-            if (dao.get(NORMALIZED_LIBRARY_MIGRATION_MARKER_KEY) == null) {
-                return@withTransaction false
-            }
-
-            val favoriteIds = normalizedLibraryDao.favorites()
-                .mapTo(linkedSetOf(), LibraryFavoriteEntity::bookId)
-            val historyIds = normalizedLibraryDao.history()
-                .mapTo(linkedSetOf(), LibraryHistoryEntity::bookId)
-
-            catalogDao.clearFavoriteRefs(now)
-            catalogDao.clearHistoryRefs(now)
-
-            val retainedIds = buildList {
-                addAll(favoriteIds)
-                historyIds.forEach { id -> if (id !in favoriteIds) add(id) }
-            }
-            if (retainedIds.isNotEmpty()) {
-                val existing = retainedIds
-                    .chunked(RETENTION_QUERY_CHUNK_SIZE)
-                    .flatMap { ids -> catalogDao.retentions(ids) }
-                val merged = mergeLibraryRetentionRows(
-                    existing = existing,
-                    favoriteIds = favoriteIds,
-                    historyIds = historyIds,
-                    now = now,
-                )
-                if (merged.isNotEmpty()) catalogDao.putRetentions(merged)
-            }
-
-            catalogDao.pruneUnreferencedBooks()
-            catalogDao.pruneEmptyRetention()
-            dao.put(
-                CachedPayloadEntity(
-                    cacheKey = LIBRARY_RETENTION_REPAIR_MARKER_KEY,
-                    payloadJson = "true",
-                    savedAtMs = now,
-                )
-            )
-            true
-        }
     }
 
     suspend fun storageStats(): StorageStats {
@@ -647,7 +600,6 @@ class LocalCacheStore(context: Context) {
     companion object {
         private const val BOOK_CARD_QUERY_CHUNK_SIZE = 500
         private const val CACHE_KEY_QUERY_CHUNK_SIZE = 500
-        private const val RETENTION_QUERY_CHUNK_SIZE = 500
         private const val DEFAULT_VARIANT = "_default"
 
         fun sourceSeriesKey(bookId: String, provider: String?) = "source:${bookId}:${provider.orEmpty()}"
@@ -659,8 +611,15 @@ class LocalCacheStore(context: Context) {
         private fun bookmarksKey(bookId: String) = "bookmarks:${part(bookId)}"
         private fun similarPageKey(bookId: String, page: Int) = "similar-page:${part(bookId)}:$page"
         private fun progressKey(bookId: String, source: String?) = "progress:${part(bookId)}:${part(source.orEmpty())}"
-        private fun catalogKey(query: String, genreId: String?, source: String?, page: Int) =
-            "catalog:${part(query.trim())}:${part(genreId.orEmpty())}:${part(source.orEmpty())}:$page"
+        private fun catalogKey(
+            query: String,
+            genreId: String?,
+            source: String?,
+            sourceAvailabilityKey: String,
+            page: Int,
+        ) =
+            "catalog:${part(query.trim())}:${part(genreId.orEmpty())}:${part(source.orEmpty())}:" +
+                "${part(sourceAvailabilityKey)}:$page"
         private fun browseKey(kind: String, id: String, page: Int) = "browse:${part(kind)}:${part(id)}:$page"
     }
 }

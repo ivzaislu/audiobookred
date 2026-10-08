@@ -22,21 +22,17 @@ import com.example.ui.viewmodel.StorageUiState
 @Composable
 internal fun DownloadStorageCard(state: StorageUiState) {
     AbredSettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AbredSettingsIcon(Icons.Default.DownloadForOffline)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Аудиофайлы",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "${state.downloadedBooks} книг · ${formatStorageBytes(state.downloadedBytes)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        Column {
+            Text(
+                "Аудиофайлы",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "${state.downloadedBooks} книг · ${formatStorageBytes(state.downloadedBytes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Spacer(Modifier.height(AbredSpacing.Xs))
         Text(

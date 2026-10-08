@@ -4,7 +4,9 @@ import com.example.BuildConfig
 import com.example.data.model.BookmarkDto
 import com.example.data.player.PlaybackResumeStore
 import com.example.data.settings.AppThemeMode
+import com.example.data.settings.HomePopularDefaultPeriod
 import com.example.data.settings.PlayerSettings
+import com.example.data.settings.sanitizeHomeCacheDays
 import java.io.IOException
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -42,22 +44,41 @@ internal fun checkpointsFromBackup(backup: UserDataBackup): List<PlaybackResumeS
             )
         }
 
+internal fun enabledSourcesFromBackup(
+    value: BackupSettings,
+    fallback: Set<String>,
+): Set<String> = value.enabledSources
+    ?.mapTo(linkedSetOf()) { it.trim().lowercase(Locale.US) }
+    ?.filterTo(linkedSetOf()) { it.isNotBlank() }
+    ?.takeIf { it.isNotEmpty() }
+    ?: fallback
+
 internal fun settingsFromBackup(value: BackupSettings, fallbackTheme: AppThemeMode): PlayerSettings {
     val theme = runCatching {
         AppThemeMode.valueOf(value.themeMode.trim().uppercase(Locale.US))
     }.getOrDefault(fallbackTheme)
+    val homePopularDefaultPeriod = runCatching {
+        HomePopularDefaultPeriod.valueOf(value.homePopularDefaultPeriod.trim().uppercase(Locale.US))
+    }.getOrDefault(HomePopularDefaultPeriod.WEEK)
     return PlayerSettings(
         defaultSpeed = value.defaultSpeed,
         rememberBookSpeed = value.rememberBookSpeed,
         rewindSeconds = value.rewindSeconds,
         forwardSeconds = value.forwardSeconds,
         autoNextChapter = value.autoNextChapter,
+        simplifyChapterTitles = value.simplifyChapterTitles,
         // Historical backup-v1 cadence is intentionally ignored. Current
         // runtime always uses the fixed internal checkpoint cadence.
         showProgressPercent = value.showProgressPercent,
         skipSilenceEnabled = value.skipSilenceEnabled,
         smartRewindAfterPause = value.smartRewindAfterPause,
         pinBottomNavigation = value.pinBottomNavigation,
+        homeShowNew = value.homeShowNew,
+        homeShowPopular = value.homeShowPopular,
+        homeShowContinue = value.homeShowContinue,
+        homeShowDownloads = value.homeShowDownloads,
+        homePopularDefaultPeriod = homePopularDefaultPeriod,
+        homeCacheDays = sanitizeHomeCacheDays(value.homeCacheDays),
         // Historical backup-v1 show_continue_series/show_series_navigation
         // values are intentionally ignored: both behaviors are always enabled
         // in the current runtime and are no longer configurable settings.

@@ -2,11 +2,14 @@ package com.example.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.example.data.local.DownloadBookEntity
 import com.example.ui.theme.AbredSpacing
 
@@ -26,19 +29,33 @@ internal fun DeviceBooksListV2(
         return
     }
 
+    val storedBytes = remember(downloads) {
+        downloads.sumOf { it.downloadedBytes.coerceAtLeast(0L) }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             horizontal = AbredSpacing.ScreenHorizontal,
             vertical = AbredSpacing.Xs,
         ),
-        verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
     ) {
-        items(
-            count = downloads.size,
-            key = { index -> "library-device-${downloads[index].bookSourceId}" },
-        ) { index ->
-            val item = downloads[index]
+        item(key = "library-device-summary") {
+            Text(
+                text = "${downloads.size} книг · ${libraryFormatBytes(storedBytes)} на устройстве",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(
+                    start = 52.dp + AbredSpacing.Sm,
+                    bottom = AbredSpacing.Xxs,
+                ),
+            )
+        }
+
+        itemsIndexed(
+            items = downloads,
+            key = { _, item -> "library-device-${item.bookSourceId}" },
+        ) { index, item ->
             LibraryDeviceBookCard(
                 item = item,
                 onOpen = { onOpen(item.bookSourceId) },
@@ -48,6 +65,13 @@ internal fun DeviceBooksListV2(
                 onRetry = { onRetry(item.bookSourceId) },
                 onRemove = { onRemove(item.bookSourceId) },
             )
+
+            if (index != downloads.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 52.dp + AbredSpacing.Sm),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                )
+            }
         }
     }
 }

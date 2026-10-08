@@ -9,14 +9,22 @@ class StandaloneSourceRegistryTest {
     @Test
     fun activeSourcesKeepStableCodesAndLabels() {
         assertEquals(
-            listOf("audiopolka", "uknig", "audioboo", "knigavuhe", "bazaknig", "myaudiobooks", "rutracker"),
+            listOf("audiopolka", "uknig", "audioboo", "knigavuhe", "bazaknig", "myaudiobooks", "audioknigalife", "rutracker"),
             StandaloneSourceRegistry.activeSources.map { it.code },
         )
         assertEquals("Audiopolka", StandaloneSourceRegistry.displayNameOrNull("AUDIOPOLKA"))
         assertEquals("уКниг", StandaloneSourceRegistry.displayNameOrNull(" uknig "))
         assertEquals("Baza-Knig", StandaloneSourceRegistry.displayNameOrNull("bazaknig"))
         assertEquals("MY-AUDIOBOOKS", StandaloneSourceRegistry.displayNameOrNull("myaudiobooks"))
+        assertEquals("Audiokniga.Life", StandaloneSourceRegistry.displayNameOrNull("audioknigalife"))
         assertEquals("RuTracker", StandaloneSourceRegistry.displayNameOrNull("rutracker"))
+    }
+
+
+    @Test
+    fun activeSourceCodesAreUnique() {
+        val codes = StandaloneSourceRegistry.activeSources.map { it.code }
+        assertEquals(codes.distinct(), codes)
     }
 
     @Test
@@ -35,6 +43,8 @@ class StandaloneSourceRegistryTest {
         assertTrue(StandaloneSourceRegistry.isActive("myaudiobooks"))
         assertTrue(StandaloneSourceRegistry.supportsGenres("myaudiobooks"))
         assertTrue(StandaloneSourceRegistry.supportsSeries("myaudiobooks"))
+        assertTrue(StandaloneSourceRegistry.supportsGenres("audioknigalife"))
+        assertTrue(StandaloneSourceRegistry.supportsSeries("audioknigalife"))
     }
 
     @Test

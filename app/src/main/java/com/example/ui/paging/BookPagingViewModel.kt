@@ -85,8 +85,10 @@ sealed interface BookPageRequest {
         val query: String = "",
         val genreId: String? = null,
         val source: String? = null,
+        val sourceAvailabilityKey: String = "",
     ) : BookPageRequest {
-        override val storageKey: String = "catalog|${query.trim()}|${genreId.orEmpty()}|${source.orEmpty()}"
+        override val storageKey: String =
+            "catalog|${query.trim()}|${genreId.orEmpty()}|${source.orEmpty()}|$sourceAvailabilityKey"
     }
 
     data class Browse(
@@ -207,14 +209,27 @@ private class CachedBookPagingSource(
     }
 
     private suspend fun readCached(page: Int): BookListResponse? = when (val value = request) {
-        is BookPageRequest.Catalog -> cacheStore.readCatalog(value.query, value.genreId, value.source, page)
+        is BookPageRequest.Catalog -> cacheStore.readCatalog(
+            value.query,
+            value.genreId,
+            value.source,
+            value.sourceAvailabilityKey,
+            page,
+        )
         is BookPageRequest.Browse -> cacheStore.readBrowse(value.kind, value.storageKey, page)
         is BookPageRequest.Similar -> cacheStore.readSimilarPage(value.bookId, page)
     }
 
     private suspend fun writeCached(page: Int, response: BookListResponse) {
         when (val value = request) {
-            is BookPageRequest.Catalog -> cacheStore.writeCatalog(value.query, value.genreId, value.source, page, response)
+            is BookPageRequest.Catalog -> cacheStore.writeCatalog(
+                value.query,
+                value.genreId,
+                value.source,
+                value.sourceAvailabilityKey,
+                page,
+                response,
+            )
             is BookPageRequest.Browse -> cacheStore.writeBrowse(value.kind, value.storageKey, page, response)
             is BookPageRequest.Similar -> cacheStore.writeSimilarPage(value.bookId, page, response)
         }

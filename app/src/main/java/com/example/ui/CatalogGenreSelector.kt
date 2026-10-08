@@ -49,6 +49,7 @@ private fun sourceFaviconRes(code: String): Int? = when (code) {
     "knigavuhe" -> R.drawable.source_favicon_knigavuhe
     "bazaknig" -> R.drawable.source_favicon_bazaknig
     "myaudiobooks" -> R.drawable.source_favicon_myaudiobooks
+    "audioknigalife" -> R.drawable.source_favicon_audioknigalife
     "rutracker" -> R.drawable.source_favicon_rutracker
     else -> null
 }
@@ -59,12 +60,14 @@ private const val MAX_GENRES_IN_POPUP = 60
 @Composable
 internal fun CatalogSourceSelector(
     selectedSource: String,
+    enabledSources: Set<String>,
     onSource: (String) -> Unit,
     modifier: Modifier = Modifier,
     active: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedOption = CATALOG_SOURCE_OPTIONS
+    val visibleOptions = CATALOG_SOURCE_OPTIONS.filter { it.code in enabledSources }
+    val selectedOption = visibleOptions
         .firstOrNull { it.code == selectedSource }
     val selectedLabel = selectedOption
         ?.label
@@ -86,7 +89,7 @@ internal fun CatalogSourceSelector(
             properties = PopupProperties(focusable = true),
         ) {
             Column(Modifier.padding(horizontal = AbredSpacing.Xs, vertical = AbredSpacing.Xxs)) {
-                CATALOG_SOURCE_OPTIONS.forEach { option ->
+                visibleOptions.forEach { option ->
                     CatalogDropdownRow(
                         label = option.label,
                         leadingIconRes = option.faviconRes,

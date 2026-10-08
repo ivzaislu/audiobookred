@@ -8,6 +8,7 @@ import com.example.data.model.BookmarkDto
 import com.example.data.model.SeriesDetailDto
 import com.example.data.parser.PreviewOnlyAudiobooBook
 import com.example.data.parser.PreviewOnlyAudiopolkaBook
+import com.example.data.parser.PreviewOnlyAudioknigaLifeBook
 import com.example.data.parser.PreviewOnlyBazaKnigBook
 import com.example.data.parser.PreviewOnlyKnigavuheBook
 import com.example.data.parser.PreviewOnlyUknigBook
@@ -347,6 +348,7 @@ class BookDetailViewModel @Inject constructor(
 
     private fun previewBook(error: Throwable): BookDetailDto? = when (error) {
         is PreviewOnlyAudiopolkaBook -> error.previewBook
+        is PreviewOnlyAudioknigaLifeBook -> error.previewBook
         is PreviewOnlyUknigBook -> error.previewBook
         is PreviewOnlyAudiobooBook -> error.previewBook
         is PreviewOnlyKnigavuheBook -> error.previewBook

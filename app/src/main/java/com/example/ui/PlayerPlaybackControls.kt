@@ -37,6 +37,7 @@ internal fun PlayerPlaybackControls(
     PlayerChapterSelector(
         chapterTitle = chapterTitle,
         chapterIndex = state.chapterIndex,
+        simplifyChapterTitles = layoutState.simplifyChapterTitles,
         horizontalPadding = style.chapterHorizontalPadding,
         verticalPadding = style.chapterVerticalPadding,
         maxLines = style.chapterMaxLines,

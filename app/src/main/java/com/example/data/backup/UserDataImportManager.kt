@@ -8,7 +8,6 @@ import com.example.data.local.AbredDatabase
 import com.example.data.local.BookRetentionEntity
 import com.example.data.local.CachedPayloadEntity
 import com.example.data.local.LocalBookEntity
-import com.example.data.local.PROGRESS_HISTORY_REPAIR_MARKER_KEY
 import com.example.data.local.normalizedLibraryBackfillRows
 import com.example.data.model.BookCardDto
 import com.example.data.model.BookmarkDto
@@ -18,6 +17,7 @@ import com.example.data.settings.AppThemeMode
 import com.example.data.settings.BookSourcePreferenceStore
 import com.example.data.settings.PlayerSettings
 import com.example.data.settings.PlayerSettingsStore
+import com.example.data.settings.SourceAvailabilityStore
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,6 +39,7 @@ class UserDataImportManager @Inject constructor(
     private val resumeStore: PlaybackResumeStore,
     private val sourcePreferenceStore: BookSourcePreferenceStore,
     private val settingsStore: PlayerSettingsStore,
+    private val sourceAvailabilityStore: SourceAvailabilityStore,
 ) {
     data class ImportResult(
         val favoriteBooks: Int,
@@ -75,16 +76,22 @@ class UserDataImportManager @Inject constructor(
         val previousResume: Map<String, Any?>
         val previousSources: Map<String, String>
         val previousSettings: PlayerSettings
+        val previousEnabledSources: Set<String>
         try {
             previousResume = resumeStore.rawSnapshot()
             previousSources = sourcePreferenceStore.snapshot()
             previousSettings = settingsStore.state.value
+            previousEnabledSources = sourceAvailabilityStore.snapshot()
         } catch (error: Exception) {
             UserDataRestoreGate.allowPlaybackWritesAfterFreshPrepare()
             throw error
         }
 
         val targetSettings = settingsFromBackup(backup.settings, previousSettings.themeMode)
+        val targetEnabledSources = enabledSourcesFromBackup(
+            value = backup.settings,
+            fallback = previousEnabledSources,
+        )
         val targetCheckpoints = checkpointsFromBackup(backup)
 
         if (!restoreJournal.writePrepared(backup)) {
@@ -94,7 +101,12 @@ class UserDataImportManager @Inject constructor(
 
         var roomCommitted = false
         try {
-            applyRestorePreferences(backup, targetCheckpoints, targetSettings)
+            applyRestorePreferences(
+                backup = backup,
+                targetCheckpoints = targetCheckpoints,
+                targetSettings = targetSettings,
+                targetEnabledSources = targetEnabledSources,
+            )
 
             // Every Room mutation that belongs to the backup is one SQLite
             // transaction. Live point mutations use Room transactions too, so
@@ -132,6 +144,7 @@ class UserDataImportManager @Inject constructor(
                 previousResume = previousResume,
                 previousSources = previousSources,
                 previousSettings = previousSettings,
+                previousEnabledSources = previousEnabledSources,
                 roomCommitted = roomCommitted,
                 error = cancelled,
                 rollbackMessage = "Не удалось полностью откатить настройки после отмены импорта",
@@ -143,6 +156,7 @@ class UserDataImportManager @Inject constructor(
                 previousResume = previousResume,
                 previousSources = previousSources,
                 previousSettings = previousSettings,
+                previousEnabledSources = previousEnabledSources,
                 roomCommitted = roomCommitted,
                 error = error,
                 rollbackMessage = "Не удалось полностью откатить настройки после ошибки импорта",
@@ -189,8 +203,17 @@ class UserDataImportManager @Inject constructor(
         try {
             validateBackup(backup)
             val targetSettings = settingsFromBackup(backup.settings, settingsStore.state.value.themeMode)
+            val targetEnabledSources = enabledSourcesFromBackup(
+                value = backup.settings,
+                fallback = sourceAvailabilityStore.snapshot(),
+            )
             val targetCheckpoints = checkpointsFromBackup(backup)
-            applyRestorePreferences(backup, targetCheckpoints, targetSettings)
+            applyRestorePreferences(
+                backup = backup,
+                targetCheckpoints = targetCheckpoints,
+                targetSettings = targetSettings,
+                targetEnabledSources = targetEnabledSources,
+            )
             database.withTransaction {
                 restoreRoomStateWithinTransaction(backup)
             }
@@ -216,6 +239,7 @@ class UserDataImportManager @Inject constructor(
         backup: UserDataBackup,
         targetCheckpoints: List<PlaybackResumeStore.Snapshot>,
         targetSettings: PlayerSettings,
+        targetEnabledSources: Set<String>,
     ) {
         if (!resumeStore.replaceForRestore(targetCheckpoints)) {
             throw IOException("Не удалось сохранить восстановленные позиции воспроизведения")
@@ -226,6 +250,9 @@ class UserDataImportManager @Inject constructor(
         if (!settingsStore.replace(targetSettings)) {
             throw IOException("Не удалось сохранить восстановленные настройки")
         }
+        if (!sourceAvailabilityStore.replaceEnabled(targetEnabledSources)) {
+            throw IOException("Не удалось сохранить восстановленные настройки источников")
+        }
     }
 
     private fun handleImportFailure(
@@ -233,6 +260,7 @@ class UserDataImportManager @Inject constructor(
         previousResume: Map<String, Any?>,
         previousSources: Map<String, String>,
         previousSettings: PlayerSettings,
+        previousEnabledSources: Set<String>,
         roomCommitted: Boolean,
         error: Throwable,
         rollbackMessage: String,
@@ -251,7 +279,12 @@ class UserDataImportManager @Inject constructor(
             return
         }
 
-        val rolledBack = rollbackPreferences(previousResume, previousSources, previousSettings)
+        val rolledBack = rollbackPreferences(
+            resume = previousResume,
+            sources = previousSources,
+            settings = previousSettings,
+            enabledSources = previousEnabledSources,
+        )
         if (!rolledBack) {
             // Keep PREPARED: startup recovery will converge partial preference
             // writes and rolled-back Room state to the requested backup.
@@ -351,11 +384,6 @@ class UserDataImportManager @Inject constructor(
         // the same transaction so a later migration/backfill pass can never replay
         // stale library:v1 data over the restored normalized rows.
         payloadDao.delete(LEGACY_LIBRARY_KEY)
-        // A backup may contain historical progress/checkpoints independently
-        // from normalized history. Re-run the one-time reconciliation against
-        // the restored state on a later startup maintenance pass.
-        payloadDao.delete(PROGRESS_HISTORY_REPAIR_MARKER_KEY)
-
         val bookmarkRows = backup.bookmarks
             .filter { it.bookId.isNotBlank() }
             .groupBy(BookmarkDto::bookId)
@@ -402,11 +430,13 @@ class UserDataImportManager @Inject constructor(
         resume: Map<String, Any?>,
         sources: Map<String, String>,
         settings: PlayerSettings,
+        enabledSources: Set<String>,
     ): Boolean {
         val resumeOk = resumeStore.restoreRawSnapshot(resume)
         val sourceOk = sourcePreferenceStore.replaceAll(sources)
         val settingsOk = settingsStore.replace(settings)
-        return resumeOk && sourceOk && settingsOk
+        val availabilityOk = sourceAvailabilityStore.replaceEnabled(enabledSources)
+        return resumeOk && sourceOk && settingsOk && availabilityOk
     }
 
     companion object {

@@ -61,6 +61,7 @@ internal fun PlayerChaptersSheet(
     book: BookDetailDto,
     currentChapterIndex: Int,
     isPlaying: Boolean,
+    simplifyChapterTitles: Boolean,
     largeText: Boolean,
     sheetState: SheetState,
     onDismiss: () -> Unit,
@@ -159,7 +160,11 @@ internal fun PlayerChaptersSheet(
                             Spacer(Modifier.width(AbredSpacing.Xs))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    item.title.ifBlank { "Глава ${index + 1}" },
+                                    chapterDisplayLabel(
+                                        title = item.title,
+                                        chapterIndex = index,
+                                        simplify = simplifyChapterTitles,
+                                    ),
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     maxLines = if (largeText) 3 else 2,
                                     overflow = TextOverflow.Ellipsis,

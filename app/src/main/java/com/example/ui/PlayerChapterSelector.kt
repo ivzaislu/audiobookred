@@ -28,6 +28,7 @@ import com.example.ui.theme.AbredSpacing
 internal fun PlayerChapterSelector(
     chapterTitle: String?,
     chapterIndex: Int,
+    simplifyChapterTitles: Boolean,
     horizontalPadding: Dp,
     verticalPadding: Dp,
     maxLines: Int,
@@ -57,7 +58,11 @@ internal fun PlayerChapterSelector(
             )
             Spacer(Modifier.width(AbredSpacing.Xs))
             Text(
-                chapterDisplayLabel(chapterTitle, chapterIndex),
+                chapterDisplayLabel(
+                    title = chapterTitle,
+                    chapterIndex = chapterIndex,
+                    simplify = simplifyChapterTitles,
+                ),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = maxLines,

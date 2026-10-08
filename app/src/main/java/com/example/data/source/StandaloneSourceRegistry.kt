@@ -54,6 +54,12 @@ internal object StandaloneSourceRegistry {
             supportsSeries = true,
         ),
         StandaloneSourceDefinition(
+            code = "audioknigalife",
+            displayName = "Audiokniga.Life",
+            supportsGenres = true,
+            supportsSeries = true,
+        ),
+        StandaloneSourceDefinition(
             code = "rutracker",
             displayName = "RuTracker",
             // The audiobook forum ids are fixed from the captured RuTracker
@@ -63,6 +69,11 @@ internal object StandaloneSourceRegistry {
             usesPagedSearch = true,
         ),
     )
+
+    init {
+        val codes = activeSources.map { it.code }
+        require(codes.size == codes.distinct().size) { "Duplicate standalone source code: $codes" }
+    }
 
     private val activeCodes: Set<String> = activeSources.mapTo(linkedSetOf()) { it.code }
 

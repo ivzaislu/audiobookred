@@ -149,8 +149,6 @@ internal fun AbredBackTopBar(
 @Composable
 internal fun AbredSubpageHeader(
     title: String,
-    subtitle: String,
-    icon: ImageVector,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
@@ -168,25 +166,17 @@ internal fun AbredSubpageHeader(
         ) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
         }
-        Spacer(Modifier.width(AbredSpacing.Xxs))
-        AbredSettingsIcon(icon)
-        Spacer(Modifier.width(AbredSpacing.Sm))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                modifier = Modifier.semantics { heading() },
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = if (abredLargeFontScale()) 2 else 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = if (abredLargeFontScale()) 3 else 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Spacer(Modifier.width(AbredSpacing.Xs))
+        Text(
+            title,
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() },
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = if (abredLargeFontScale()) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.size(AbredSizes.MinimumTouchTarget))
     }
 }

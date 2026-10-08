@@ -9,7 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredSizes
@@ -22,63 +24,76 @@ internal fun SettingsHeader() {
 
 @Composable
 internal fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        border = settingsCardBorder(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        color = Color.Transparent,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        Column(Modifier.padding(AbredSpacing.Md), content = content)
+        Column(content = content)
     }
 }
 
+/** Kept for the few standalone cards that still intentionally use an outline. */
 @Composable
 internal fun settingsCardBorder() = BorderStroke(
     1.dp,
-    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
 )
 
 @Composable
-internal fun SettingsCardHeader(
-    icon: ImageVector,
+internal fun StandaloneNavigationRow(
     title: String,
     subtitle: String,
-    error: Boolean = false,
+    icon: ImageVector,
+    onClick: () -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        SettingsIcon(icon, error)
-        Spacer(Modifier.width(AbredSpacing.Sm))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = AbredSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(2.dp))
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(AbredSpacing.Sm))
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
 @Composable
-private fun SettingsIcon(icon: ImageVector, error: Boolean = false) {
-    val iconColor = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Surface(
-        modifier = Modifier.size(AbredSizes.SettingsIconContainer),
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(21.dp))
-        }
-    }
+internal fun StandaloneSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit,
+) {
+    AbredSettingsSwitchRow(
+        title = title,
+        subtitle = subtitle,
+        checked = checked,
+        onCheckedChange = onChecked,
+    )
 }
 
 @Composable
@@ -88,37 +103,13 @@ internal fun StandaloneNavigationCard(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        border = settingsCardBorder(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            Modifier.padding(horizontal = AbredSpacing.Md, vertical = AbredSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SettingsIcon(icon)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(AbredSpacing.Xs))
-            Icon(
-                Icons.Default.ChevronRight,
-                null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-            )
-        }
+    SettingsCard {
+        StandaloneNavigationRow(
+            title = title,
+            subtitle = subtitle,
+            icon = icon,
+            onClick = onClick,
+        )
     }
 }
 
@@ -126,25 +117,68 @@ internal fun StandaloneNavigationCard(
 internal fun StandaloneSwitchCard(
     title: String,
     subtitle: String,
-    icon: ImageVector,
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
 ) {
     SettingsCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SettingsIcon(icon)
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Switch(checked = checked, onCheckedChange = onChecked)
+        StandaloneSwitchRow(
+            title = title,
+            subtitle = subtitle,
+            checked = checked,
+            onChecked = onChecked,
+        )
+    }
+}
+
+@Composable
+internal fun StandaloneActionRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+) {
+    val contentColor = if (destructive) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = AbredSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(AbredSizes.SettingsIconContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(AbredSizes.IconSmall),
+            )
+        }
+        Spacer(Modifier.width(AbredSpacing.Sm))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -155,14 +189,14 @@ internal fun SettingsTitle(
     compactTop: Boolean = false,
 ) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
         modifier = Modifier.padding(
-            top = if (compactTop) 0.dp else AbredSpacing.Sm,
+            top = if (compactTop) 0.dp else AbredSpacing.Lg,
             start = AbredSpacing.Xxs,
-            bottom = AbredSpacing.Xxs,
+            bottom = AbredSpacing.Xs,
         ),
     )
 }
-

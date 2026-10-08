@@ -170,9 +170,11 @@ internal fun seriesSwitchOptions(book: BookDetailDto): List<SeriesSwitchOption> 
             }.thenBy { it.sourceName.ifBlank { it.provider }.lowercase() }
                 .thenBy { it.name.lowercase() }
         )
-        .map { series ->
+        .mapNotNull { series ->
+            val provider = series.provider.lowercase()
+            val seedBookId = seriesSeedBookId(book, provider) ?: return@mapNotNull null
             SeriesSwitchOption(
-                request = SeriesPageRequest.Source(book.id, series.provider.lowercase()),
+                request = SeriesPageRequest.Source(seedBookId, provider),
                 typeLabel = series.sourceName.ifBlank { sourceProviderLabel(series.provider) },
                 title = series.name,
             )
@@ -192,9 +194,12 @@ internal fun seriesSwitchOptions(book: BookDetailDto): List<SeriesSwitchOption> 
                 variant.sourceCode.lowercase() !in explicitProviders
         }
         .sortedByDescending { it.sourceCode.equals(book.selectedSource, ignoreCase = true) }
-        .map { variant ->
+        .mapNotNull { variant ->
+            val provider = variant.sourceCode.lowercase()
+            val seedBookId = seriesSeedBookIdFromVariant(variant.bookSourceId, provider)
+                ?: return@mapNotNull null
             SeriesSwitchOption(
-                request = SeriesPageRequest.Source(book.id, variant.sourceCode.lowercase()),
+                request = SeriesPageRequest.Source(seedBookId, provider),
                 typeLabel = variant.sourceName.ifBlank { sourceProviderLabel(variant.sourceCode) },
                 title = variant.seriesName,
             )
@@ -211,16 +216,65 @@ internal fun seriesSwitchOptions(book: BookDetailDto): List<SeriesSwitchOption> 
             sourceRequest?.provider.equals(book.selectedSource, ignoreCase = true)
         }
     ) {
-        sourceVariants += SeriesSwitchOption(
-            request = SeriesPageRequest.Source(book.id, book.selectedSource.lowercase()),
-            typeLabel = sourceProviderLabel(book.selectedSource),
-            title = book.sourceSeriesName,
-        )
+        val provider = book.selectedSource.lowercase()
+        seriesSeedBookId(book, provider)?.let { seedBookId ->
+            sourceVariants += SeriesSwitchOption(
+                request = SeriesPageRequest.Source(seedBookId, provider),
+                typeLabel = sourceProviderLabel(book.selectedSource),
+                title = book.sourceSeriesName,
+            )
+        }
     }
 
     return (sourceAudio + sourceVariants)
         .filter { it.title.isNotBlank() }
         .distinctBy { it.request.storageKey }
+}
+
+
+internal fun seriesSeedBookId(
+    book: BookDetailDto,
+    provider: String,
+): String? {
+    val normalizedProvider = provider.trim().lowercase()
+    if (normalizedProvider.isBlank()) return null
+
+    val directId = book.id.trim()
+    if (directId.substringBefore(':').equals(normalizedProvider, ignoreCase = true)) {
+        return directId
+    }
+
+    book.sourceVariants
+        .firstOrNull { it.sourceCode.equals(normalizedProvider, ignoreCase = true) }
+        ?.bookSourceId
+        ?.let { seriesSeedBookIdFromVariant(it, normalizedProvider) }
+        ?.let { return it }
+
+    if (book.selectedSource.equals(normalizedProvider, ignoreCase = true)) {
+        seriesSeedBookIdFromVariant(book.selectedBookSourceId, normalizedProvider)?.let { return it }
+    }
+
+    return null
+}
+
+internal fun seriesSeedBookIdFromVariant(
+    bookSourceId: String,
+    provider: String,
+): String? {
+    val normalizedProvider = provider.trim().lowercase()
+    val clean = bookSourceId.trim()
+    if (normalizedProvider.isBlank() || clean.isBlank()) return null
+
+    val livePrefix = "live:$normalizedProvider:"
+    if (clean.startsWith(livePrefix, ignoreCase = true)) {
+        val externalId = clean.substring(livePrefix.length)
+        return externalId.takeIf(String::isNotBlank)?.let { "$normalizedProvider:$it" }
+    }
+
+    val directPrefix = "$normalizedProvider:"
+    return clean
+        .takeIf { it.startsWith(directPrefix, ignoreCase = true) && it.length > directPrefix.length }
+        ?.let { "$normalizedProvider:${it.substring(directPrefix.length)}" }
 }
 
 private fun currentSeriesSwitchOption(

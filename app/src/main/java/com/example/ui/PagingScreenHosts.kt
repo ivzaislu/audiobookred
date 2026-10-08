@@ -40,14 +40,21 @@ internal fun PagingCatalogHost(
     browserChallengeSession: BrowserChallengeSession?,
 ) {
     val pagingVm: BookPagingViewModel = hiltViewModel()
-    val request = remember(state.query, state.selectedGenreId, state.requestSource) {
+    val sourceAvailabilityKey = state.enabledSources.sorted().joinToString("|")
+    val request = remember(
+        state.query,
+        state.selectedGenreId,
+        state.requestSource,
+        sourceAvailabilityKey,
+    ) {
         BookPageRequest.Catalog(
             query = state.query,
             genreId = state.selectedGenreId,
             source = state.requestSource,
+            sourceAvailabilityKey = sourceAvailabilityKey,
         )
     }
-    val booksFlow = remember(request) { pagingVm.books(request) }
+    val booksFlow = remember(request, sourceAvailabilityKey) { pagingVm.books(request) }
     val books = booksFlow.collectAsLazyPagingItems()
     val refreshAll = {
         if (state.genres.isEmpty()) onRefreshMetadata()

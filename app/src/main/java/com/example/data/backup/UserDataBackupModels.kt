@@ -5,7 +5,10 @@ import com.example.data.model.BookCardDto
 import com.example.data.model.BookmarkDto
 import com.example.data.model.ProgressResponse
 import com.example.data.settings.PROGRESS_SAVE_INTERVAL_SECONDS
+import com.example.data.settings.DEFAULT_HOME_CACHE_DAYS
+import com.example.data.settings.HomePopularDefaultPeriod
 import com.example.data.settings.PlayerSettings
+import com.example.data.source.StandaloneSourceRegistry
 import com.squareup.moshi.Json
 
 const val USER_DATA_BACKUP_SCHEMA = "abred.user-data-backup/v1"
@@ -53,24 +56,36 @@ data class BackupSettings(
     @Json(name = "rewind_seconds") val rewindSeconds: Int = 10,
     @Json(name = "forward_seconds") val forwardSeconds: Int = 30,
     @Json(name = "auto_next_chapter") val autoNextChapter: Boolean = true,
+    @Json(name = "simplify_chapter_titles") val simplifyChapterTitles: Boolean = true,
     @Json(name = "save_progress_interval_seconds") val saveProgressIntervalSeconds: Int = 10,
     @Json(name = "show_progress_percent") val showProgressPercent: Boolean = true,
     @Json(name = "skip_silence_enabled") val skipSilenceEnabled: Boolean = false,
     @Json(name = "smart_rewind_after_pause") val smartRewindAfterPause: Boolean = true,
     @Json(name = "pin_bottom_navigation") val pinBottomNavigation: Boolean = true,
+    @Json(name = "home_show_new") val homeShowNew: Boolean = true,
+    @Json(name = "home_show_popular") val homeShowPopular: Boolean = true,
+    @Json(name = "home_show_continue") val homeShowContinue: Boolean = true,
+    @Json(name = "home_show_downloads") val homeShowDownloads: Boolean = true,
+    @Json(name = "home_popular_default_period") val homePopularDefaultPeriod: String = HomePopularDefaultPeriod.WEEK.name,
+    @Json(name = "home_cache_days") val homeCacheDays: Int = DEFAULT_HOME_CACHE_DAYS,
     @Json(name = "show_continue_series") val showContinueSeries: Boolean = true,
     @Json(name = "show_series_navigation") val showSeriesNavigation: Boolean = true,
     @Json(name = "download_wifi_only") val downloadWifiOnly: Boolean = true,
     @Json(name = "catalog_cache_enabled") val catalogCacheEnabled: Boolean = true,
     @Json(name = "theme_mode") val themeMode: String = "DARK",
+    @Json(name = "enabled_sources") val enabledSources: List<String>? = null,
 ) {
     companion object {
-        fun from(value: PlayerSettings) = BackupSettings(
+        fun from(
+            value: PlayerSettings,
+            enabledSources: Set<String>? = null,
+        ) = BackupSettings(
             defaultSpeed = value.defaultSpeed,
             rememberBookSpeed = value.rememberBookSpeed,
             rewindSeconds = value.rewindSeconds,
             forwardSeconds = value.forwardSeconds,
             autoNextChapter = value.autoNextChapter,
+            simplifyChapterTitles = value.simplifyChapterTitles,
             // Historical backup-v1 field remains stable even though runtime
             // playback cadence is no longer user-configurable.
             saveProgressIntervalSeconds = PROGRESS_SAVE_INTERVAL_SECONDS,
@@ -78,6 +93,12 @@ data class BackupSettings(
             skipSilenceEnabled = value.skipSilenceEnabled,
             smartRewindAfterPause = value.smartRewindAfterPause,
             pinBottomNavigation = value.pinBottomNavigation,
+            homeShowNew = value.homeShowNew,
+            homeShowPopular = value.homeShowPopular,
+            homeShowContinue = value.homeShowContinue,
+            homeShowDownloads = value.homeShowDownloads,
+            homePopularDefaultPeriod = value.homePopularDefaultPeriod.name,
+            homeCacheDays = value.homeCacheDays,
             // Historical backup-v1 fields remain stable even though current
             // runtime no longer exposes either series-visibility toggle.
             showContinueSeries = true,
@@ -85,6 +106,12 @@ data class BackupSettings(
             downloadWifiOnly = value.downloadWifiOnly,
             catalogCacheEnabled = value.catalogCacheEnabled,
             themeMode = value.themeMode.name,
+            enabledSources = enabledSources
+                ?.asSequence()
+                ?.map(StandaloneSourceRegistry::normalize)
+                ?.filter(String::isNotBlank)
+                ?.distinct()
+                ?.toList(),
         )
     }
 }

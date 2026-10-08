@@ -201,6 +201,7 @@ fun AbredApp(
                                 MiniPlayer(
                                     state = player,
                                     showProgressPercent = settings.showProgressPercent,
+                                    simplifyChapterTitles = settings.simplifyChapterTitles,
                                     onPreviousChapter = vm::previousChapter,
                                     onTogglePlayback = vm::togglePlayback,
                                     onNextChapter = vm::nextChapter,
@@ -288,7 +289,9 @@ fun AbredApp(
                             TopLevelDestination.Settings -> NavEntry(key) {
                                 PreparedSettingsScreen(
                                     onStorage = { appBackStack.add(SettingsDestination.Storage) },
+                                    onHome = { appBackStack.add(SettingsDestination.Home) },
                                     onPlayer = { appBackStack.add(SettingsDestination.Player) },
+                                    onSources = { appBackStack.add(SettingsDestination.Sources) },
                                     onExternalServices = {
                                         appBackStack.add(SettingsDestination.ExternalServices)
                                     },
@@ -301,8 +304,14 @@ fun AbredApp(
                             SettingsDestination.Storage -> NavEntry(key) {
                                 PreparedStorageSettingsScreen(onBack = popAppDestination)
                             }
+                            SettingsDestination.Home -> NavEntry(key) {
+                                PreparedHomeSettingsScreen(onBack = popAppDestination)
+                            }
                             SettingsDestination.Player -> NavEntry(key) {
                                 PreparedPlayerSettingsScreen(onBack = popAppDestination)
+                            }
+                            SettingsDestination.Sources -> NavEntry(key) {
+                                PreparedSourceSettingsScreen(onBack = popAppDestination)
                             }
                             SettingsDestination.ExternalServices -> NavEntry(key) {
                                 PreparedExternalServicesSettingsScreen(onBack = popAppDestination)

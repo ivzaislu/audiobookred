@@ -16,6 +16,7 @@ import com.example.data.repository.LibraryRepository
 import com.example.data.settings.BookSourcePreferenceStore
 import com.example.data.settings.ExternalServiceCredentialsStore
 import com.example.data.settings.PlayerSettingsStore
+import com.example.data.settings.SourceAvailabilityStore
 import com.example.data.torrserve.RuTrackerTorrServePlaybackResolver
 import dagger.Module
 import dagger.Provides
@@ -41,7 +42,11 @@ object AppModule {
     @Singleton
     fun provideAudiobookRepository(
         ruTrackerTorrServeResolver: RuTrackerTorrServePlaybackResolver,
-    ): AudiobookRepository = AudiobookRepository(ruTrackerTorrServeResolver)
+        sourceAvailabilityStore: SourceAvailabilityStore,
+    ): AudiobookRepository = AudiobookRepository(
+        ruTrackerTorrServeResolver = ruTrackerTorrServeResolver,
+        sourceAvailabilityStore = sourceAvailabilityStore,
+    )
 
     /**
      * Unscoped on purpose: Paging uses repository-local page buffers.
@@ -49,7 +54,9 @@ object AppModule {
      */
     @Provides
     @PagingAudiobookRepository
-    fun providePagingAudiobookRepository(): AudiobookRepository = AudiobookRepository()
+    fun providePagingAudiobookRepository(
+        sourceAvailabilityStore: SourceAvailabilityStore,
+    ): AudiobookRepository = AudiobookRepository(sourceAvailabilityStore = sourceAvailabilityStore)
 
     @Provides
     @Singleton
@@ -104,6 +111,11 @@ object AppModule {
     @Singleton
     fun providePlayerSettingsStore(@ApplicationContext context: Context): PlayerSettingsStore =
         PlayerSettingsStore(context)
+
+    @Provides
+    @Singleton
+    fun provideSourceAvailabilityStore(@ApplicationContext context: Context): SourceAvailabilityStore =
+        SourceAvailabilityStore(context)
 
     @Provides
     @Singleton

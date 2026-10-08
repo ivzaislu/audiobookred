@@ -2,6 +2,7 @@ package com.example.ui.paging
 
 import com.example.data.model.AudioSeriesBriefDto
 import com.example.data.model.BookDetailDto
+import com.example.data.model.SourceVariantDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -192,4 +193,72 @@ class SeriesPagingPolicyTest {
             ),
         )
     }
+    @Test
+    fun crossProviderSeriesUsesMatchingProviderBookSeed() {
+        val book = BookDetailDto(
+            id = "audioboo:fantastika/100-main.html",
+            title = "Тест",
+            selectedSource = "audioboo",
+            selectedBookSourceId = "live:audioboo:fantastika/100-main.html",
+            sourceVariants = listOf(
+                SourceVariantDto(
+                    bookSourceId = "live:audioboo:fantastika/100-main.html",
+                    sourceCode = "audioboo",
+                    sourceName = "Audioboo",
+                    seriesName = "Основной цикл",
+                ),
+                SourceVariantDto(
+                    bookSourceId = "live:bazaknig:200-alt-book",
+                    sourceCode = "bazaknig",
+                    sourceName = "Baza-Knig",
+                    seriesName = "Альтернативный цикл",
+                ),
+            ),
+            audioSeries = listOf(
+                AudioSeriesBriefDto(
+                    id = "source:bazaknig:alt-cycle",
+                    name = "Альтернативный цикл",
+                    provider = "bazaknig",
+                    externalId = "alt-cycle",
+                )
+            ),
+        )
+
+        val option = seriesSwitchOptions(book).single { it.title == "Альтернативный цикл" }
+        val request = option.request as SeriesPageRequest.Source
+
+        assertEquals("bazaknig", request.provider)
+        assertEquals("bazaknig:200-alt-book", request.bookId)
+    }
+
+    @Test
+    fun crossProviderSeriesWithoutMatchingBookSeedIsNotExposed() {
+        val book = BookDetailDto(
+            id = "audioboo:fantastika/100-main.html",
+            title = "Тест",
+            selectedSource = "audioboo",
+            audioSeries = listOf(
+                AudioSeriesBriefDto(
+                    id = "source:bazaknig:alt-cycle",
+                    name = "Недоступный вариант",
+                    provider = "bazaknig",
+                    externalId = "alt-cycle",
+                )
+            ),
+        )
+
+        assertEquals(emptyList<SeriesSwitchOption>(), seriesSwitchOptions(book))
+    }
+
+    @Test
+    fun liveBookSourceIdBecomesParserBookKey() {
+        assertEquals(
+            "myaudiobooks:litrpg/42-test.html",
+            seriesSeedBookIdFromVariant(
+                "live:myaudiobooks:litrpg/42-test.html",
+                "myaudiobooks",
+            ),
+        )
+    }
+
 }

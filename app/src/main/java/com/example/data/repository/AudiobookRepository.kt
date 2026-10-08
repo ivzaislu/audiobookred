@@ -4,6 +4,7 @@ import com.example.data.api.ApiClient
 import com.example.data.model.*
 import com.example.data.parser.AndroidLiveParserLocator
 import com.example.data.source.StandaloneSourceRegistry
+import com.example.data.settings.SourceAvailabilityStore
 import com.example.data.torrserve.RuTrackerTorrServePlaybackResolver
 import java.util.LinkedHashMap
 import kotlinx.coroutines.CancellationException
@@ -19,6 +20,7 @@ private const val LIVE_DOWNLOAD_PREFIX = "live:"
  */
 class AudiobookRepository(
     private val ruTrackerTorrServeResolver: RuTrackerTorrServePlaybackResolver? = null,
+    private val sourceAvailabilityStore: SourceAvailabilityStore? = null,
 ) {
     private data class SearchCacheEntry(
         val storedAtMs: Long,
@@ -73,7 +75,7 @@ class AudiobookRepository(
             }
         } else {
             val local = localParser()
-            val sources = local.sources.toList()
+            val sources = local.sources.filter(::sourceEnabled)
             aggregateCatalogBuffer(sources, safeLimit).page(safePage) { sourceCode, physicalPage ->
                 val items = local.catalog(sourceCode, physicalPage)
                 CatalogPhysicalBatch(
@@ -171,6 +173,9 @@ class AudiobookRepository(
     /** Knigavuhe discovery feed for the Home screen. */
     suspend fun homeKnigavuhe(section: String, limit: Int = 12): BookListResponse {
         val safeLimit = limit.coerceAtLeast(1)
+        if (!sourceEnabled("knigavuhe")) {
+            return BookListResponse(page = 1, limit = safeLimit, total = 0)
+        }
         val items = localParser().knigavuheHome(section)
         val cards = items
             .map(LiveCatalogItemDto::toBookCard)
@@ -289,6 +294,9 @@ class AudiobookRepository(
         )
     }
 
+    private fun sourceEnabled(source: String): Boolean =
+        sourceAvailabilityStore?.isEnabled(source) ?: true
+
     private fun localParser() = AndroidLiveParserLocator.instanceOrNull()
         ?: error("Локальные парсеры ещё не инициализированы")
 
@@ -339,6 +347,14 @@ class AudiobookRepository(
         seriesName: String?,
     ): String = buildString {
         append(source ?: "*")
+        if (source == null) {
+            val enabledSignature = StandaloneSourceRegistry.activeSources
+                .asSequence()
+                .map { it.code }
+                .filter(::sourceEnabled)
+                .joinToString(",")
+            append('|').append(enabledSignature)
+        }
         append('|').append(excludeSource.orEmpty())
         append('|').append(normalizeSearchValue(seriesName.orEmpty()))
         append('|').append(normalizeSearchValue(query))
@@ -375,7 +391,9 @@ class AudiobookRepository(
         seriesName: String? = null,
     ): List<LiveCatalogItemDto> {
         val local = localParser()
-        val sourceCodes = local.sources.filterNot { it == excludeSource }
+        val sourceCodes = local.sources
+            .filter(::sourceEnabled)
+            .filterNot { it == excludeSource }
         val rows = boundedProviderMap(
             values = sourceCodes,
             limiter = AGGREGATE_SEARCH_LIMITER,
