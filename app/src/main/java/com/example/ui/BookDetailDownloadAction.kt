@@ -17,6 +17,7 @@ internal fun CompactDownloadAction(
     onStart: () -> Unit,
     onResume: () -> Unit,
     onRetry: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val action: (() -> Unit)? = when {
         busy -> null
@@ -45,7 +46,7 @@ internal fun CompactDownloadAction(
 
     Button(
         onClick = { action?.invoke() },
-        enabled = action != null,
+        enabled = enabled && action != null,
         modifier = Modifier.size(AbredSizes.ControlHeight),
         shape = MaterialTheme.shapes.medium,
         contentPadding = PaddingValues(0.dp),

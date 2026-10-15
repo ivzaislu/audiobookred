@@ -33,6 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Free space for Android emulator userdata
+        run: |
+          # This Android-only job does not use the runner's preinstalled .NET SDK.
+          # Recent API 36 images need over 7 GiB free just to create userdata.
+          sudo rm -rf /usr/share/dotnet
+          df -h "$HOME"
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

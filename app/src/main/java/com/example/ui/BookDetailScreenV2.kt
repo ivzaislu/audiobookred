@@ -60,10 +60,16 @@ internal fun BookDetailScreenV2(
     )
 
     val listState = rememberLazyListState()
-    LaunchedEffect(book.id, book.selectedSource) { listState.scrollToItem(0) }
-    LaunchedEffect(browserChallengeRequestId) {
-        if (browserChallengeRequestId != null) {
-            listState.animateScrollToItem(2)
+    LaunchedEffect(
+        book.id,
+        book.selectedSource,
+        browserChallengeSession,
+        browserChallengeRequestId,
+    ) {
+        if (browserChallengeSession != null && browserChallengeRequestId != null) {
+            listState.animateScrollToItem(1)
+        } else {
+            listState.scrollToItem(0)
         }
     }
 
@@ -90,9 +96,9 @@ internal fun BookDetailScreenV2(
         item(key = "book-detail-hero") {
             BookDetailHeroSection(
                 book = book,
-                ruTrackerBook = presentation.ruTrackerBook,
-                onAuthor = onAuthor,
-                onNarrator = onNarrator,
+                displayedProgress = presentation.displayedProgress,
+                browserChallengeSession = browserChallengeSession,
+                browserChallengeRequestId = browserChallengeRequestId,
             )
         }
 
@@ -107,14 +113,32 @@ internal fun BookDetailScreenV2(
                 showProgressPercent = showProgressPercent,
                 activeBookId = presentation.activeBookId,
                 playerIsPlaying = playerState.isPlaying,
-                ruTrackerBook = presentation.ruTrackerBook,
                 onResumeBook = onResumeBook,
                 onTogglePlayback = onTogglePlayback,
                 onPlayer = onPlayer,
                 onStartDownload = onStartDownload,
                 onResumeDownload = onResumeDownload,
                 onRetryDownload = onRetryDownload,
+            )
+        }
+
+        item(key = "book-detail-metadata") {
+            BookDetailMetadataSection(
+                book = book,
+                ruTrackerBook = presentation.ruTrackerBook,
+                onAuthor = onAuthor,
+                onNarrator = onNarrator,
                 onGenre = onGenre,
+                seriesName = presentation.seriesName,
+                seriesPosition = presentation.seriesPosition,
+                seriesTotal = presentation.seriesTotal,
+                onOpenSeries = {
+                    if (presentation.primarySeriesId != null) {
+                        onSeries(presentation.primarySeriesId)
+                    } else {
+                        onSourceSeries(book.id)
+                    }
+                },
             )
         }
 
@@ -123,23 +147,6 @@ internal fun BookDetailScreenV2(
                 BookDetailSourceSection(
                     book = book,
                     onSelectSource = onSelectSource,
-                )
-            }
-        }
-
-        if (!presentation.seriesName.isNullOrBlank()) {
-            item(key = "book-detail-series") {
-                BookDetailSeriesSection(
-                    name = presentation.seriesName,
-                    position = presentation.seriesPosition,
-                    total = presentation.seriesTotal,
-                    onOpen = {
-                        if (presentation.primarySeriesId != null) {
-                            onSeries(presentation.primarySeriesId)
-                        } else {
-                            onSourceSeries(book.id)
-                        }
-                    },
                 )
             }
         }

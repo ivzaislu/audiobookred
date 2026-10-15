@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.Choreographer
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -92,12 +93,24 @@ internal object PlaybackMetadata {
  * selfapk has one local playback identity, so no profile-switch invalidation gate
  * participates in controller actions or recovery.
  */
-class AudiobookPlayerManager(
+class AudiobookPlayerManager internal constructor(
     context: Context,
     private val resumeStore: PlaybackResumeStore,
-    private val downloadStore: DownloadStore,
     cacheStore: LocalCacheStore,
+    private val mediaItemsBuilder: suspend (BookDetailDto) -> List<MediaItem>,
+    private val controllerFactory: (Context) -> ListenableFuture<MediaController> = { ctx ->
+        val token = SessionToken(ctx, ComponentName(ctx, PlaybackService::class.java))
+        MediaController.Builder(ctx, token).buildAsync()
+    },
+    private val snapshotBookLoader: (suspend (PlaybackResumeStore.Snapshot) -> BookDetailDto?)? = null,
 ) {
+    constructor(
+        context: Context,
+        resumeStore: PlaybackResumeStore,
+        downloadStore: DownloadStore,
+        cacheStore: LocalCacheStore,
+    ) : this(context, resumeStore, cacheStore, { buildPlaybackMediaItems(it, downloadStore) })
+
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val bookRecovery = PlaybackBookRecoveryRepository(cacheStore, resumeStore)
@@ -109,6 +122,10 @@ class AudiobookPlayerManager(
     private var desiredSpeed: Float = 1f
     private var released = false
     private var loadGeneration: Long = 0L
+    internal var pendingMediaLoadJob: Job? = null
+        private set
+    internal var pendingSnapshotRecoveryJob: Job? = null
+        private set
     private val recoveryGuard = PlaybackRecoveryGuard()
     private var pendingPlaybackStart: PendingPlaybackStart? = null
     private var attemptedBookRecovery: BookRecoveryKey? = null
@@ -182,8 +199,7 @@ class AudiobookPlayerManager(
 
     private fun connect() {
         if (released || controller != null || controllerFuture != null) return
-        val token = SessionToken(appContext, ComponentName(appContext, PlaybackService::class.java))
-        val future = MediaController.Builder(appContext, token).buildAsync()
+        val future = controllerFactory(appContext)
         controllerFuture = future
         future.addListener(
             {
@@ -221,6 +237,7 @@ class AudiobookPlayerManager(
     ) {
         if (book.chapters.isEmpty()) return
         if (recoveryRequest != null && !isRecoveryRequestCurrent(recoveryRequest)) return
+        cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         val loadRecoveryRequest = recoveryRequest?.let { recoveryGuard.capture() }
         val index = chapterIndex.coerceIn(0, book.chapters.lastIndex)
@@ -260,74 +277,91 @@ class AudiobookPlayerManager(
         }
     }
 
-    fun pause() = withController { c ->
-        recoveryGuard.invalidate()
-        tracePlaybackEvent("app_pause", c)
-        c.pause()
-        updateState(c)
+    internal fun cancelPendingPlaybackLoad() {
+        loadGeneration += 1L
+        pendingMediaLoadJob?.cancel()
+        pendingPlaybackStart = null
     }
 
-    fun toggle() = withController { c ->
-        recoveryGuard.invalidate()
-        tracePlaybackEvent("app_toggle", c)
-        if (c.isPlaying) {
+    internal fun capturePlaybackLoadRequest(): Long = loadGeneration
+
+    internal fun isPlaybackLoadRequestCurrent(request: Long): Boolean =
+        !released && loadGeneration == request
+
+    fun pause() {
+        cancelPendingPlaybackLoad()
+        withController { c ->
+            recoveryGuard.invalidate()
+            tracePlaybackEvent("app_pause", c)
             c.pause()
             updateState(c)
-            return@withController
         }
+    }
 
-        val book = _state.value.book
-        if (!hasUsablePlaybackMedia(
-                mediaItemCount = c.mediaItemCount,
-                hasCurrentMediaItem = c.currentMediaItem != null,
-                currentMediaItemIndex = c.currentMediaItemIndex,
-            )
-        ) {
-            val snapshot = book?.let { resumeStore.get(it.id, it.selectedSource) }
-            val recovery = book?.let {
-                resolvePlaybackRecoveryPoint(
-                    book = it,
-                    snapshot = snapshot,
-                    fallbackChapterIndex = _state.value.chapterIndex,
-                    fallbackPositionMs = _state.value.positionMs,
-                    fallbackSpeed = _state.value.speed,
-                )
+    fun toggle() {
+        cancelPendingPlaybackLoad()
+        withController { c ->
+            recoveryGuard.invalidate()
+            tracePlaybackEvent("app_toggle", c)
+            if (c.isPlaying) {
+                c.pause()
+                updateState(c)
+                return@withController
             }
-            if (book != null && recovery != null) {
-                Log.i(
-                    TAG,
-                    "toggle: rebuilding empty player for ${book.id} at ${recovery.chapterIndex}/${recovery.positionMs}"
-                )
-                loadBook(
-                    c,
-                    book,
-                    recovery.chapterIndex,
-                    recovery.positionMs,
-                    autoPlay = true,
-                )
-            } else {
-                _state.value = PlayerUiState(
-                    speed = c.playbackParameters.speed,
-                    sleepTimer = currentSleepTimer(),
-                    error = "Сессия плеера завершена. Откройте книгу и нажмите «Продолжить»."
-                )
-            }
-            return@withController
-        }
 
-        if (c.playbackState == Player.STATE_IDLE || c.playbackState == Player.STATE_ENDED || c.playerError != null) {
-            book?.let { currentBook ->
-                resumeStore.get(currentBook.id, currentBook.selectedSource)?.let { snapshot ->
-                    val index = snapshot.chapterIndex.coerceIn(0, c.mediaItemCount - 1)
-                    c.seekTo(index, snapshot.positionMs.coerceAtLeast(0L))
+            val book = _state.value.book
+            if (!hasUsablePlaybackMedia(
+                    mediaItemCount = c.mediaItemCount,
+                    hasCurrentMediaItem = c.currentMediaItem != null,
+                    currentMediaItemIndex = c.currentMediaItemIndex,
+                )
+            ) {
+                val snapshot = book?.let { resumeStore.get(it.id, it.selectedSource) }
+                val recovery = book?.let {
+                    resolvePlaybackRecoveryPoint(
+                        book = it,
+                        snapshot = snapshot,
+                        fallbackChapterIndex = _state.value.chapterIndex,
+                        fallbackPositionMs = _state.value.positionMs,
+                        fallbackSpeed = _state.value.speed,
+                    )
                 }
+                if (book != null && recovery != null) {
+                    Log.i(
+                        TAG,
+                        "toggle: rebuilding empty player for ${book.id} at ${recovery.chapterIndex}/${recovery.positionMs}"
+                    )
+                    loadBook(
+                        c,
+                        book,
+                        recovery.chapterIndex,
+                        recovery.positionMs,
+                        autoPlay = true,
+                    )
+                } else {
+                    _state.value = PlayerUiState(
+                        speed = c.playbackParameters.speed,
+                        sleepTimer = currentSleepTimer(),
+                        error = "Сессия плеера завершена. Откройте книгу и нажмите «Продолжить»."
+                    )
+                }
+                return@withController
             }
-            Log.i(TAG, "toggle: preparing stale session state=${c.playbackState} items=${c.mediaItemCount}")
-            c.prepare()
+
+            if (c.playbackState == Player.STATE_IDLE || c.playbackState == Player.STATE_ENDED || c.playerError != null) {
+                book?.let { currentBook ->
+                    resumeStore.get(currentBook.id, currentBook.selectedSource)?.let { snapshot ->
+                        val index = snapshot.chapterIndex.coerceIn(0, c.mediaItemCount - 1)
+                        c.seekTo(index, snapshot.positionMs.coerceAtLeast(0L))
+                    }
+                }
+                Log.i(TAG, "toggle: preparing stale session state=${c.playbackState} items=${c.mediaItemCount}")
+                c.prepare()
+            }
+            c.playWhenReady = true
+            c.play()
+            updateState(c)
         }
-        c.playWhenReady = true
-        c.play()
-        updateState(c)
     }
 
     fun needsRecovery(): Boolean {
@@ -342,6 +376,7 @@ class AudiobookPlayerManager(
     }
 
     fun seekTo(positionMs: Long) = withController { c ->
+        cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         val duration = c.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
         val target = positionMs.coerceIn(0L, duration)
@@ -351,6 +386,7 @@ class AudiobookPlayerManager(
     }
 
     fun seekBy(deltaMs: Long) = withController { c ->
+        cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         val duration = c.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
         val target = (c.currentPosition + deltaMs).coerceIn(0L, duration)
@@ -359,6 +395,7 @@ class AudiobookPlayerManager(
     }
 
     fun next() = withController { c ->
+        cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         if (c.hasNextMediaItem()) {
             captureUndoSeek(c, c.currentMediaItemIndex + 1, 0L)
@@ -368,6 +405,7 @@ class AudiobookPlayerManager(
     }
 
     fun previous() = withController { c ->
+        cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         if (c.currentPosition > 5_000L) {
             captureUndoSeek(c, c.currentMediaItemIndex, 0L)
@@ -382,6 +420,7 @@ class AudiobookPlayerManager(
     }
 
     fun undoLastSeek() = withController { c ->
+        cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         val point = currentUndoSeek(c) ?: return@withController
         undoSeekPoint = null
@@ -445,10 +484,11 @@ class AudiobookPlayerManager(
                 book = book,
             )
         }
-        scope.launch {
+        pendingMediaLoadJob?.cancel()
+        pendingMediaLoadJob = scope.launch {
             val items = try {
                 withContext(Dispatchers.IO) {
-                    buildPlaybackMediaItems(book, downloadStore)
+                    mediaItemsBuilder(book)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -784,7 +824,9 @@ class AudiobookPlayerManager(
     }
 
     private fun recoverEmptyPlayerFromLatestSnapshot(player: Player) {
+        if (pendingMediaLoadJob?.isActive == true) return
         val snapshot = resumeStore.latestSnapshot() ?: return
+        val recoveryGeneration = loadGeneration
         val source = playbackSourceOrNull(snapshot.sourceCode)
         val key = EmptyPlayerRecoveryKey(
             bookId = snapshot.bookId,
@@ -794,9 +836,12 @@ class AudiobookPlayerManager(
         if (attemptedEmptyPlayerRecovery == key) return
         attemptedEmptyPlayerRecovery = key
 
-        scope.launch {
-            val recovered = bookRecovery.recoverSnapshot(snapshot) ?: return@launch
-            if (released) return@launch
+        pendingSnapshotRecoveryJob = scope.launch {
+            val recovered = if (snapshotBookLoader != null) snapshotBookLoader.invoke(snapshot)
+                else bookRecovery.recoverSnapshot(snapshot)
+            if (recovered == null || released || recoveryGeneration != loadGeneration ||
+                pendingMediaLoadJob?.isActive == true || resumeStore.latestSnapshot() != snapshot
+            ) return@launch
 
             val c = controller ?: return@launch
             if (hasUsablePlaybackMedia(
@@ -945,3 +990,4 @@ class AudiobookPlayerManager(
         const val TRANSIENT_TICK_MS = 1_000L
     }
 }
+

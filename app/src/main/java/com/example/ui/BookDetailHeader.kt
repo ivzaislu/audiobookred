@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -13,10 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
-import com.example.data.model.PersonDto
+import com.example.data.parser.BrowserChallengeSession
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 
@@ -67,86 +67,61 @@ internal fun BookDetailTopBar(
 @Composable
 internal fun BookDetailHeroSection(
     book: BookDetailDto,
-    ruTrackerBook: Boolean,
-    onAuthor: (PersonDto) -> Unit,
-    onNarrator: (PersonDto) -> Unit,
+    displayedProgress: Double = 0.0,
+    browserChallengeSession: BrowserChallengeSession? = null,
+    browserChallengeRequestId: Long? = null,
 ) {
-    BookDetailSectionCard(
-        contentPadding = PaddingValues(0.dp),
+    val challengeActive = browserChallengeSession != null && browserChallengeRequestId != null
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Sm),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(
+        Box(
             modifier = Modifier
+                .widthIn(max = AbredSizes.BookDetailCoverMaxWidth)
                 .fillMaxWidth()
-                .padding(AbredSpacing.Md),
-            verticalAlignment = Alignment.Top,
+                .then(
+                    if (challengeActive) Modifier.height(AbredSizes.BookDetailInlineChallengeHeight)
+                    else Modifier.aspectRatio(1f),
+                )
+                .clip(MaterialTheme.shapes.large)
+                .testTag("book-detail-cover"),
         ) {
-            BookCoverImage(
-                model = book.coverUrl,
-                contentDescription = book.title,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .width(124.dp)
-                    .height(186.dp)
-                    .clip(MaterialTheme.shapes.medium),
-            )
-            Spacer(Modifier.width(AbredSpacing.Md))
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 186.dp),
-            ) {
-                Text(
-                    book.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
+            if (browserChallengeSession != null && browserChallengeRequestId != null) {
+                BrowserChallengeGate(
+                    session = browserChallengeSession,
+                    hostedRequestId = browserChallengeRequestId,
+                    inline = true,
                 )
-                Spacer(Modifier.height(AbredSpacing.Xs))
-                CompactPeopleLine(
-                    prefix = "Автор",
-                    people = book.authors,
-                    emptyText = "Автор не указан",
-                    interactive = !ruTrackerBook,
-                    onPerson = onAuthor,
+            } else {
+                BookCoverImage(
+                    model = book.coverUrl,
+                    contentDescription = "Обложка книги «${book.title}»",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
                 )
-                if (book.narrators.isNotEmpty()) {
-                    Spacer(Modifier.height(AbredSpacing.Xxs))
-                    CompactPeopleLine(
-                        prefix = "Читает",
-                        people = book.narrators,
-                        interactive = !ruTrackerBook,
-                        onPerson = onNarrator,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                detailSourceCode(book).takeIf { it.isNotBlank() }?.let { code ->
-                    Surface(
+                if (displayedProgress > 0.05) {
+                    LinearProgressIndicator(
+                        progress = { (displayedProgress.coerceIn(0.0, 100.0) / 100.0).toFloat() },
                         modifier = Modifier
-                            .align(Alignment.End)
-                            .widthIn(max = 160.dp),
-                        shape = MaterialTheme.shapes.extraSmall,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        border = BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant,
-                        ),
-                    ) {
-                        Text(
-                            text = sourceDisplayLabel(code),
-                            modifier = Modifier.padding(
-                                horizontal = AbredSpacing.Xs,
-                                vertical = AbredSpacing.Xxs,
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(AbredSizes.ProgressTrack),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.outlineVariant,
+                    )
                 }
             }
         }
+        Spacer(Modifier.height(AbredSpacing.Md))
+        Text(
+            book.title,
+            modifier = Modifier.fillMaxWidth().testTag("book-detail-title"),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
     }
 }

@@ -51,6 +51,14 @@ internal class AndroidAutoSessionController(
     private var pendingResumptionEpoch: Long? = null
     private var lastContinueKey: String? = null
 
+    private val selectionPreparation = GuardedSessionPreparation(scope)
+    val sessionPlayer = GuardedPlaybackResumptionPlayer(
+        player, scope, selectionPreparation::invalidate,
+        { selectionPreparation.shouldIgnoreQueuedPlayback(session?.controllerForCurrentRequest) },
+    ) {
+        preparePlaybackResumption(isForPlayback = true)
+    }
+
     val callback: MediaLibrarySession.Callback = PlaybackSessionCallback()
 
     fun attachSession(value: MediaLibrarySession) {
@@ -58,6 +66,7 @@ internal class AndroidAutoSessionController(
     }
 
     fun detachSession() {
+        sessionPlayer.close()
         session = null
     }
 
@@ -138,11 +147,22 @@ internal class AndroidAutoSessionController(
     }
 
     private inner class PlaybackSessionCallback : MediaLibrarySession.Callback {
+        override fun onConnectAsync(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): ListenableFuture<MediaSession.ConnectionResult> {
+            // Keep Media3's trusted/untrusted defaults and library commands;
+            // only remove modes that can replay a finished book or reorder it.
+            return Futures.immediateFuture(audiobookConnectionResult(session, controller))
+        }
+
         override fun onPlayerInteractionFinished(
             session: MediaSession,
             controllerInfo: MediaSession.ControllerInfo,
             playerCommands: Player.Commands,
         ) {
+            sessionPlayer.onPlayerInteractionFinished(playerCommands)
+            selectionPreparation.onInteractionFinished(controllerInfo)
             val commands = (0 until playerCommands.size()).joinToString(",") { playerCommands[it].toString() }
             tracePlaybackEvent(
                 "controller_commands", player,
@@ -215,21 +235,33 @@ internal class AndroidAutoSessionController(
             controller: MediaSession.ControllerInfo,
             mediaItems: List<MediaItem>,
         ): ListenableFuture<List<MediaItem>> {
+            sessionPlayer.cancelPendingResumption()
             if (mediaItems.none(::isAndroidAutoPlaybackRequest)) {
                 return Futures.immediateFuture(mediaItems)
             }
-            return backgroundFuture {
-                buildList {
+            val epoch = UserDataRestoreGate.currentPlaybackWriteEpoch()
+            var selected: PreparedPlayback? = null
+            return selectionPreparation.future(
+                owner = controller,
+                isAuthorized = { UserDataRestoreGate.playbackWriteEpochCurrent(epoch) },
+                prepare = { buildList {
                     mediaItems.forEach { request ->
                         if (!isAndroidAutoPlaybackRequest(request)) {
                             add(request)
                         } else {
                             val prepared = resolvePreparedPlayback(request)
                             addAll(buildPlaybackMediaItems(prepared.book, downloadStore))
+                            selected = prepared
                         }
                     }
-                }
-            }
+                } },
+                onAccepted = {
+                    selected?.let { prepared ->
+                        pendingResumptionBook = prepared.book
+                        pendingResumptionEpoch = epoch
+                    }
+                },
+            )
         }
 
         override fun onSetMediaItems(
@@ -239,6 +271,7 @@ internal class AndroidAutoSessionController(
             startIndex: Int,
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            sessionPlayer.cancelPendingResumption()
             val request = mediaItems.singleOrNull()
             if (request == null || !isAndroidAutoPlaybackRequest(request)) {
                 return Futures.immediateFuture(
@@ -250,10 +283,22 @@ internal class AndroidAutoSessionController(
                 )
             }
 
-            return backgroundFuture {
-                val prepared = resolvePreparedPlayback(request)
-                playbackItems(prepared)
-            }
+            val epoch = UserDataRestoreGate.currentPlaybackWriteEpoch()
+            var selected: PreparedPlayback? = null
+            return selectionPreparation.future(
+                owner = controller,
+                isAuthorized = { UserDataRestoreGate.playbackWriteEpochCurrent(epoch) },
+                prepare = {
+                    val prepared = resolvePreparedPlayback(request)
+                    playbackItems(prepared).also { selected = prepared }
+                },
+                onAccepted = {
+                    val prepared = requireNotNull(selected)
+                    pendingResumptionBook = prepared.book
+                    pendingResumptionEpoch = epoch
+                    player.playbackParameters = PlaybackParameters(sanitizePlaybackSpeed(prepared.speed))
+                },
+            )
         }
 
         override fun onPlaybackResumption(
@@ -265,7 +310,10 @@ internal class AndroidAutoSessionController(
                 "session_resumption", player,
                 "controller=${controller.packageName} forPlayback=$isForPlayback",
             )
-            return backgroundFuture { restorePlaybackResumption(isForPlayback) }
+            // Media3 calls play even on resumption-future failure. Resolve real
+            // playback in sessionPlayer.play(), outside that SDK fallback path.
+            if (isForPlayback) return Futures.immediateFuture(emptyPlaybackResumptionItems())
+            return backgroundFuture { preparePlaybackResumption(false).mediaItems }
         }
     }
 
@@ -295,12 +343,7 @@ internal class AndroidAutoSessionController(
             error("Состояние воспроизведения изменилось во время подготовки")
         }
 
-        val authorized = prepared.copy(playbackWriteEpoch = playbackWriteEpoch)
-        withContext(Dispatchers.Main.immediate) {
-            pendingResumptionBook = authorized.book
-            pendingResumptionEpoch = playbackWriteEpoch
-        }
-        return authorized
+        return prepared.copy(playbackWriteEpoch = playbackWriteEpoch)
     }
 
     private suspend fun playbackItems(
@@ -311,12 +354,6 @@ internal class AndroidAutoSessionController(
         val chapterIndex = prepared.chapterIndex.coerceIn(0, items.lastIndex)
         val positionMs = prepared.positionMs.coerceAtLeast(0L)
 
-        withContext(Dispatchers.Main.immediate) {
-            pendingResumptionBook = prepared.book
-            pendingResumptionEpoch = prepared.playbackWriteEpoch
-            player.playbackParameters = PlaybackParameters(sanitizePlaybackSpeed(prepared.speed))
-        }
-
         return MediaSession.MediaItemsWithStartPosition(
             items,
             chapterIndex,
@@ -324,31 +361,23 @@ internal class AndroidAutoSessionController(
         )
     }
 
-    private suspend fun restorePlaybackResumption(
+    private suspend fun preparePlaybackResumption(
         isForPlayback: Boolean,
-    ): MediaSession.MediaItemsWithStartPosition {
+    ): SessionPlaybackResumption {
         val playbackWriteEpoch = UserDataRestoreGate.currentPlaybackWriteEpoch()
-        if (isForPlayback) {
-            withContext(Dispatchers.Main.immediate) {
-                pendingResumptionBook = null
-                pendingResumptionEpoch = null
-            }
-        }
 
         val snapshot = resumeStore.latestSnapshot()
             ?: error("Нет сохранённой позиции для продолжения")
         val sourceCode = snapshot.sourceCode
             .takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
+            ?: standalonePlaybackSourceFromBookId(snapshot.bookId)
         val cachedProgress = localCacheStore.readProgress(snapshot.bookId, sourceCode)
         if (cachedProgress?.completed == true || snapshot.progressPercent >= 100.0) {
             error("Последняя книга уже завершена")
         }
 
-        val prepared = if (sourceCode != null) {
-            preparePlayback.resume(snapshot.bookId, sourceCode)
-        } else {
-            preparePlayback.resume(snapshot.bookId)
-        } ?: error("Не удалось подготовить последнюю книгу для продолжения")
+        val prepared = preparePlayback.resumption(snapshot)
+            ?: error("Не удалось подготовить последнюю книгу для продолжения")
         if (!UserDataRestoreGate.playbackWriteEpochCurrent(playbackWriteEpoch)) {
             error("Состояние воспроизведения изменилось во время восстановления")
         }
@@ -357,25 +386,28 @@ internal class AndroidAutoSessionController(
         if (items.isEmpty()) error("Не удалось восстановить плейлист книги")
         val chapterIndex = prepared.chapterIndex.coerceIn(0, items.lastIndex)
         val positionMs = prepared.positionMs.coerceAtLeast(0L)
+        if (localCacheStore.readProgress(snapshot.bookId, sourceCode)?.completed == true) {
+            error("Последняя книга уже завершена")
+        }
+        fun authorized(): Boolean =
+            UserDataRestoreGate.playbackWriteEpochCurrent(playbackWriteEpoch) &&
+                resumeStore.latestSnapshot() == snapshot
 
         if (isForPlayback) {
-            withContext(Dispatchers.Main.immediate) {
-                pendingResumptionBook = prepared.book
-                pendingResumptionEpoch = playbackWriteEpoch
-                player.playbackParameters =
-                    PlaybackParameters(sanitizePlaybackSpeed(prepared.speed))
-            }
-            return MediaSession.MediaItemsWithStartPosition(
-                items,
-                chapterIndex,
-                positionMs,
+            return SessionPlaybackResumption(
+                mediaItems = MediaSession.MediaItemsWithStartPosition(items, chapterIndex, positionMs),
+                isAuthorized = ::authorized,
+                onApplied = {
+                    pendingResumptionBook = prepared.book
+                    pendingResumptionEpoch = playbackWriteEpoch
+                    player.playbackParameters = PlaybackParameters(sanitizePlaybackSpeed(prepared.speed))
+                },
             )
         }
 
-        return MediaSession.MediaItemsWithStartPosition(
-            listOf(items[chapterIndex]),
-            0,
-            positionMs,
+        if (!authorized()) error("Сохранённая позиция изменилась во время восстановления")
+        return SessionPlaybackResumption(
+            MediaSession.MediaItemsWithStartPosition(listOf(items[chapterIndex]), 0, positionMs),
         )
     }
 

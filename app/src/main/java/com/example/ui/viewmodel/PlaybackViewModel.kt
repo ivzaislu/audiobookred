@@ -332,6 +332,13 @@ class PlaybackViewModel @Inject constructor(
         if (refreshRecoveryInFlight) return false
         val recoveryRequest = expectedRecoveryRequest ?: player.captureRecoveryRequest() ?: return false
         if (!player.isRecoveryRequestCurrent(recoveryRequest)) return false
+        val recoveryState = playerState.value
+        val recoveryBook = recoveryState.book ?: return false
+        if (recoveryBook.id != book.id ||
+            !recoveryBook.selectedSource.equals(book.selectedSource, ignoreCase = true)
+        ) return false
+        val recoveryChapterId = recoveryBook.chapters.getOrNull(recoveryState.chapterIndex)?.id
+            ?: return false
         tracePlaybackEvent(
             "source_recovery_requested",
             details = "manual=$emitFailure chapter=${playerState.value.chapterIndex}" +
@@ -350,10 +357,18 @@ class PlaybackViewModel @Inject constructor(
                 tracePlaybackEvent("source_recovery_discarded", details = "stage=source_refresh")
                 false
             } else {
-                // Resume selection can itself suspend and may choose the start
-                // of a completed book. It must not outlive the playback it repairs.
+                // Recovery is anchored to the failed stream. User resume rules
+                // can restart completed books or rewind at the end; neither is
+                // appropriate for an automatic transport repair.
                 executePreparedPlayback(
-                    prepare = { preparePlayback.resume(fresh) },
+                    prepare = {
+                        preparePlayback.recover(
+                            book = fresh,
+                            chapterId = recoveryChapterId,
+                            positionMs = recoveryState.positionMs,
+                            speed = recoveryState.speed,
+                        )
+                    },
                     preparationEpoch = preparationEpoch,
                     isCurrent = { player.isRecoveryRequestCurrent(recoveryRequest) },
                     play = { prepared ->
@@ -449,6 +464,8 @@ class PlaybackViewModel @Inject constructor(
     ): Boolean {
         val preparationEpoch = UserDataRestoreGate.currentPlaybackWriteEpoch()
         val generation = preparationGeneration.incrementAndGet()
+        player.cancelPendingPlaybackLoad()
+        val loadRequest = player.capturePlaybackLoadRequest()
         player.cancelPendingRecovery()
         torrServePlaybackHandoff = null
         _preparationState.value = PlaybackPreparationUiState()
@@ -461,7 +478,9 @@ class PlaybackViewModel @Inject constructor(
             val started = executePreparedPlayback(
                 prepare = { block(onTorrServeStage) },
                 preparationEpoch = preparationEpoch,
-                isCurrent = { preparationGeneration.get() == generation },
+                isCurrent = {
+                    preparationGeneration.get() == generation && player.isPlaybackLoadRequestCurrent(loadRequest)
+                },
             ) { prepared ->
                 if (
                     _preparationState.value.active &&
@@ -478,7 +497,9 @@ class PlaybackViewModel @Inject constructor(
                 }
                 playPrepared(prepared, startBackgroundRefresh = true)
             }
-            if (!started && preparationGeneration.get() == generation) {
+            if (!started && preparationGeneration.get() == generation &&
+                player.isPlaybackLoadRequestCurrent(loadRequest)
+            ) {
                 val message = if (!UserDataRestoreGate.playbackWriteEpochCurrent(preparationEpoch)) {
                     "Воспроизведение отложено: восстановление пользовательских данных ещё не завершено."
                 } else {

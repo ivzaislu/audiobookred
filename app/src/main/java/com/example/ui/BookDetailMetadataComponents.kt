@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.model.GenreDto
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 
@@ -31,38 +29,7 @@ internal fun GenreLabelChip(name: String) {
                     vertical = AbredSpacing.Xs,
                 ),
             style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-internal fun GenreOverflowChip(
-    genres: List<GenreDto>,
-    onGenre: (GenreDto) -> Unit,
-) {
-    var expanded by remember(genres) { mutableStateOf(false) }
-    Box {
-        AssistChip(
-            onClick = { expanded = true },
-            shape = MaterialTheme.shapes.small,
-            label = { Text("+${(genres.size - 2).coerceAtLeast(0)}") },
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            genres.drop(2).forEach { genre ->
-                DropdownMenuItem(
-                    text = { Text(genre.name, modifier = Modifier.widthIn(max = 260.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    onClick = {
-                        expanded = false
-                        onGenre(genre)
-                    },
-                )
-            }
-        }
     }
 }
 

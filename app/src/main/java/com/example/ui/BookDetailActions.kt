@@ -7,12 +7,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.data.local.DownloadBookEntity
 import com.example.data.model.BookDetailDto
-import com.example.data.model.GenreDto
 import com.example.data.parser.BrowserChallengeSession
 import com.example.data.torrserve.canResolveRuTrackerPlayback
 import com.example.ui.theme.AbredSizes
@@ -30,53 +28,25 @@ internal fun BookDetailActionsSection(
     showProgressPercent: Boolean,
     activeBookId: String?,
     playerIsPlaying: Boolean,
-    ruTrackerBook: Boolean,
     onResumeBook: () -> Unit,
     onTogglePlayback: () -> Unit,
     onPlayer: () -> Unit,
     onStartDownload: (String) -> Unit,
     onResumeDownload: (String) -> Unit,
     onRetryDownload: (String) -> Unit,
-    onGenre: (GenreDto) -> Unit,
 ) {
+    val challengeActive = browserChallengeSession != null && browserChallengeRequestId != null
     BookDetailSectionCard(
         modifier = Modifier.padding(top = AbredSpacing.Sm),
     ) {
-        if (browserChallengeSession != null && browserChallengeRequestId != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(AbredSizes.BookDetailInlineChallengeHeight),
-            ) {
-                BrowserChallengeGate(
-                    session = browserChallengeSession,
-                    hostedRequestId = browserChallengeRequestId,
-                    inline = true,
-                )
-            }
-            return@BookDetailSectionCard
-        }
-
-        if (displayedProgress > 0.05) {
-            LinearProgressIndicator(
-                progress = { (displayedProgress / 100.0).toFloat() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(AbredSizes.ProgressTrack)
-                    .clip(MaterialTheme.shapes.extraSmall),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.outlineVariant,
-            )
-            Spacer(Modifier.height(AbredSpacing.Xs))
-        }
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(
-                enabled = book.chapters.isNotEmpty() || canResolveRuTrackerPlayback(book),
+                enabled = !challengeActive &&
+                    (book.chapters.isNotEmpty() || canResolveRuTrackerPlayback(book)),
                 onClick = {
                     val requiresResume = shouldResumeBookPlayback(
                         activeBookId = activeBookId,
@@ -118,6 +88,7 @@ internal fun BookDetailActionsSection(
             if (book.selectedBookSourceId.isNotBlank()) {
                 CompactDownloadAction(
                     download = selectedDownload,
+                    enabled = !challengeActive,
                     busy = downloadUi.busyBookSourceId == book.selectedBookSourceId,
                     onStart = { onStartDownload(book.selectedBookSourceId) },
                     onResume = { onResumeDownload(book.selectedBookSourceId) },
@@ -148,10 +119,5 @@ internal fun BookDetailActionsSection(
             }
         }
 
-        BookDetailGenresAndDuration(
-            book = book,
-            ruTrackerBook = ruTrackerBook,
-            onGenre = onGenre,
-        )
     }
 }

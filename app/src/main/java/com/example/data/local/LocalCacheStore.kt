@@ -107,14 +107,22 @@ class LocalCacheStore(context: Context) {
     }
 
     suspend fun writeBook(value: BookDetailDto) {
-        upsertCards(listOf(value.asCard()))
-        val json = runCatching { bookAdapter.toJson(value) }.getOrNull() ?: return
-        val now = System.currentTimeMillis()
-        val keys = buildList {
-            add(bookKey(value.id, DEFAULT_VARIANT))
-            value.selectedSource.takeIf { it.isNotBlank() }?.let { add(bookKey(value.id, it)) }
-        }.distinct()
-        dao.putAll(keys.map { CachedPayloadEntity(it, json, now) })
+        // Serialize the merge with the write: a metadata refresh must not erase
+        // a TorrServe playlist installed by concurrent playback preparation.
+        db.withTransaction {
+            val cached = if (value.selectedSource.equals("rutracker", ignoreCase = true) &&
+                value.chapters.isEmpty()
+            ) readBook(value.id, value.selectedSource) else null
+            val merged = mergeRuTrackerBookForCache(value, cached)
+            upsertCards(listOf(merged.asCard()))
+            val json = runCatching { bookAdapter.toJson(merged) }.getOrNull() ?: return@withTransaction
+            val now = System.currentTimeMillis()
+            val keys = buildList {
+                add(bookKey(merged.id, DEFAULT_VARIANT))
+                merged.selectedSource.takeIf { it.isNotBlank() }?.let { add(bookKey(merged.id, it)) }
+            }.distinct()
+            dao.putAll(keys.map { CachedPayloadEntity(it, json, now) })
+        }
     }
 
     /**
@@ -623,3 +631,4 @@ class LocalCacheStore(context: Context) {
         private fun browseKey(kind: String, id: String, page: Int) = "browse:${part(kind)}:${part(id)}:$page"
     }
 }
+

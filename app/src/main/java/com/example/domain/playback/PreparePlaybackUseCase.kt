@@ -7,6 +7,8 @@ import com.example.data.model.BookmarkDto
 import com.example.data.model.BookmarkUiItem
 import com.example.data.model.ProgressResponse
 import com.example.data.player.PlaybackResumeStore
+import com.example.data.player.canRecoverPlaybackSnapshotSource
+import com.example.data.player.standalonePlaybackSourceFromBookId
 import com.example.data.repository.AudiobookRepository
 import com.example.data.repository.BookDetailRepository
 import com.example.data.settings.BookSourcePreferenceStore
@@ -63,6 +65,63 @@ class PreparePlaybackUseCase @Inject constructor(
         val saved = loadProgress(playableBook)
         val point = resolveResumePoint(playableBook, saved)
         return prepared(playableBook, point.first, point.second, saved)
+    }
+
+    /** Repair URLs at the captured live position without reading/clearing resume progress. */
+    suspend fun recover(
+        book: BookDetailDto,
+        chapterId: String,
+        positionMs: Long,
+        speed: Float,
+    ): PreparedPlayback {
+        fun pointFor(candidate: BookDetailDto): PlaybackSourceRecoveryPoint =
+            resolvePlaybackSourceRecoveryPoint(candidate.chapters.map { it.id }, chapterId, positionMs)
+                ?: throw IllegalStateException("Глава для восстановления потока больше недоступна")
+
+        val playableBook = completedDownloadedBookOrNull(book) ?: ensurePlayableBook(
+            book = book,
+            onTorrServePreparationStage = {},
+            warmChapterIndexSelector = { pointFor(it).chapterIndex },
+        )
+        val point = pointFor(playableBook)
+        return PreparedPlayback(playableBook, point.chapterIndex, point.positionMs, speed)
+    }
+
+    /** System/Bluetooth resumption must never turn completed progress into a replay. */
+    suspend fun resumption(snapshot: PlaybackResumeStore.Snapshot): PreparedPlayback? {
+        val source = snapshot.sourceCode.trim().takeIf {
+            it.isNotBlank() && !it.equals("unknown", ignoreCase = true)
+        } ?: standalonePlaybackSourceFromBookId(snapshot.bookId)
+        val cached = cacheStore.readBook(snapshot.bookId, source)?.takeIf {
+            bookmarkCachedSourceMatchesHint(it.selectedSource, source) && canPreparePlayback(it)
+        }
+        val candidate = completedDownloadedBookForBookIdOrNull(snapshot.bookId, source)
+            ?: cached ?: repository.book(snapshot.bookId, source)
+        if (candidate.id != snapshot.bookId ||
+            !bookmarkCachedSourceMatchesHint(candidate.selectedSource, source) ||
+            !canRecoverPlaybackSnapshotSource(snapshot.sourceCode, candidate.sourceVariants.size)
+        ) return null
+
+        fun pointFor(book: BookDetailDto) = resolvePlaybackResumptionPoint(
+            book.chapters.map { it.id }, snapshot.chapterId, snapshot.chapterIndex, snapshot.positionMs,
+        ) ?: error("Сохранённая глава больше недоступна")
+
+        val playable = completedDownloadedBookOrNull(candidate) ?: ensurePlayableBook(
+            book = candidate,
+            onTorrServePreparationStage = {},
+            warmChapterIndexSelector = { pointFor(it).chapterIndex },
+        )
+        val point = pointFor(playable)
+        if (playable != cached) {
+            try {
+                cacheStore.writeBook(playable)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Metadata cache failure must not turn a valid stream into a replay.
+            }
+        }
+        return PreparedPlayback(playable, point.chapterIndex, point.positionMs, snapshot.speed)
     }
 
     /**

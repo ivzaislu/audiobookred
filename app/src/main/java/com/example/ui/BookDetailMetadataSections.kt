@@ -1,95 +1,237 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.GenreDto
-import com.example.ui.theme.AbredElevation
+import com.example.data.model.PersonDto
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.theme.abredAccentText
 
 @Composable
-internal fun BookDetailGenresAndDuration(
+internal fun BookDetailMetadataSection(
     book: BookDetailDto,
     ruTrackerBook: Boolean,
+    onAuthor: (PersonDto) -> Unit,
+    onNarrator: (PersonDto) -> Unit,
     onGenre: (GenreDto) -> Unit,
+    seriesName: String? = null,
+    seriesPosition: Int? = null,
+    seriesTotal: Int? = null,
+    onOpenSeries: () -> Unit = {},
 ) {
-    if (book.genres.isEmpty() && book.durationSeconds <= 0) return
-
-    Spacer(Modifier.height(AbredSpacing.Sm))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+    BookDetailSectionCard(
+        modifier = Modifier.padding(top = AbredSpacing.Sm),
+        contentPadding = PaddingValues(
+            horizontal = AbredSpacing.Md,
+            vertical = AbredSpacing.Xs,
+        ),
     ) {
-        if (book.genres.isNotEmpty()) {
-            val visibleGenres = if (ruTrackerBook) {
-                book.genres
-            } else {
-                book.genres.take(2)
+        Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs)) {
+            BookDetailMetadataRow("Автор") {
+                BookDetailPeopleValues(book.authors, !ruTrackerBook, onAuthor)
             }
-            LazyRow(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(end = AbredSpacing.Xs),
-                horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                items(
-                    count = visibleGenres.size,
-                    key = { index ->
-                        val genre = visibleGenres[index]
-                        "detail-genre-${genre.id.ifBlank { genre.name }}-$index"
-                    },
-                ) { index ->
-                    val genre = visibleGenres[index]
-                    if (ruTrackerBook) {
-                        GenreLabelChip(genre.name)
-                    } else {
-                        SuggestionChip(
-                            onClick = { onGenre(genre) },
-                            shape = MaterialTheme.shapes.small,
-                            label = {
-                                Text(
-                                    genre.name,
-                                    modifier = Modifier.widthIn(max = 180.dp),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
+            if (book.narrators.isNotEmpty()) {
+                BookDetailMetadataRow("Читает") {
+                    BookDetailPeopleValues(book.narrators, !ruTrackerBook, onNarrator)
+                }
+            }
+            if (!seriesName.isNullOrBlank()) {
+                Column {
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
+                    BookDetailMetadataRow(
+                        label = "Цикл / серия",
+                        modifier = Modifier
+                            .heightIn(min = AbredSizes.MinimumTouchTarget)
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable(
+                                role = Role.Button,
+                                onClickLabel = "Открыть цикл «$seriesName»",
+                                onClick = onOpenSeries,
+                            )
+                            .padding(vertical = AbredSpacing.Xs),
+                    ) {
+                        BookDetailSeriesValue(
+                            name = seriesName,
+                            position = seriesPosition,
+                            total = seriesTotal,
                         )
                     }
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
                 }
-                if (!ruTrackerBook && book.genres.size > 2) {
-                    item(key = "detail-genre-overflow") {
-                        GenreOverflowChip(
-                            genres = book.genres,
-                            onGenre = onGenre,
-                        )
-                    }
+            }
+            if (book.durationSeconds > 0) {
+                BookDetailMetadataRow("Длительность") {
+                    Text(
+                        detailFormatSeconds(book.durationSeconds),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
+            }
+            if (book.genres.isNotEmpty()) {
+                BookDetailMetadataRow("Жанры") {
+                    BookDetailGenreValues(book.genres, !ruTrackerBook, onGenre)
+                }
+            }
+            detailSourceCode(book).takeIf(String::isNotBlank)?.let { code ->
+                BookDetailMetadataRow("Источник") {
+                    Text(sourceDisplayLabel(code), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookDetailMetadataRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        if (maxWidth < 260.dp || fontScale >= 1.5f) {
+            Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs)) {
+                Text(label, style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                content()
             }
         } else {
-            Spacer(Modifier.weight(1f))
-        }
-
-        if (book.durationSeconds > 0) {
-            if (book.genres.isNotEmpty()) {
-                Spacer(Modifier.width(AbredSpacing.Xs))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label,
+                    modifier = Modifier.width(AbredSizes.BookDetailMetadataLabelWidth)
+                        .padding(end = AbredSpacing.Xs),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart) { content() }
             }
-            DurationPill(book.durationSeconds)
+        }
+    }
+}
+
+@Composable
+private fun BookDetailPeopleValues(
+    people: List<PersonDto>,
+    interactive: Boolean,
+    onPerson: (PersonDto) -> Unit,
+) {
+    if (people.isEmpty()) {
+        Text("Не указан", style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    BookDetailMetadataValueList(
+        values = people.map { it.name },
+        allowNavigation = interactive,
+        onSelect = { onPerson(people[it]) },
+    )
+}
+
+@Composable
+private fun BookDetailGenreValues(
+    genres: List<GenreDto>,
+    interactive: Boolean,
+    onGenre: (GenreDto) -> Unit,
+) {
+    BookDetailMetadataValueList(
+        values = genres.map { it.name },
+        allowNavigation = interactive,
+        onSelect = { onGenre(genres[it]) },
+    )
+}
+
+@Composable
+private fun BookDetailMetadataValueList(
+    values: List<String>,
+    allowNavigation: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    if (values.isEmpty()) return
+    var expanded by remember(values, allowNavigation) { mutableStateOf(false) }
+    val opensList = values.size > 1 || !allowNavigation
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (opensList) "Показать список" else "Открыть",
+                ) {
+                    if (opensList) expanded = true else onSelect(0)
+                }
+                .padding(vertical = AbredSpacing.Xxs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                values.joinToString(", "),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (opensList) {
+                Spacer(Modifier.width(AbredSpacing.Xxs))
+                Icon(
+                    Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(AbredSizes.IconSmall),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            values.forEachIndexed { index, value ->
+                if (allowNavigation) {
+                    DropdownMenuItem(
+                        text = { Text(value) },
+                        onClick = {
+                            expanded = false
+                            onSelect(index)
+                        },
+                    )
+                } else {
+                    Text(
+                        value,
+                        modifier = Modifier.padding(
+                            horizontal = AbredSpacing.Md,
+                            vertical = AbredSpacing.Xs,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
         }
     }
 }
@@ -123,78 +265,39 @@ internal fun BookDetailSourceSection(
 }
 
 @Composable
-internal fun BookDetailSeriesSection(
+private fun BookDetailSeriesValue(
     name: String,
     position: Int?,
     total: Int?,
-    onOpen: () -> Unit,
 ) {
-    Spacer(Modifier.height(AbredSpacing.Sm))
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AbredSpacing.ScreenHorizontal)
-            .clickable(onClick = onOpen),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-        ),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AbredSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ) {
-                Box(
-                    modifier = Modifier.size(40.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Default.CollectionsBookmark,
-                        contentDescription = null,
-                        modifier = Modifier.size(AbredSizes.IconSmall),
-                    )
-                }
-            }
-            Spacer(Modifier.width(AbredSpacing.Sm))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.abredAccentText,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val subtitle = bookDetailSeriesSubtitle(position, total)
-                if (subtitle.isNotBlank()) {
-                    Spacer(Modifier.height(AbredSpacing.Xxs))
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(Modifier.weight(1f)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.abredAccentText,
             )
+            val subtitle = bookDetailSeriesSubtitle(position, total)
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(AbredSpacing.Xxs))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
+        Spacer(Modifier.width(AbredSpacing.Xs))
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = null,
+            modifier = Modifier.size(AbredSizes.IconSmall),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

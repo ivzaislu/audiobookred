@@ -38,6 +38,8 @@ object AbredSizes {
     val RootHeaderMarkSize = 44.dp
     val RootHeaderSearchHeight = 56.dp
     val BookDetailInlineChallengeHeight = 420.dp
+    val BookDetailCoverMaxWidth = 360.dp
+    val BookDetailMetadataLabelWidth = 112.dp
 
     val ContentMaxWidth = 720.dp
     val BottomBarContentMaxWidth = 640.dp

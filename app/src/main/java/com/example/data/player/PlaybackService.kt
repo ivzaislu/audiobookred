@@ -114,6 +114,8 @@ class PlaybackService : MediaLibraryService() {
             .apply {
                 setAudioAttributes(audioAttributes, true)
                 setHandleAudioBecomingNoisy(true)
+                repeatMode = Player.REPEAT_MODE_OFF
+                shuffleModeEnabled = false
                 setSkipSilenceEnabled(settingsStore.state.value.skipSilenceEnabled)
                 setSeekBackIncrementMs(settingsStore.state.value.rewindSeconds.toLong() * 1_000L)
                 setSeekForwardIncrementMs(settingsStore.state.value.forwardSeconds.toLong() * 1_000L)
@@ -260,7 +262,7 @@ class PlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val initialSettings = settingsStore.state.value
-        mediaSession = MediaLibrarySession.Builder(this, player, androidAutoController.callback)
+        mediaSession = MediaLibrarySession.Builder(this, androidAutoController.sessionPlayer, androidAutoController.callback)
             .setBitmapLoader(bitmapLoader)
             .setSessionActivity(sessionActivity)
             .setMediaButtonPreferences(
