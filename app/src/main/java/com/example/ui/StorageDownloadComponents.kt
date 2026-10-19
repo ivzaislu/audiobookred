@@ -21,7 +21,7 @@ import com.example.ui.viewmodel.StorageUiState
 
 @Composable
 internal fun DownloadStorageCard(state: StorageUiState) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         Column {
             Text(
                 "Аудиофайлы",
@@ -36,9 +36,10 @@ internal fun DownloadStorageCard(state: StorageUiState) {
         }
         Spacer(Modifier.height(AbredSpacing.Xs))
         Text(
-            "Управление скачанными книгами находится в Библиотека → На устройстве. Очистка кэша аудиофайлы не удаляет.",
+            "Управление загрузками: Библиотека → На устройстве.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+

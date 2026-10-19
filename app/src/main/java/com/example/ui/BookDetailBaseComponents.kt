@@ -1,13 +1,15 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
 internal fun BookDetailSectionCard(
@@ -20,14 +22,9 @@ internal fun BookDetailSectionCard(
             .fillMaxWidth()
             .padding(horizontal = AbredSpacing.ScreenHorizontal),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-        ),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
+        border = abredOutlineBorder(opacity = AbredOpacity.SectionOutline),
     ) {
         Column(
             modifier = Modifier
@@ -37,4 +34,5 @@ internal fun BookDetailSectionCard(
         )
     }
 }
+
 

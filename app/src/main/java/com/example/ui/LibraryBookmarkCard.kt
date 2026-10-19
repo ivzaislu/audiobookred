@@ -11,10 +11,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookmarkUiItem
 import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.LibraryDesign
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
 
 @Composable
 internal fun LibraryBookmarkCard(
@@ -33,10 +35,8 @@ internal fun LibraryBookmarkCard(
                 onClick = onPlay,
             ),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
         border = abredBookCardBorder(),
     ) {
         Row(
@@ -49,8 +49,8 @@ internal fun LibraryBookmarkCard(
                 model = item.coverUrl,
                 contentDescription = null,
                 modifier = Modifier
-                    .width(58.dp)
-                    .height(82.dp)
+                    .width(LibraryDesign.BookmarkCoverWidth)
+                    .height(LibraryDesign.BookmarkCoverHeight)
                     .clip(MaterialTheme.shapes.small),
             )
             Spacer(Modifier.width(AbredSpacing.Sm))
@@ -86,3 +86,4 @@ internal fun LibraryBookmarkCard(
         }
     }
 }
+

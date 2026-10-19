@@ -1,5 +1,6 @@
 package com.example.data.parser
 
+import com.example.data.diagnostics.DiagnosticOperations
 import com.example.data.model.BookDetailDto
 import com.example.data.model.GenreDto
 import com.example.data.model.LiveCatalogItemDto
@@ -81,19 +82,29 @@ internal class LiveProviderAdapter(
         (suspend (String, String?, Int, Int) -> SeriesDetailDto)? = null,
     private val homeSectionBlock: (suspend (String) -> List<LiveCatalogItemDto>)? = null,
 ) : LiveProvider {
-    override suspend fun genres(): List<GenreDto> = genresBlock()
+    override suspend fun genres(): List<GenreDto> =
+        DiagnosticOperations.trace(sourceCode, "genres") {
+            genresBlock()
+        }
 
     override suspend fun catalog(page: Int): List<LiveCatalogItemDto> =
-        catalogBlock(page)
+        DiagnosticOperations.trace(sourceCode, "catalog") {
+            catalogBlock(page)
+        }
 
     override suspend fun search(
         query: String,
         page: Int,
         limit: Int,
     ): List<LiveCatalogItemDto> =
-        searchBlock(query, page, limit)
+        DiagnosticOperations.trace(sourceCode, "search") {
+            searchBlock(query, page, limit)
+        }
 
-    override suspend fun book(bookId: String): BookDetailDto = bookBlock(bookId)
+    override suspend fun book(bookId: String): BookDetailDto =
+        DiagnosticOperations.trace(sourceCode, "book") {
+            bookBlock(bookId)
+        }
 
     override fun canBrowseAuthor(authorId: String): Boolean =
         canBrowseAuthorBlock(authorId)
@@ -109,33 +120,39 @@ internal class LiveProviderAdapter(
         page: Int,
         limit: Int,
     ): List<LiveCatalogItemDto> =
-        requireNotNull(authorBooksBlock) { "$sourceCode does not support author browse" }(
-            authorId,
-            page,
-            limit,
-        )
+        DiagnosticOperations.trace(sourceCode, "author_books") {
+            requireNotNull(authorBooksBlock) { "$sourceCode does not support author browse" }(
+                authorId,
+                page,
+                limit,
+            )
+        }
 
     override suspend fun narratorBooks(
         narratorId: String,
         page: Int,
         limit: Int,
     ): List<LiveCatalogItemDto> =
-        requireNotNull(narratorBooksBlock) { "$sourceCode does not support narrator browse" }(
-            narratorId,
-            page,
-            limit,
-        )
+        DiagnosticOperations.trace(sourceCode, "narrator_books") {
+            requireNotNull(narratorBooksBlock) { "$sourceCode does not support narrator browse" }(
+                narratorId,
+                page,
+                limit,
+            )
+        }
 
     override suspend fun genreBooks(
         genreId: String,
         page: Int,
         limit: Int,
     ): List<LiveCatalogItemDto> =
-        requireNotNull(genreBooksBlock) { "$sourceCode does not support genre browse" }(
-            genreId,
-            page,
-            limit,
-        )
+        DiagnosticOperations.trace(sourceCode, "genre_books") {
+            requireNotNull(genreBooksBlock) { "$sourceCode does not support genre browse" }(
+                genreId,
+                page,
+                limit,
+            )
+        }
 
     override fun canLoadSourceSeries(bookId: String, provider: String?): Boolean =
         canLoadSourceSeriesBlock(bookId, provider)
@@ -146,15 +163,20 @@ internal class LiveProviderAdapter(
         page: Int,
         limit: Int,
     ): SeriesDetailDto =
-        requireNotNull(sourceSeriesBlock) { "$sourceCode does not support series" }(
-            bookId,
-            provider,
-            page,
-            limit,
-        )
+        DiagnosticOperations.trace(sourceCode, "series") {
+            requireNotNull(sourceSeriesBlock) { "$sourceCode does not support series" }(
+                bookId,
+                provider,
+                page,
+                limit,
+            )
+        }
 
     override suspend fun homeSection(section: String): List<LiveCatalogItemDto> =
-        requireNotNull(homeSectionBlock) { "$sourceCode does not support home sections" }(section)
+        DiagnosticOperations.trace(sourceCode, "home") {
+            requireNotNull(homeSectionBlock) { "$sourceCode does not support home sections" }(section)
+        }
+
 }
 
 internal class LiveProviderRegistry(

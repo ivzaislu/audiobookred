@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.MainActivity
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.viewmodel.GeneralSettingsViewModel
@@ -62,51 +63,72 @@ internal fun StandaloneSettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs),
         ) {
-            item { SettingsHeader() }
+            item { SettingsHeader(compact = true) }
 
-            item { SettingsTitle("Разделы", compactTop = true) }
+            item { SettingsTitle("Приложение", compactTop = true) }
             item {
                 SettingsCard {
                     StandaloneNavigationRow(
-                        title = "Хранилище",
-                        subtitle = "Кэш, локальные данные и скачанные книги",
-                        icon = Icons.Default.Storage,
-                        onClick = onStorage,
-                    )
-                    StandaloneNavigationRow(
                         title = "Главная",
-                        subtitle = "Разделы Главной и период популярного",
+                        subtitle = "Разделы и подборки",
+                        chevronOpacity = AbredOpacity.Chevron,
                         icon = Icons.Default.Home,
                         onClick = onHome,
                     )
                     StandaloneNavigationRow(
                         title = "Плеер",
-                        subtitle = "Скорость, перемотка и сохранение позиции",
+                        subtitle = "Скорость и перемотка",
+                        chevronOpacity = AbredOpacity.Chevron,
                         icon = Icons.Default.Headphones,
                         onClick = onPlayer,
                     )
+                }
+            }
+
+            item { SettingsGroupDivider() }
+            item { SettingsTitle("Каталог и сервисы", compactTop = true) }
+            item {
+                SettingsCard {
                     StandaloneNavigationRow(
                         title = "Источники",
-                        subtitle = "Включать и отключать источники каталога и общего поиска",
+                        subtitle = "Источники каталога и поиска",
+                        chevronOpacity = AbredOpacity.Chevron,
                         icon = Icons.Default.Hub,
                         onClick = onSources,
                     )
                     StandaloneNavigationRow(
                         title = "RuTracker и TorrServe",
-                        subtitle = "Логины, пароли и адрес torrent-сервера",
+                        subtitle = "Вход и адрес torrent-сервера",
+                        chevronOpacity = AbredOpacity.Chevron,
                         icon = Icons.Default.Link,
                         onClick = onExternalServices,
                     )
+                }
+            }
+
+            item { SettingsGroupDivider() }
+            item { SettingsTitle("Данные", compactTop = true) }
+            item {
+                SettingsCard {
                     StandaloneNavigationRow(
-                        title = "Данные и резервная копия",
-                        subtitle = "Экспорт и восстановление библиотеки, прогресса и настроек",
+                        title = "Хранилище",
+                        subtitle = "Кэш и скачанные книги",
+                        chevronOpacity = AbredOpacity.Chevron,
+                        icon = Icons.Default.Storage,
+                        onClick = onStorage,
+                    )
+                    StandaloneNavigationRow(
+                        title = "Резервная копия",
+                        subtitle = "Экспорт и восстановление данных",
+                        chevronOpacity = AbredOpacity.Chevron,
                         icon = Icons.Default.ImportExport,
                         onClick = { showDataSettings = true },
                     )
                 }
             }
 
-            item { SettingsTitle("Интерфейс") }
+            item { SettingsGroupDivider() }
+            item { SettingsTitle("Интерфейс", compactTop = true) }
             item {
                 ThemeModeSelector(
                     selected = settings.themeMode,
@@ -116,13 +138,15 @@ internal fun StandaloneSettingsScreen(
             item {
                 StandaloneSwitchCard(
                     title = "Закреплять нижнюю панель",
-                    subtitle = "Показывать навигацию на экранах книги, цикла и подборок.",
+                    subtitle = "Навигация на экранах книг, циклов и подборок",
+                    trailingControl = true,
                     checked = settings.pinBottomNavigation,
                     onChecked = vm::setPinBottomNavigation,
                 )
             }
 
-            item { SettingsTitle("О приложении") }
+            item { SettingsGroupDivider() }
+            item { SettingsTitle("О приложении", compactTop = true) }
             item {
                 AboutAppCard(
                     onCheckUpdates = { updateHost?.checkForUpdatesManually() },
@@ -130,14 +154,20 @@ internal fun StandaloneSettingsScreen(
                 )
             }
 
-            item { SettingsTitle("Сервис") }
+            item { SettingsGroupDivider() }
+            item { SettingsTitle("Диагностика", compactTop = true) }
+            item { DiagnosticsSettingsSection() }
+
+            item { SettingsGroupDivider() }
+            item { SettingsTitle("Сервис", compactTop = true) }
             item {
                 StandaloneActionRow(
                     title = "Сбросить настройки",
-                    subtitle = "Вернуть параметры приложения к значениям по умолчанию. Данные библиотеки не удаляются.",
+                    subtitle = "Восстановить исходные параметры. Библиотека и прогресс сохранятся.",
                     icon = Icons.Default.RestartAlt,
                     onClick = vm::resetSettings,
                     destructive = true,
+                    showIcon = false,
                 )
             }
 
@@ -146,8 +176,18 @@ internal fun StandaloneSettingsScreen(
     }
 }
 
+/** Quiet separation between settings groups, without individual row borders. */
+@Composable
+private fun SettingsGroupDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = AbredSpacing.Xs),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.SectionOutline),
+    )
+}
+
 private tailrec fun Context.findMainActivity(): MainActivity? = when (this) {
     is MainActivity -> this
     is ContextWrapper -> baseContext.findMainActivity()
     else -> null
 }
+

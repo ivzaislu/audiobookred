@@ -21,30 +21,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.viewmodel.GeneralSettingsViewModel
 
 @Composable
 internal fun BackupContentsCard() {
-    AbredSettingsCard {
-        Column {
-            Text(
-                "Что переносится",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "Пользовательские данные и настройки приложения",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.height(AbredSpacing.Xs))
+    AbredInnerSettingsCard {
         Text(
-            "Избранное, история, циклы, закладки, прогресс, позиции воспроизведения и выбранные источники.",
+            "Копия содержит библиотеку, историю, циклы, закладки, прогресс, позиции воспроизведения, выбранные источники и настройки.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -53,7 +40,7 @@ internal fun BackupContentsCard() {
             Icon(
                 Icons.Default.CloudOff,
                 null,
-                Modifier.size(18.dp),
+                Modifier.size(AbredSizes.IconSmall),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.width(AbredSpacing.Xs))
@@ -65,3 +52,4 @@ internal fun BackupContentsCard() {
         }
     }
 }
+

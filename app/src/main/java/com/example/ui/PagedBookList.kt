@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -25,11 +23,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import com.example.data.model.BookCardDto
@@ -57,7 +54,7 @@ internal fun LazyListScope.pagedBookShelves(
                     showProgressPercent = showProgressPercent,
                     onClick = { onBook(book.id) },
                 )
-            } ?: Spacer(Modifier.fillMaxWidth().height(124.dp))
+            } ?: Spacer(Modifier.fillMaxWidth().height(AbredSizes.LoadingCardHeight))
             Spacer(Modifier.height(AbredSpacing.Xs))
         }
     }
@@ -97,10 +94,10 @@ internal fun LazyListScope.pagedBookShelves(
 @Composable
 private fun PagingLoadingRow() {
     Box(
-        modifier = Modifier.fillMaxWidth().height(64.dp),
+        modifier = Modifier.fillMaxWidth().height(AbredSizes.LoadingFooterHeight),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(Modifier.size(28.dp))
+        CircularProgressIndicator(Modifier.size(AbredSizes.LoadingIndicator))
     }
 }
 
@@ -121,3 +118,4 @@ private fun PagingErrorRow(message: String, onRetry: () -> Unit) {
         Button(onClick = onRetry) { Text("Повторить") }
     }
 }
+

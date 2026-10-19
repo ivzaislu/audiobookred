@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,18 +22,15 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -49,12 +45,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.theme.AudioBookRedBrandRed
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
 internal fun AbredEmptyState(
@@ -67,7 +63,7 @@ internal fun AbredEmptyState(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 220.dp)
+            .heightIn(min = AbredSizes.EmptyStateMinHeight)
             .padding(AbredSpacing.Xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -76,7 +72,7 @@ internal fun AbredEmptyState(
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            border = abredOutlineBorder(),
         ) {
             Box(
                 modifier = Modifier.size(AbredSizes.EmptyStateIconContainer),
@@ -85,7 +81,7 @@ internal fun AbredEmptyState(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(AbredSizes.IconLarge),
                 )
             }
         }
@@ -113,3 +109,4 @@ internal fun AbredEmptyState(
         }
     }
 }
+

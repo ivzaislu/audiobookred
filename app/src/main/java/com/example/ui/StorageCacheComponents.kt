@@ -12,9 +12,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import com.example.ui.theme.abredAccentText
 import com.example.ui.viewmodel.StorageSettingsViewModel
 import com.example.ui.viewmodel.StorageUiState
@@ -25,7 +26,7 @@ internal fun CacheControlCard(
     cacheEnabled: Boolean,
     onClear: () -> Unit,
 ) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
@@ -40,7 +41,7 @@ internal fun CacheControlCard(
                 )
             }
             if (state.loading || state.clearing) {
-                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(AbredSizes.IconMedium), strokeWidth = AbredStroke.Spinner)
             }
         }
         Spacer(Modifier.height(AbredSpacing.Xs))
@@ -60,7 +61,7 @@ internal fun CacheControlCard(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
         ) {
-            Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
+            Icon(Icons.Default.DeleteSweep, null, Modifier.size(AbredSizes.IconSmall))
             Spacer(Modifier.width(AbredSpacing.Xs))
             Text(if (state.clearing) "Очищаю кэш…" else "Очистить ${formatStorageBytes(state.cacheBytes)}")
         }
@@ -74,3 +75,4 @@ internal fun CacheControlCard(
         }
     }
 }
+

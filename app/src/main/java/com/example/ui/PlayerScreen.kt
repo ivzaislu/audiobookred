@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -47,8 +45,10 @@ import com.example.data.player.SleepTimerState
 import com.example.data.player.UndoSeekPoint
 import com.example.data.player.estimateOverallProgressPercent
 import com.example.data.settings.PlayerSettingsStore
+import com.example.ui.theme.AbredAdaptive
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.theme.abredAccentText
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
@@ -110,7 +110,7 @@ internal fun PlayerScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         val landscape = maxWidth > maxHeight
-        val tiny = maxHeight < 650.dp
+        val tiny = maxHeight < AbredAdaptive.PlayerTinyHeight
         val horizontalPadding = if (tiny) AbredSpacing.Sm else AbredSpacing.Lg
         val undo = state.undoSeek?.takeIf {
             it.chapterIndex == state.chapterIndex && it.expiresAtElapsedMs != consumedUndoExpiry
@@ -169,7 +169,7 @@ internal fun PlayerScreen(
         PlayerTransientOverlay(
             modifier = Modifier
                 .align(if (landscape) Alignment.BottomEnd else Alignment.BottomCenter)
-                .fillMaxWidth(if (landscape) 0.58f else 1f)
+                .fillMaxWidth(if (landscape) PlayerDesign.LandscapeOverlayWidthFraction else 1f)
                 .padding(
                     start = if (landscape) AbredSpacing.Sm else horizontalPadding,
                     end = horizontalPadding,
@@ -231,3 +231,4 @@ internal fun PlayerScreen(
         )
     }
 }
+

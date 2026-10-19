@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -53,7 +51,6 @@ import com.example.ui.theme.abredAccentText
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
 
 @Composable
 internal fun PlayerPeopleLine(
@@ -102,9 +99,9 @@ internal fun PlayerPeopleLine(
             val personModifier = if (interactive) {
                 Modifier
                     .clickable(onClickLabel = "Открыть") { onPerson(person) }
-                    .padding(horizontal = AbredSpacing.Xxs, vertical = 2.dp)
+                    .padding(horizontal = AbredSpacing.Xxs, vertical = AbredSpacing.Micro)
             } else {
-                Modifier.padding(horizontal = AbredSpacing.Xxs, vertical = 2.dp)
+                Modifier.padding(horizontal = AbredSpacing.Xxs, vertical = AbredSpacing.Micro)
             }
             Text(
                 person.name,
@@ -118,3 +115,4 @@ internal fun PlayerPeopleLine(
         }
     }
 }
+

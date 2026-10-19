@@ -12,15 +12,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookCardDto
 import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -60,12 +62,10 @@ internal fun LibraryBookCard(
                 },
             ),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
         border = BorderStroke(
-            1.dp,
+            AbredStroke.Hairline,
             if (selected) {
                 MaterialTheme.colorScheme.error
             } else {
@@ -148,3 +148,4 @@ internal fun LibraryBookCard(
         }
     }
 }
+

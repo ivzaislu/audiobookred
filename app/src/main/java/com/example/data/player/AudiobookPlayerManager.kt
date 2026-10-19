@@ -1,5 +1,7 @@
 package com.example.data.player
 
+import com.example.data.diagnostics.DiagnosticFailures
+
 import android.content.ComponentName
 import android.content.Context
 import android.os.SystemClock
@@ -381,6 +383,7 @@ class AudiobookPlayerManager internal constructor(
         val duration = c.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
         val target = positionMs.coerceIn(0L, duration)
         captureUndoSeek(c, c.currentMediaItemIndex, target)
+        tracePlaybackEvent("app_seek", c, "targetPosition=$target")
         c.seekTo(target)
         updateState(c)
     }
@@ -390,11 +393,13 @@ class AudiobookPlayerManager internal constructor(
         recoveryGuard.invalidate()
         val duration = c.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: Long.MAX_VALUE
         val target = (c.currentPosition + deltaMs).coerceIn(0L, duration)
+        tracePlaybackEvent("app_seek_by", c, "targetPosition=$target deltaMs=$deltaMs")
         c.seekTo(target)
         updateState(c)
     }
 
     fun next() = withController { c ->
+        tracePlaybackEvent("app_next", c, "hasNext=${c.hasNextMediaItem()}")
         cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         if (c.hasNextMediaItem()) {
@@ -405,6 +410,7 @@ class AudiobookPlayerManager internal constructor(
     }
 
     fun previous() = withController { c ->
+        tracePlaybackEvent("app_previous", c)
         cancelPendingPlaybackLoad()
         recoveryGuard.invalidate()
         if (c.currentPosition > 5_000L) {
@@ -424,6 +430,7 @@ class AudiobookPlayerManager internal constructor(
         recoveryGuard.invalidate()
         val point = currentUndoSeek(c) ?: return@withController
         undoSeekPoint = null
+        tracePlaybackEvent("app_undo_seek", c, "targetChapter=${point.chapterIndex} targetPosition=${point.positionMs}")
         c.seekTo(point.chapterIndex, point.positionMs)
         updateState(c)
     }
@@ -475,7 +482,8 @@ class AudiobookPlayerManager internal constructor(
         val generation = ++loadGeneration
         tracePlaybackEvent(
             "load_requested", c,
-            "generation=$generation targetChapter=$chapterIndex targetPosition=$startPositionMs autoPlay=$autoPlay",
+            "generation=$generation targetChapter=$chapterIndex targetPosition=$startPositionMs autoPlay=$autoPlay" +
+                " targetSource=${book.selectedSource.orEmpty()} targetCount=${book.chapters.size}",
         )
         mediaLoadError = null
         if (autoPlay) {
@@ -499,6 +507,7 @@ class AudiobookPlayerManager internal constructor(
                     updateState(c)
                     return@launch
                 }
+                tracePlaybackEvent("load_failed", c, "generation=$generation kind=${DiagnosticFailures.category(error)}")
                 val message = error.message ?: "Не удалось подготовить аудио для воспроизведения"
                 mediaLoadError = message
                 persistOutgoingPlaybackCheckpoint(c)
@@ -516,6 +525,7 @@ class AudiobookPlayerManager internal constructor(
                     !UserDataRestoreGate.playbackWriteEpochCurrent(playbackWriteEpoch))
             ) {
                 clearPendingPlaybackStart(generation)
+                tracePlaybackEvent("load_discarded", c, "generation=$generation targetCount=${items.size}")
                 return@launch
             }
             // Building media items also suspends. Recheck at the final handoff,
@@ -530,7 +540,8 @@ class AudiobookPlayerManager internal constructor(
             val index = chapterIndex.coerceIn(0, items.lastIndex)
             tracePlaybackEvent(
                 "load_applied", c,
-                "generation=$generation targetChapter=$index targetPosition=$startPositionMs autoPlay=$autoPlay",
+                "generation=$generation targetChapter=$index targetPosition=$startPositionMs autoPlay=$autoPlay" +
+                    " targetSource=${book.selectedSource.orEmpty()} targetCount=${items.size}",
             )
             replacePlaybackMedia(
                 persistCurrent = { persistOutgoingPlaybackCheckpoint(c) },
@@ -990,4 +1001,3 @@ class AudiobookPlayerManager internal constructor(
         const val TRANSIENT_TICK_MS = 1_000L
     }
 }
-

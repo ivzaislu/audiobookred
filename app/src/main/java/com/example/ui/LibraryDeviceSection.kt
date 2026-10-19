@@ -9,9 +9,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.example.data.local.DownloadBookEntity
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.LibraryDesign
 
 @Composable
 internal fun DeviceBooksListV2(
@@ -46,7 +47,7 @@ internal fun DeviceBooksListV2(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
-                    start = 52.dp + AbredSpacing.Sm,
+                    start = LibraryDesign.DeviceCoverWidth + AbredSpacing.Sm,
                     bottom = AbredSpacing.Xxs,
                 ),
             )
@@ -68,10 +69,11 @@ internal fun DeviceBooksListV2(
 
             if (index != downloads.lastIndex) {
                 HorizontalDivider(
-                    modifier = Modifier.padding(start = 52.dp + AbredSpacing.Sm),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.padding(start = LibraryDesign.DeviceCoverWidth + AbredSpacing.Sm),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Soft),
                 )
             }
         }
     }
 }
+

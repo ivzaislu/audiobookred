@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -47,13 +45,16 @@ import com.example.data.player.SleepTimerState
 import com.example.data.player.UndoSeekPoint
 import com.example.data.player.estimateOverallProgressPercent
 import com.example.data.settings.PlayerSettingsStore
+import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
 
 @Composable
 internal fun PlaybackPreparationStatus(
@@ -62,15 +63,15 @@ internal fun PlaybackPreparationStatus(
 ) {
     Surface(
         modifier = if (prominent) {
-            Modifier.widthIn(max = 360.dp).fillMaxWidth()
+            Modifier.widthIn(max = PlayerDesign.PreparationMaxWidth).fillMaxWidth()
         } else {
             Modifier.fillMaxWidth()
         },
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = if (prominent) 3.dp else 6.dp,
+        border = abredOutlineBorder(),
+        shadowElevation = if (prominent) AbredElevation.Tonal else AbredElevation.Overlay,
     ) {
         Row(
             modifier = Modifier.padding(
@@ -83,13 +84,13 @@ internal fun PlaybackPreparationStatus(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Готово к воспроизведению",
-                    modifier = Modifier.size(if (prominent) 30.dp else AbredSizes.IconSmall),
+                    modifier = Modifier.size(if (prominent) AbredSizes.LoadingIndicatorProminent else AbredSizes.IconSmall),
                     tint = MaterialTheme.colorScheme.primary,
                 )
             } else {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(if (prominent) 30.dp else AbredSizes.IconSmall),
-                    strokeWidth = if (prominent) 3.dp else 2.dp,
+                    modifier = Modifier.size(if (prominent) AbredSizes.LoadingIndicatorProminent else AbredSizes.IconSmall),
+                    strokeWidth = if (prominent) AbredStroke.SpinnerLarge else AbredStroke.Spinner,
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.outlineVariant,
                 )
@@ -124,3 +125,4 @@ internal fun PlaybackPreparationStatus(
         }
     }
 }
+

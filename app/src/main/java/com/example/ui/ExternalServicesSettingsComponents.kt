@@ -2,7 +2,8 @@ package com.example.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -10,8 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -24,15 +23,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RuTrackerSettingsCard(
     login: String,
@@ -45,11 +44,9 @@ internal fun RuTrackerSettingsCard(
     onSave: () -> Unit,
     onClearPassword: () -> Unit,
 ) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         ExternalServiceHeader(
-            title = "RuTracker",
             subtitle = "Используется, если раздача или поиск требуют входа.",
-            icon = Icons.Default.Cloud,
         )
 
         Spacer(Modifier.height(AbredSpacing.Sm))
@@ -76,10 +73,10 @@ internal fun RuTrackerSettingsCard(
         }
 
         Spacer(Modifier.height(AbredSpacing.Sm))
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+            verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs),
         ) {
             Button(
                 onClick = onSave,
@@ -96,6 +93,7 @@ internal fun RuTrackerSettingsCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TorrServeSettingsCard(
     url: String,
@@ -114,11 +112,9 @@ internal fun TorrServeSettingsCard(
     onClearPassword: () -> Unit,
     onSaveAndCheck: () -> Unit,
 ) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         ExternalServiceHeader(
-            title = "TorrServe",
             subtitle = "Адрес сервера и HTTP-авторизация для torrent-воспроизведения.",
-            icon = Icons.Default.Link,
         )
 
         Spacer(Modifier.height(AbredSpacing.Sm))
@@ -156,10 +152,10 @@ internal fun TorrServeSettingsCard(
         }
 
         Spacer(Modifier.height(AbredSpacing.Sm))
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+            verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs),
         ) {
             Button(
                 onClick = onSave,
@@ -182,8 +178,8 @@ internal fun TorrServeSettingsCard(
         ) {
             if (connectionChecking) {
                 CircularProgressIndicator(
-                    modifier = Modifier.height(18.dp),
-                    strokeWidth = 2.dp,
+                    modifier = Modifier.height(AbredSizes.IconSmall),
+                    strokeWidth = AbredStroke.Spinner,
                 )
                 Spacer(Modifier.width(AbredSpacing.Xs))
                 Text("Проверяем…")
@@ -208,22 +204,12 @@ internal fun TorrServeSettingsCard(
 }
 
 @Composable
-private fun ExternalServiceHeader(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-) {
-    Column {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+private fun ExternalServiceHeader(subtitle: String) {
+    Text(
+        subtitle,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -268,3 +254,4 @@ private fun ExternalPasswordField(
         },
     )
 }
+

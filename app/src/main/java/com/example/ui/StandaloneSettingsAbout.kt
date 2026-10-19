@@ -15,12 +15,14 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
 import com.example.R
 import com.example.data.source.StandaloneSourceRegistry
+import com.example.ui.theme.AbredOpacity
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.theme.AudioBookRedBrandRed
+import com.example.ui.theme.SettingsDesign
 
 @Composable
 internal fun AboutAppCard(
@@ -30,17 +32,17 @@ internal fun AboutAppCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = AbredSpacing.Xs),
+            .padding(vertical = AbredSpacing.Xxs),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AbredSpacing.Xs),
+                .padding(vertical = AbredSpacing.Xxs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(SettingsDesign.AboutMarkSize)
                     .clip(MaterialTheme.shapes.medium)
                     .background(colorResource(R.color.ic_launcher_background)),
                 contentAlignment = Alignment.Center,
@@ -48,7 +50,7 @@ internal fun AboutAppCard(
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_foreground),
                     contentDescription = "Логотип AudioBookRed",
-                    modifier = Modifier.size(52.dp),
+                    modifier = Modifier.size(SettingsDesign.AboutMarkSize),
                 )
             }
 
@@ -68,13 +70,18 @@ internal fun AboutAppCard(
                         color = AudioBookRedBrandRed,
                     )
                 }
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AbredSpacing.Micro))
                 Text(
-                    "Версия ${BuildConfig.VERSION_NAME} · ${StandaloneSourceRegistry.activeSources.size} источников",
+                    "Версия ${BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${StandaloneSourceRegistry.activeSources.size} источников",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -92,7 +99,7 @@ internal fun AboutAppCard(
                 color = if (canCheckUpdates) {
                     MaterialTheme.colorScheme.onSurface
                 } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = AbredOpacity.DisabledContent)
                 },
                 modifier = Modifier.weight(1f),
             )
@@ -100,17 +107,12 @@ internal fun AboutAppCard(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = if (canCheckUpdates) 0.45f else 0.25f,
+                    alpha = if (canCheckUpdates) AbredOpacity.DecorativeEnabled else AbredOpacity.DecorativeDisabled,
                 ),
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(AbredSizes.IconSmall),
             )
         }
 
-        Text(
-            "Аудиокниги из нескольких источников в одном локальном плеере.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = AbredSpacing.Xxs),
-        )
     }
 }
+

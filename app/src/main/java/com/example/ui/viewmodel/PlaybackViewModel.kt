@@ -13,6 +13,7 @@ import com.example.data.model.BookmarkUiItem
 import com.example.data.player.AudiobookPlayerManager
 import com.example.data.player.PlaybackRefreshRecoveryGate
 import com.example.data.player.tracePlaybackEvent
+import com.example.data.diagnostics.DiagnosticFailures
 import com.example.data.repository.AudiobookRepository
 import com.example.data.repository.PlaybackLibraryRepository
 import com.example.data.torrserve.TorrServePreparationStage
@@ -391,6 +392,7 @@ class PlaybackViewModel @Inject constructor(
         } catch (error: Exception) {
             if (!player.isRecoveryRequestCurrent(recoveryRequest)) return false
             Log.e(TAG, "playback source refresh failed", error)
+            tracePlaybackEvent("source_recovery_failed", details = "kind=${DiagnosticFailures.category(error)}")
             if (emitFailure) {
                 val detail = error.message?.takeIf { it.isNotBlank() }
                     ?: error::class.java.simpleName.takeIf(String::isNotBlank)
@@ -474,6 +476,7 @@ class PlaybackViewModel @Inject constructor(
             updateTorrServePreparationStage(generation, stage)
         }
 
+        tracePlaybackEvent("preparation_requested", details = "generation=$generation")
         return try {
             val started = executePreparedPlayback(
                 prepare = { block(onTorrServeStage) },
@@ -508,11 +511,14 @@ class PlaybackViewModel @Inject constructor(
                 Log.w(TAG, "playback preparation rejected: $message")
                 _messages.emit(message)
             }
+            tracePlaybackEvent("preparation_complete", details = "generation=$generation value=$started")
             started
         } catch (error: CancellationException) {
+            tracePlaybackEvent("preparation_cancelled", details = "generation=$generation")
             throw error
         } catch (error: Exception) {
             Log.e(TAG, "playback preparation failed", error)
+            tracePlaybackEvent("preparation_failed", details = "generation=$generation kind=${DiagnosticFailures.category(error)}")
             val detail = error.message?.takeIf { it.isNotBlank() }
                 ?: error::class.java.simpleName.takeIf(String::isNotBlank)
                 ?: PREPARATION_ERROR
@@ -533,6 +539,8 @@ class PlaybackViewModel @Inject constructor(
         stage: TorrServePreparationStage,
     ) {
         if (preparationGeneration.get() != generation) return
+        tracePlaybackEvent("torrserve_stage", details =
+            "source=rutracker generation=$generation stage=${stage.name.lowercase(java.util.Locale.ROOT)}")
         _preparationState.value = PlaybackPreparationUiState(
             active = true,
             title = "TorrServer загрузка",
@@ -658,3 +666,4 @@ class PlaybackViewModel @Inject constructor(
         const val PLAYBACK_ACTIVITY_ERROR = "Не удалось сохранить активность прослушивания"
     }
 }
+

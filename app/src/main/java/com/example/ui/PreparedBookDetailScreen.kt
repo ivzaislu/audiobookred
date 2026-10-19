@@ -10,7 +10,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.BookDetailDto
@@ -18,6 +17,7 @@ import com.example.data.model.BookmarkDto
 import com.example.data.model.GenreDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlayerUiState
+import com.example.ui.theme.AbredSpacing
 import com.example.ui.viewmodel.BookDetailViewModel
 
 /** Nav3-scoped Book Detail host. Display state belongs only to BookDetailViewModel. */
@@ -137,7 +137,7 @@ internal fun PreparedBookDetailScreen(
                 CircularProgressIndicator(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 12.dp),
+                        .padding(top = AbredSpacing.Sm),
                 )
             }
         }
@@ -151,3 +151,4 @@ internal fun PreparedBookDetailScreen(
         )
     }
 }
+

@@ -3,7 +3,6 @@ package com.example.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,9 +16,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Headphones
@@ -31,7 +30,6 @@ import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -48,19 +46,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.BookCardDto
 import com.example.data.parser.BrowserChallengeSession
 import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredMotion
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.viewmodel.BrowseKind
@@ -76,8 +74,8 @@ internal fun AnimatedSelectionFilterChip(
     leadingIcon: (@Composable () -> Unit)? = null,
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.025f else 1f,
-        animationSpec = tween(durationMillis = 150),
+        targetValue = if (selected) AbredMotion.SelectedCardScale else 1f,
+        animationSpec = tween(durationMillis = AbredMotion.SelectionDurationMillis),
         label = "selectionChipScale",
     )
     FilterChip(
@@ -112,10 +110,10 @@ internal fun rememberSelectionFade(key: Any?): Float {
             initialized = true
             return@LaunchedEffect
         }
-        alpha.snapTo(0.92f)
+        alpha.snapTo(AbredMotion.InitialDetailAlpha)
         alpha.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 170),
+            animationSpec = tween(durationMillis = AbredMotion.DetailFadeDurationMillis),
         )
     }
 
@@ -133,3 +131,4 @@ internal fun PagingScreenError(message: String, onRetry: () -> Unit) {
         },
     )
 }
+

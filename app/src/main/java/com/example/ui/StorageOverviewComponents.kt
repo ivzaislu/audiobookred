@@ -21,7 +21,7 @@ import com.example.ui.viewmodel.StorageUiState
 
 @Composable
 internal fun StorageOverviewCard(state: StorageUiState) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         Text(
             "Использование памяти",
             style = MaterialTheme.typography.titleMedium,
@@ -31,10 +31,10 @@ internal fun StorageOverviewCard(state: StorageUiState) {
         StorageMetric("Очищаемый кэш", formatStorageBytes(state.cacheBytes), emphasized = true)
         StorageMetric("Локальная библиотека", formatStorageBytes(state.profileBytes))
         StorageMetric("Аудиофайлы", formatStorageBytes(state.downloadedBytes))
-        StorageMetric("Room + WAL", formatStorageBytes(state.databaseBytes))
+        StorageMetric("База данных", formatStorageBytes(state.databaseBytes))
         Spacer(Modifier.height(AbredSpacing.Xs))
         Text(
-            "Кэш можно удалить без потери истории, прогресса, избранного, закладок и скачанных книг.",
+            "Очистка кэша сохраняет библиотеку, прогресс и скачанные книги.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -64,3 +64,4 @@ private fun StorageMetric(label: String, value: String, emphasized: Boolean = fa
         )
     }
 }
+

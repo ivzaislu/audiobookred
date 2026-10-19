@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,7 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.AbredOpacity
+import com.example.ui.theme.AbredShapes
+import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 
 @Composable
 internal fun BookDetailUnavailableState(
@@ -44,7 +46,7 @@ internal fun BookDetailUnavailableState(
         }
 
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(AbredSpacing.Xl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -52,14 +54,14 @@ internal fun BookDetailUnavailableState(
                 error ?: "Не удалось открыть книгу",
                 color = MaterialTheme.colorScheme.error,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(AbredSpacing.Sm))
             if (!alternateQuery.isNullOrBlank() && !excludedSource.isNullOrBlank()) {
                 Button(
                     onClick = { onSearchOtherSources(alternateQuery, excludedSource) },
                 ) {
                     Text("Поиск в других источниках")
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AbredSpacing.Xs))
                 OutlinedButton(onClick = onRetry) {
                     Text("Повторить")
                 }
@@ -84,14 +86,14 @@ internal fun BookDetailLoadFooter(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(18.dp),
+                .padding(horizontal = AbredSpacing.Md, vertical = AbredSpacing.Xs),
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.errorContainer,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(AbredSpacing.InsetMedium),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
@@ -100,7 +102,7 @@ internal fun BookDetailLoadFooter(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AbredSpacing.InsetSmall))
                 Button(
                     onClick = { onSearchOtherSources(alternateQuery, excludedSource) },
                     modifier = Modifier.fillMaxWidth(),
@@ -111,7 +113,7 @@ internal fun BookDetailLoadFooter(
                 ) {
                     Text("Поиск в других источниках")
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AbredSpacing.Xs))
                 OutlinedButton(
                     onClick = onRetry,
                     modifier = Modifier.fillMaxWidth(),
@@ -119,8 +121,8 @@ internal fun BookDetailLoadFooter(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     ),
                     border = BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.75f),
+                        AbredStroke.Hairline,
+                        MaterialTheme.colorScheme.onErrorContainer.copy(alpha = AbredOpacity.ErrorOutline),
                     ),
                 ) {
                     Text("Повторить")
@@ -134,14 +136,14 @@ internal fun BookDetailLoadFooter(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(16.dp),
+                .padding(horizontal = AbredSpacing.Md, vertical = AbredSpacing.Xs),
+            shape = AbredShapes.LoadError,
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = AbredSpacing.InsetMedium, vertical = AbredSpacing.InsetSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -150,7 +152,7 @@ internal fun BookDetailLoadFooter(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(AbredSpacing.InsetSmall))
                 OutlinedButton(onClick = onRetry) {
                     Text("Повторить")
                 }
@@ -158,3 +160,4 @@ internal fun BookDetailLoadFooter(
         }
     }
 }
+

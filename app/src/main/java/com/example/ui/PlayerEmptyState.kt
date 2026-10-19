@@ -8,7 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 
 @Composable
@@ -18,7 +18,7 @@ internal fun PlayerEmptyState(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp),
+            .height(PlayerDesign.EmptyStateHeight),
         contentAlignment = Alignment.Center,
     ) {
         if (preparation.active) {
@@ -34,3 +34,4 @@ internal fun PlayerEmptyState(
         }
     }
 }
+

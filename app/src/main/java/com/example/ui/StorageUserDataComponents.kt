@@ -21,7 +21,7 @@ import com.example.ui.viewmodel.StorageUiState
 
 @Composable
 internal fun LocalUserDataCard(state: StorageUiState) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         Column {
             Text(
                 "Библиотека на устройстве",
@@ -36,14 +36,8 @@ internal fun LocalUserDataCard(state: StorageUiState) {
         }
         Spacer(Modifier.height(AbredSpacing.Sm))
         DataCountRow("Избранное", state.favoriteBooks.toString(), "История", state.historyBooks.toString())
-        Spacer(Modifier.height(AbredSpacing.Xs))
+        Spacer(Modifier.height(AbredSpacing.Xxs))
         DataCountRow("Прогресс", "${state.progressBooks} книг", "Закладки", "${state.bookmarkBooks} книг")
-        Spacer(Modifier.height(AbredSpacing.Xs))
-        Text(
-            "Это пользовательские данные, а не кэш. Очистка кэша их не затрагивает.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -80,3 +74,4 @@ private fun DataCountTile(label: String, value: String, modifier: Modifier = Mod
         )
     }
 }
+

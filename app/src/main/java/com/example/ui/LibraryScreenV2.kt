@@ -8,7 +8,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.local.DownloadBookEntity
 import com.example.data.model.BookmarkUiItem
 import com.example.data.model.MySeriesDto
@@ -102,7 +101,7 @@ internal fun LibraryScreenV2(
                 start = AbredSpacing.ScreenHorizontal,
                 end = AbredSpacing.ScreenHorizontal,
                 top = AbredSpacing.ScreenVertical,
-                bottom = 0.dp,
+                bottom = AbredSpacing.None,
             ),
             placeholder = "Название, автор или чтец",
         )
@@ -137,7 +136,7 @@ internal fun LibraryScreenV2(
 
         if (state.loading && tab != LibraryTabV2.Device) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(30.dp))
+                CircularProgressIndicator(Modifier.size(AbredSizes.LoadingIndicatorProminent))
             }
             return@Column
         }
@@ -185,3 +184,4 @@ internal fun LibraryScreenV2(
         }
     }
 }
+

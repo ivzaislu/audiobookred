@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -8,9 +7,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.BookDetailDesign
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
 internal fun GenreLabelChip(name: String) {
@@ -18,12 +18,12 @@ internal fun GenreLabelChip(name: String) {
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainer,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = abredOutlineBorder(),
     ) {
         Text(
             text = name,
             modifier = Modifier
-                .widthIn(max = 180.dp)
+                .widthIn(max = BookDetailDesign.LegacyGenreMaxWidth)
                 .padding(
                     horizontal = AbredSpacing.Sm,
                     vertical = AbredSpacing.Xs,
@@ -39,7 +39,7 @@ internal fun DurationPill(durationSeconds: Long) {
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainer,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = abredOutlineBorder(),
     ) {
         Row(
             modifier = Modifier.padding(
@@ -61,3 +61,4 @@ internal fun DurationPill(durationSeconds: Long) {
         }
     }
 }
+

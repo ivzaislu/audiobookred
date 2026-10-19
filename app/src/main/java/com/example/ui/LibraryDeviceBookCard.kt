@@ -10,9 +10,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.local.DownloadBookEntity
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.LibraryDesign
 
 /**
  * Compact download row inspired by a file/download manager rather than a book card.
@@ -52,8 +52,8 @@ internal fun LibraryDeviceBookCard(
         AbredBookCover(
             model = item.coverUrl,
             modifier = Modifier
-                .width(52.dp)
-                .height(78.dp),
+                .width(LibraryDesign.DeviceCoverWidth)
+                .height(LibraryDesign.DeviceCoverHeight),
         )
 
         Spacer(Modifier.width(AbredSpacing.Sm))
@@ -71,7 +71,7 @@ internal fun LibraryDeviceBookCard(
             )
 
             if (sourceLabel.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AbredSpacing.Micro))
                 Text(
                     text = sourceLabel,
                     style = MaterialTheme.typography.labelSmall,
@@ -81,7 +81,7 @@ internal fun LibraryDeviceBookCard(
                 )
             }
 
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(AbredSpacing.Tight))
             Text(
                 text = libraryDownloadStatusLabel(item),
                 style = MaterialTheme.typography.bodySmall,
@@ -105,7 +105,7 @@ internal fun LibraryDeviceBookCard(
             }
 
             item.error.takeIf { it.isNotBlank() }?.let { error ->
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(AbredSpacing.Tight))
                 Text(
                     text = error,
                     style = MaterialTheme.typography.labelSmall,
@@ -162,3 +162,4 @@ internal fun LibraryDeviceBookCard(
         }
     }
 }
+

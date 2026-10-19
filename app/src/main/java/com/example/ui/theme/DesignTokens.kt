@@ -10,6 +10,12 @@ import androidx.compose.ui.unit.dp
  * MaterialTheme.shapes because they are part of the active theme.
  */
 object AbredSpacing {
+    val None = 0.dp
+    val Micro = 2.dp
+    val Tight = 3.dp
+    val Compact = 6.dp
+    val InsetSmall = 10.dp
+    val InsetMedium = 14.dp
     val Xxs = 4.dp
     val Xs = 8.dp
     val Sm = 12.dp
@@ -25,6 +31,17 @@ object AbredSpacing {
 }
 
 object AbredSizes {
+    val IconCompact = 20.dp
+    val IconMedium = 22.dp
+    val IconLarge = 28.dp
+    val HeaderHeight = 56.dp
+    val LoadingIndicator = 28.dp
+    val LoadingIndicatorProminent = 30.dp
+    val EmptyStateMinHeight = 220.dp
+    val LoadingSectionHeight = 100.dp
+    val LoadingFooterHeight = 64.dp
+    val LoadingCardHeight = 124.dp
+    val ShelfTitleMinHeight = 40.dp
     val MinimumTouchTarget = 48.dp
     val ControlHeight = 48.dp
     val SmallControlHeight = 40.dp
@@ -71,7 +88,11 @@ object AbredSizes {
 }
 
 object AbredElevation {
+    val Outlined = 1.dp
+    val Tonal = 3.dp
+    val Overlay = 6.dp
     val Flat = 0.dp
     val Raised = 2.dp
     val Hero = 4.dp
 }
+

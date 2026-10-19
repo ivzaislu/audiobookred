@@ -1,11 +1,11 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,18 +23,15 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -55,6 +52,7 @@ import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.theme.AudioBookRedBrandRed
+import com.example.ui.theme.BrandDesign
 
 @Composable
 private fun AbredBrandLockup(
@@ -66,8 +64,8 @@ private fun AbredBrandLockup(
     // The wordmark is part of the brand mark rather than scalable body copy.
     // Keep its physical size stable while exposing the section name to TalkBack.
     val wordmarkStyle = MaterialTheme.typography.titleLarge.copy(
-        fontSize = with(density) { 18.dp.toSp() },
-        lineHeight = with(density) { 22.dp.toSp() },
+        fontSize = with(density) { BrandDesign.WordmarkFontSize.toSp() },
+        lineHeight = with(density) { BrandDesign.WordmarkLineHeight.toSp() },
         fontWeight = FontWeight.ExtraBold,
         letterSpacing = with(density) { (-0.35).dp.toSp() },
     )
@@ -113,16 +111,18 @@ private fun AbredBrandLockup(
 internal fun AbredBrandHeader(
     sectionTitle: String,
     modifier: Modifier = Modifier,
+    height: Dp = AbredSizes.RootHeaderHeight,
+    contentPadding: PaddingValues = PaddingValues(AbredSpacing.None),
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(AbredSizes.RootHeaderHeight),
+            .height(height),
         color = MaterialTheme.colorScheme.background,
-        tonalElevation = 0.dp,
+        tonalElevation = AbredElevation.Flat,
     ) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(contentPadding),
             contentAlignment = Alignment.CenterStart,
         ) {
             AbredBrandLockup(
@@ -169,7 +169,7 @@ internal fun AbredOverlaySearchHeader(
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background,
-                tonalElevation = 0.dp,
+                tonalElevation = AbredElevation.Flat,
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
@@ -198,3 +198,4 @@ internal fun AbredOverlaySearchHeader(
         }
     }
 }
+

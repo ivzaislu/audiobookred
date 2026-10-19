@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -10,10 +9,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.SourceVariantDto
+import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.BookDetailDesign
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
 internal fun BookSourceDropdown(
@@ -34,8 +35,8 @@ internal fun BookSourceDropdown(
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            tonalElevation = 0.dp,
+            border = abredOutlineBorder(),
+            tonalElevation = AbredElevation.Flat,
         ) {
             Row(
                 modifier = Modifier
@@ -77,7 +78,7 @@ internal fun BookSourceDropdown(
                     text = {
                         Text(
                             label,
-                            modifier = Modifier.widthIn(max = 260.dp),
+                            modifier = Modifier.widthIn(max = BookDetailDesign.SourceMenuMaxWidth),
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -103,3 +104,4 @@ internal fun BookSourceDropdown(
         }
     }
 }
+

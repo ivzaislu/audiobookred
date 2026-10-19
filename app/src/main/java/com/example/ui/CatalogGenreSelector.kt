@@ -20,12 +20,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import com.example.R
 import com.example.data.model.GenreDto
 import com.example.data.source.StandaloneSourceRegistry
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.CatalogDesign
 
 private data class CatalogSourceOption(
     val code: String,
@@ -85,7 +85,7 @@ internal fun CatalogSourceSelector(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.widthIn(min = 210.dp, max = 270.dp),
+            modifier = Modifier.widthIn(min = CatalogDesign.GenreMenuMinWidth, max = CatalogDesign.GenreMenuMaxWidth),
             properties = PopupProperties(focusable = true),
         ) {
             Column(Modifier.padding(horizontal = AbredSpacing.Xs, vertical = AbredSpacing.Xxs)) {
@@ -144,7 +144,7 @@ internal fun CatalogGenreSelector(
                 expanded = false
                 genreQuery = ""
             },
-            modifier = Modifier.widthIn(min = 240.dp, max = 300.dp).heightIn(max = 360.dp),
+            modifier = Modifier.widthIn(min = CatalogDesign.GenreDialogMinWidth, max = CatalogDesign.GenreDialogMaxWidth).heightIn(max = CatalogDesign.GenreDialogMaxHeight),
             properties = PopupProperties(focusable = true),
         ) {
             Column(Modifier.padding(horizontal = AbredSpacing.Xs, vertical = AbredSpacing.Xxs)) {
@@ -208,3 +208,4 @@ internal fun CatalogGenreSelector(
         }
     }
 }
+

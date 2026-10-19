@@ -1,19 +1,18 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.abredOutlineBorder
 
 /** Stable Library presentation sections used by LibraryScreenV2. */
 @Composable
@@ -92,12 +91,12 @@ private fun LibraryTileV2(
         LibraryTabV2.Bookmarks -> "Закладки"
         LibraryTabV2.Device -> "Скачанные"
     }
-    val icon = when (tab) {
-        LibraryTabV2.History -> Icons.Default.History
-        LibraryTabV2.Favorites -> Icons.Default.Favorite
-        LibraryTabV2.Series -> Icons.Default.LibraryBooks
-        LibraryTabV2.Bookmarks -> Icons.Default.Bookmark
-        LibraryTabV2.Device -> Icons.Default.DownloadForOffline
+    val iconRes = when (tab) {
+        LibraryTabV2.History -> R.drawable.ic_abred_library_history
+        LibraryTabV2.Favorites -> R.drawable.ic_abred_library_favorites
+        LibraryTabV2.Series -> R.drawable.ic_abred_library_series
+        LibraryTabV2.Bookmarks -> R.drawable.ic_abred_library_bookmarks
+        LibraryTabV2.Device -> R.drawable.ic_abred_library_downloads
     }
 
     Surface(
@@ -117,12 +116,12 @@ private fun LibraryTileV2(
         border = if (selected) {
             null
         } else {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            abredOutlineBorder()
         },
     ) {
         Column(Modifier.padding(horizontal = AbredSpacing.Sm, vertical = AbredSpacing.Xs)) {
             Icon(
-                icon,
+                painter = painterResource(iconRes),
                 contentDescription = null,
                 modifier = Modifier.size(AbredSizes.IconSmall),
             )
@@ -141,3 +140,4 @@ private fun LibraryTileV2(
         }
     }
 }
+

@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 
@@ -71,7 +70,7 @@ internal fun RowScope.LibraryBookRowMainContent(
                     bottom = if (sourceLabel.isNotBlank()) {
                         sourceReserve
                     } else {
-                        0.dp
+                        AbredSpacing.None
                     },
                 ),
             content = content,
@@ -84,3 +83,4 @@ internal fun RowScope.LibraryBookRowMainContent(
         }
     }
 }
+

@@ -4,24 +4,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.DownloadForOffline
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookCardDto
 import com.example.data.model.MySeriesDto
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
+import com.example.ui.theme.HomeDesign
 import com.example.ui.viewmodel.HomePopularPeriod
 
 @Composable
@@ -43,9 +38,21 @@ internal fun HomeSearchHeader(
             start = AbredSpacing.ScreenHorizontal,
             end = AbredSpacing.ScreenHorizontal,
             top = AbredSpacing.ScreenVertical,
-            bottom = 0.dp,
+            bottom = AbredSpacing.None,
         ),
         placeholder = "Поиск",
+    )
+}
+
+@Composable
+private fun HomeSectionHeader(
+    title: String,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    AbredSectionHeader(
+        title = title,
+        trailing = trailing,
+        topPadding = HomeDesign.SectionHeaderTopPadding,
     )
 }
 
@@ -56,11 +63,6 @@ internal fun HomeContinueSection(
     onOpen: () -> Unit,
     onContinue: () -> Unit,
 ) {
-    AbredSectionHeader(
-        title = "Продолжить",
-        icon = Icons.Default.PlayArrow,
-        topPadding = 0.dp,
-    )
     ContinueHeroCard(
         book = book,
         showProgressPercent = showProgressPercent,
@@ -77,7 +79,7 @@ internal fun HomeNewSection(
     showProgressPercent: Boolean,
     onBook: (String) -> Unit,
 ) {
-    AbredSectionHeader(title = "Новинки")
+    HomeSectionHeader(title = "Новинки")
     DiscoveryShelfState(
         books = books,
         refreshing = refreshing,
@@ -98,7 +100,7 @@ internal fun HomePopularSection(
     showProgressPercent: Boolean,
     onBook: (String) -> Unit,
 ) {
-    AbredSectionHeader(
+    HomeSectionHeader(
         title = "Популярное",
         trailing = {
             PopularPeriodSelector(
@@ -122,10 +124,7 @@ internal fun HomeNextSeriesSection(
     series: MySeriesDto,
     onOpen: () -> Unit,
 ) {
-    AbredSectionHeader(
-        title = "Следующая в цикле",
-        icon = Icons.Default.CollectionsBookmark,
-    )
+    HomeSectionHeader(title = "Следующая в цикле")
     NextSeriesCard(
         series = series,
         onClick = onOpen,
@@ -135,16 +134,12 @@ internal fun HomeNextSeriesSection(
 @Composable
 internal fun HomePosterRailSection(
     title: String,
-    icon: ImageVector,
     books: List<BookCardDto>,
     keyPrefix: String,
     showProgressPercent: Boolean,
     onBook: (String) -> Unit,
 ) {
-    AbredSectionHeader(
-        title = title,
-        icon = icon,
-    )
+    HomeSectionHeader(title = title)
     HomePosterShelf(
         books = books,
         keyPrefix = keyPrefix,
@@ -161,7 +156,6 @@ internal fun HomeRecentSection(
 ) {
     HomePosterRailSection(
         title = "Недавно слушали",
-        icon = Icons.Default.History,
         books = books,
         keyPrefix = "recent",
         showProgressPercent = showProgressPercent,
@@ -177,7 +171,6 @@ internal fun HomeDownloadsSection(
 ) {
     HomePosterRailSection(
         title = "Скачанные",
-        icon = Icons.Default.DownloadForOffline,
         books = books,
         keyPrefix = "downloaded",
         showProgressPercent = showProgressPercent,
@@ -194,8 +187,8 @@ internal fun HomeLocalLoadingState() {
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator(
-            modifier = Modifier.size(26.dp),
-            strokeWidth = 2.dp,
+            modifier = Modifier.size(HomeDesign.RefreshSpinnerSize),
+            strokeWidth = AbredStroke.Spinner,
         )
     }
 }
@@ -216,3 +209,4 @@ internal fun HomeLocalErrorState(message: String) {
         overflow = TextOverflow.Ellipsis,
     )
 }
+

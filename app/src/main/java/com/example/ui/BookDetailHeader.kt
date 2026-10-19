@@ -11,10 +11,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.parser.BrowserChallengeSession
 import com.example.ui.theme.AbredSizes
@@ -29,7 +28,7 @@ internal fun BookDetailTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = AbredSizes.HeaderHeight)
             .padding(horizontal = AbredSpacing.Xxs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -125,3 +124,4 @@ internal fun BookDetailHeroSection(
         )
     }
 }
+

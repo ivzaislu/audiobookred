@@ -20,16 +20,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredFixedColors
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
+import com.example.ui.theme.CatalogDesign
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
 internal fun CatalogFilterButton(
@@ -46,7 +50,7 @@ internal fun CatalogFilterButton(
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val contentColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AbredOpacity.Subtle)
         active -> MaterialTheme.colorScheme.onPrimaryContainer
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -64,9 +68,9 @@ internal fun CatalogFilterButton(
         border = if (active) {
             null
         } else {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            abredOutlineBorder()
         },
-        tonalElevation = 0.dp,
+        tonalElevation = AbredElevation.Flat,
     ) {
         Row(
             modifier = Modifier
@@ -108,17 +112,17 @@ internal fun SourceFaviconBadge(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.size(22.dp),
+        modifier = modifier.size(CatalogDesign.FaviconBadgeSize),
         shape = MaterialTheme.shapes.extraSmall,
-        color = Color.White,
-        border = BorderStroke(1.dp, Color.White),
-        tonalElevation = 0.dp,
+        color = AbredFixedColors.FaviconBackground,
+        border = BorderStroke(AbredStroke.Hairline, AbredFixedColors.FaviconBackground),
+        tonalElevation = AbredElevation.Flat,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Image(
                 painter = painterResource(faviconRes),
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(CatalogDesign.FaviconSize),
             )
         }
     }
@@ -179,3 +183,4 @@ internal fun CatalogDropdownRow(
         }
     }
 }
+

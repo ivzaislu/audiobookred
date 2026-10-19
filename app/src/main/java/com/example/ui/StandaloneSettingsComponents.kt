@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -9,37 +8,37 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
-internal fun SettingsHeader() {
-    AbredBrandHeader(sectionTitle = "Настройки")
+internal fun SettingsHeader(compact: Boolean = false) {
+    AbredBrandHeader(
+        sectionTitle = "Настройки",
+        height = if (compact) SettingsDesign.BrandHeaderHeight else AbredSizes.RootHeaderHeight,
+        contentPadding = PaddingValues(
+            top = if (compact) SettingsDesign.BrandHeaderTopPadding else AbredSpacing.None,
+        ),
+    )
 }
 
 @Composable
 internal fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color.Transparent,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-    ) {
-        Column(content = content)
-    }
+    AbredSettingsCard(
+        contentPadding = PaddingValues(AbredSpacing.None),
+        content = content,
+    )
 }
 
 /** Kept for the few standalone cards that still intentionally use an outline. */
 @Composable
-internal fun settingsCardBorder() = BorderStroke(
-    1.dp,
-    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-)
+internal fun settingsCardBorder() = abredOutlineBorder(opacity = AbredOpacity.Muted)
 
 @Composable
 internal fun StandaloneNavigationRow(
@@ -47,6 +46,7 @@ internal fun StandaloneNavigationRow(
     subtitle: String,
     icon: ImageVector,
     onClick: () -> Unit,
+    chevronOpacity: Float = AbredOpacity.Muted,
 ) {
     Row(
         modifier = Modifier
@@ -62,7 +62,7 @@ internal fun StandaloneNavigationRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(AbredSpacing.Micro))
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -75,8 +75,8 @@ internal fun StandaloneNavigationRow(
         Icon(
             Icons.Default.ChevronRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = chevronOpacity),
+            modifier = Modifier.size(AbredSizes.IconSmall),
         )
     }
 }
@@ -87,12 +87,14 @@ internal fun StandaloneSwitchRow(
     subtitle: String,
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
+    trailingControl: Boolean = false,
 ) {
     AbredSettingsSwitchRow(
         title = title,
         subtitle = subtitle,
         checked = checked,
         onCheckedChange = onChecked,
+        trailingControl = trailingControl,
     )
 }
 
@@ -119,6 +121,7 @@ internal fun StandaloneSwitchCard(
     subtitle: String,
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
+    trailingControl: Boolean = false,
 ) {
     SettingsCard {
         StandaloneSwitchRow(
@@ -126,6 +129,7 @@ internal fun StandaloneSwitchCard(
             subtitle = subtitle,
             checked = checked,
             onChecked = onChecked,
+            trailingControl = trailingControl,
         )
     }
 }
@@ -137,6 +141,7 @@ internal fun StandaloneActionRow(
     icon: ImageVector,
     onClick: () -> Unit,
     destructive: Boolean = false,
+    showIcon: Boolean = true,
 ) {
     val contentColor = if (destructive) {
         MaterialTheme.colorScheme.error
@@ -151,18 +156,20 @@ internal fun StandaloneActionRow(
             .padding(vertical = AbredSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier.size(AbredSizes.SettingsIconContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(AbredSizes.IconSmall),
-            )
+        if (showIcon) {
+            Box(
+                modifier = Modifier.size(AbredSizes.SettingsIconContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(AbredSizes.IconSmall),
+                )
+            }
+            Spacer(Modifier.width(AbredSpacing.Sm))
         }
-        Spacer(Modifier.width(AbredSpacing.Sm))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
@@ -171,7 +178,7 @@ internal fun StandaloneActionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(AbredSpacing.Micro))
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
@@ -188,15 +195,6 @@ internal fun SettingsTitle(
     text: String,
     compactTop: Boolean = false,
 ) {
-    Text(
-        text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-        modifier = Modifier.padding(
-            top = if (compactTop) 0.dp else AbredSpacing.Lg,
-            start = AbredSpacing.Xxs,
-            bottom = AbredSpacing.Xs,
-        ),
-    )
+    AbredSettingsSectionTitle(title = text, compactTop = compactTop)
 }
+

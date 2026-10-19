@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -48,7 +46,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -58,10 +55,12 @@ import com.example.ui.paging.SeriesPagingViewModel
 import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
+import com.example.ui.theme.CatalogDesign
 import com.example.ui.theme.abredAccentText
 import com.example.ui.viewmodel.SeriesRoute
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -181,7 +180,7 @@ internal fun PagingSeriesScreen(
             when {
                 refreshState is LoadState.Loading && entries.itemCount == 0 -> item(key = "series-loading") {
                     Box(
-                        Modifier.fillMaxWidth().height(160.dp),
+                        Modifier.fillMaxWidth().height(CatalogDesign.UnavailableSeriesHeight),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator()
@@ -218,7 +217,7 @@ internal fun PagingSeriesScreen(
                         Modifier.fillMaxWidth().padding(AbredSpacing.Lg),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(AbredSizes.Icon), strokeWidth = AbredStroke.Spinner)
                     }
                 }
             }
@@ -236,3 +235,4 @@ internal fun PagingSeriesScreen(
         ScrollToTopButton(listState)
     }
 }
+

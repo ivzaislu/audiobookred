@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.data.model.PersonDto
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.theme.abredAccentText
 
 internal fun shouldUsePeopleSheet(count: Int): Boolean = count > 2
@@ -147,7 +148,7 @@ internal fun BookPeoplePreview(
                     }
                 }
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.82f)
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(PlayerDesign.ListSheetHeightFraction)
                 ) {
                     items(people, key = { it.id }) { person ->
                         ListItem(
@@ -173,3 +174,4 @@ internal fun BookPeoplePreview(
         }
     }
 }
+

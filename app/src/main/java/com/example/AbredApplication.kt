@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.example.data.diagnostics.AppDiagnostics
 import com.example.data.backup.UserDataImportManager
 import com.example.data.backup.UserDataRestoreGate
 import com.example.data.local.NormalizedLibraryBackfill
@@ -43,6 +44,7 @@ class AbredApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        AppDiagnostics.initialize(this)
         val startupStartedAt = SystemClock.elapsedRealtime()
 
         // Normalize the historical whole-library payload exactly once. The

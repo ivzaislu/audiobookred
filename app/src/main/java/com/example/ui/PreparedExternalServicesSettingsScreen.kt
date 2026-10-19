@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
 import com.example.ui.viewmodel.ExternalServicesSettingsViewModel
 
 @Composable
@@ -48,7 +49,7 @@ internal fun PreparedExternalServicesSettingsScreen(
             horizontal = AbredSpacing.ScreenHorizontal,
             vertical = AbredSpacing.ScreenVertical,
         ),
-        verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SettingsDesign.InnerItemSpacing),
     ) {
         item(key = "external-services-header") {
             AbredSubpageHeader(
@@ -57,7 +58,7 @@ internal fun PreparedExternalServicesSettingsScreen(
             )
         }
 
-        item { AbredSettingsSectionTitle("RuTracker") }
+        item { AbredInnerSettingsSectionTitle("RuTracker", first = true) }
         item {
             RuTrackerSettingsCard(
                 login = rutrackerLogin,
@@ -81,7 +82,7 @@ internal fun PreparedExternalServicesSettingsScreen(
             )
         }
 
-        item { AbredSettingsSectionTitle("TorrServe") }
+        item { AbredInnerSettingsSectionTitle("TorrServe") }
         item {
             TorrServeSettingsCard(
                 url = torrServeUrl,
@@ -123,3 +124,4 @@ internal fun PreparedExternalServicesSettingsScreen(
         item { Spacer(Modifier.height(AbredSpacing.Md)) }
     }
 }
+

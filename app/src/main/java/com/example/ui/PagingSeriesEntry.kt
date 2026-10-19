@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,7 +47,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -56,12 +54,17 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import com.example.ui.paging.SeriesPageRequest
 import com.example.ui.paging.SeriesPagingViewModel
 import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.SeriesRoute
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun SeriesEntryPlaceholder() {
@@ -70,20 +73,15 @@ internal fun SeriesEntryPlaceholder() {
             .fillMaxWidth()
             .padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Xxs),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-        ),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
+        border = abredOutlineBorder(opacity = AbredOpacity.Subtle),
     ) {
         Row(
             Modifier.padding(AbredSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+            CircularProgressIndicator(Modifier.size(AbredSizes.IconMedium), strokeWidth = AbredStroke.Spinner)
             Spacer(Modifier.width(AbredSpacing.Sm))
             Text("Загрузка…", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -119,14 +117,11 @@ internal fun SeriesEntryRow(
                 MaterialTheme.colorScheme.surfaceContainerLowest
             },
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
+        elevation = abredFlatCardElevation(),
         border = if (enabled) {
             abredBookCardBorder()
         } else {
-            BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            )
+            abredOutlineBorder(opacity = AbredOpacity.Subtle)
         },
     ) {
         Row(
@@ -152,7 +147,7 @@ internal fun SeriesEntryRow(
                             bottom = if (sourceLabel.isNotBlank()) {
                                 AbredSizes.BookCardSourceReserve
                             } else {
-                                0.dp
+                                AbredSpacing.None
                             },
                         ),
                 ) {
@@ -227,3 +222,4 @@ internal fun SeriesEntryRow(
 
 private fun formatSeriesPosition(value: Double): String =
     if (value % 1.0 == 0.0) value.toInt().toString() else value.toString()
+

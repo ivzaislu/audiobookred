@@ -4,9 +4,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.AbredAdaptive
+import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.PlayerDesign
 
 internal data class PlayerPortraitStyle(
     val horizontalPadding: Dp,
@@ -46,33 +48,33 @@ internal fun playerPortraitMetrics(
     largeText: Boolean,
     extraLargeText: Boolean,
 ): PlayerPortraitMetrics {
-    val tiny = maxHeight < 650.dp
-    val compact = maxHeight < 760.dp
+    val tiny = maxHeight < AbredAdaptive.PlayerTinyHeight
+    val compact = maxHeight < AbredAdaptive.PlayerCompactHeight
     val coverWidth = when {
-        extraLargeText -> 112.dp
-        largeText -> 128.dp
-        tiny -> 112.dp
-        compact -> 144.dp
-        else -> 176.dp
+        extraLargeText -> PlayerDesign.CoverCompactWidth
+        largeText -> PlayerDesign.CoverMediumWidth
+        tiny -> PlayerDesign.CoverCompactWidth
+        compact -> PlayerDesign.CoverRegularWidth
+        else -> PlayerDesign.CoverExpandedWidth
     }
     val sectionGap = if (tiny || largeText) {
         AbredSpacing.Xxs
     } else {
         AbredSpacing.Xs
     }
-    val playSize = if (tiny && !largeText) 64.dp else 72.dp
+    val playSize = if (tiny && !largeText) PlayerDesign.CompactPlaySize else PlayerDesign.PlaySize
     val seekSize = when {
-        extraLargeText -> 60.dp
-        largeText -> 56.dp
-        tiny -> 48.dp
-        else -> 52.dp
+        extraLargeText -> PlayerDesign.ExtraLargeTextSeekSize
+        largeText -> PlayerDesign.LargeTextSeekSize
+        tiny -> PlayerDesign.TinySeekSize
+        else -> PlayerDesign.SeekSize
     }
 
     return PlayerPortraitMetrics(
         tiny = tiny,
         horizontalPadding = if (tiny) AbredSpacing.Sm else AbredSpacing.Lg,
         coverWidth = coverWidth,
-        coverElevation = if (tiny) 2.dp else 6.dp,
+        coverElevation = if (tiny) AbredElevation.Raised else AbredElevation.Overlay,
         sectionGap = sectionGap,
         playSize = playSize,
         seekSize = seekSize,
@@ -86,17 +88,17 @@ internal fun playerLandscapeMetrics(
     hasTransientOverlay: Boolean,
 ): PlayerLandscapeMetrics {
     val coverWidth = when {
-        extraLargeText -> 88.dp
-        largeText -> 104.dp
-        maxHeight < 400.dp -> 112.dp
-        else -> 128.dp
+        extraLargeText -> PlayerDesign.LandscapeCoverExtraLargeTextWidth
+        largeText -> PlayerDesign.LandscapeCoverLargeTextWidth
+        maxHeight < AbredAdaptive.PlayerLowLandscapeHeight -> PlayerDesign.CoverCompactWidth
+        else -> PlayerDesign.CoverMediumWidth
     }
-    val infoWeight = if (extraLargeText) 0.32f else 0.38f
+    val infoWeight = if (extraLargeText) PlayerDesign.ExtraLargeTextLandscapeInfoWeight else PlayerDesign.LandscapeInfoWeight
     val overlayReserve = when {
-        !hasTransientOverlay -> 0.dp
-        extraLargeText -> 120.dp
-        largeText -> 88.dp
-        else -> 64.dp
+        !hasTransientOverlay -> AbredSpacing.None
+        extraLargeText -> PlayerDesign.OverlayExtraLargeTextReserve
+        largeText -> PlayerDesign.OverlayLargeTextReserve
+        else -> PlayerDesign.OverlayReserve
     }
 
     return PlayerLandscapeMetrics(
@@ -104,7 +106,7 @@ internal fun playerLandscapeMetrics(
         infoWeight = infoWeight,
         controlsWeight = 1f - infoWeight,
         overlayReserve = overlayReserve,
-        playSize = 64.dp,
+        playSize = PlayerDesign.CompactPlaySize,
         seekSize = AbredSizes.MinimumTouchTarget,
     )
 }
@@ -131,7 +133,7 @@ internal fun playerPortraitStyle(
             progressTopSpacing = if (tiny || largeText) AbredSpacing.Xxs else AbredSpacing.Xs,
             progressSuffix = " прослушано",
             progressHorizontalPadding = AbredSpacing.Sm,
-            progressVerticalPadding = 3.dp,
+            progressVerticalPadding = AbredSpacing.Tight,
             progressTextStyle = MaterialTheme.typography.labelMedium,
             titleTopSpacing = if (tiny || largeText) AbredSpacing.Xxs else AbredSpacing.Xs,
             titleTextStyle = if (tiny) {
@@ -147,16 +149,16 @@ internal fun playerPortraitStyle(
             },
             peopleTopSpacing = AbredSpacing.Xxs,
             peopleTiny = tiny,
-            seriesTopPadding = 2.dp,
+            seriesTopPadding = AbredSpacing.Micro,
             seriesTextStyle = MaterialTheme.typography.labelMedium,
             seriesMaxLines = if (largeText) 3 else 1,
             seriesTextAlign = TextAlign.Start,
-            bottomSpacing = 0.dp,
+            bottomSpacing = AbredSpacing.None,
         ),
         playbackControls = PlayerPlaybackControlsStyle(
             chapterTopSpacing = metrics.sectionGap,
             chapterHorizontalPadding = AbredSpacing.Md,
-            chapterVerticalPadding = 6.dp,
+            chapterVerticalPadding = AbredSpacing.Compact,
             chapterMaxLines = if (largeText) 2 else 1,
             timelineTopSpacing = if (tiny || largeText) AbredSpacing.Xxs else AbredSpacing.Xs,
             transportTopSpacing = if (tiny || largeText) AbredSpacing.Xxs else AbredSpacing.Xs,
@@ -189,13 +191,13 @@ internal fun playerLandscapeStyle(
         controlsWeight = metrics.controlsWeight,
         overlayReserve = metrics.overlayReserve,
         bookInfo = PlayerBookInfoStyle(
-            coverTopSpacing = 0.dp,
+            coverTopSpacing = AbredSpacing.None,
             coverWidth = metrics.coverWidth,
-            coverElevation = 2.dp,
+            coverElevation = AbredElevation.Raised,
             progressTopSpacing = AbredSpacing.Xxs,
             progressSuffix = "",
             progressHorizontalPadding = AbredSpacing.Xs,
-            progressVerticalPadding = 2.dp,
+            progressVerticalPadding = AbredSpacing.Micro,
             progressTextStyle = MaterialTheme.typography.labelSmall,
             titleTopSpacing = AbredSpacing.Xxs,
             titleTextStyle = MaterialTheme.typography.titleMedium,
@@ -204,9 +206,9 @@ internal fun playerLandscapeStyle(
                 largeText -> 4
                 else -> 2
             },
-            peopleTopSpacing = 0.dp,
+            peopleTopSpacing = AbredSpacing.None,
             peopleTiny = true,
-            seriesTopPadding = 0.dp,
+            seriesTopPadding = AbredSpacing.None,
             seriesTextStyle = MaterialTheme.typography.labelSmall,
             seriesMaxLines = when {
                 extraLargeText -> Int.MAX_VALUE
@@ -217,7 +219,7 @@ internal fun playerLandscapeStyle(
             bottomSpacing = AbredSpacing.Xxs,
         ),
         playbackControls = PlayerPlaybackControlsStyle(
-            chapterTopSpacing = 0.dp,
+            chapterTopSpacing = AbredSpacing.None,
             chapterHorizontalPadding = AbredSpacing.Sm,
             chapterVerticalPadding = AbredSpacing.Xxs,
             chapterMaxLines = when {
@@ -225,7 +227,7 @@ internal fun playerLandscapeStyle(
                 largeText -> 3
                 else -> 1
             },
-            timelineTopSpacing = 0.dp,
+            timelineTopSpacing = AbredSpacing.None,
             transportTopSpacing = AbredSpacing.Xxs,
             quickActionsTopSpacing = AbredSpacing.Xxs,
             bottomSpacing = AbredSpacing.Xs,
@@ -236,3 +238,4 @@ internal fun playerLandscapeStyle(
         ),
     )
 }
+

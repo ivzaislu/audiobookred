@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -14,6 +15,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.settings.HOME_CACHE_DAY_OPTIONS
 import com.example.data.settings.HomePopularDefaultPeriod
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
+import com.example.ui.theme.AbredSizes
 import com.example.ui.viewmodel.HomeSettingsViewModel
 
 @Composable
@@ -29,7 +32,7 @@ internal fun PreparedHomeSettingsScreen(
             horizontal = AbredSpacing.ScreenHorizontal,
             vertical = AbredSpacing.ScreenVertical,
         ),
-        verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SettingsDesign.CompactItemSpacing),
     ) {
         item {
             AbredSubpageHeader(
@@ -38,47 +41,57 @@ internal fun PreparedHomeSettingsScreen(
             )
         }
 
-        item { AbredSettingsSectionTitle("Разделы") }
+        item { AbredInnerSettingsSectionTitle("Разделы", first = true, bottomPadding = SettingsDesign.CompactGroupBottomPadding) }
 
         item {
             AbredSettingsSwitchRow(
+                trailingControl = true,
+                verticalPadding = SettingsDesign.HomeSwitchVerticalPadding,
+                alignControlWithTitle = true,
                 title = "Новинки",
-                subtitle = "Показывать подборку новых книг на Главной.",
                 checked = settings.homeShowNew,
                 onCheckedChange = vm::setShowNew,
             )
         }
         item {
             AbredSettingsSwitchRow(
+                trailingControl = true,
+                verticalPadding = SettingsDesign.HomeSwitchVerticalPadding,
+                alignControlWithTitle = true,
                 title = "Популярное",
-                subtitle = "Показывать подборку популярных книг на Главной.",
                 checked = settings.homeShowPopular,
                 onCheckedChange = vm::setShowPopular,
             )
         }
         item {
             AbredSettingsSwitchRow(
+                trailingControl = true,
+                verticalPadding = SettingsDesign.HomeSwitchVerticalPadding,
+                alignControlWithTitle = true,
                 title = "Продолжить слушать",
-                subtitle = "Показывать последнюю незавершённую книгу.",
                 checked = settings.homeShowContinue,
                 onCheckedChange = vm::setShowContinue,
             )
         }
         item {
             AbredSettingsSwitchRow(
+                trailingControl = true,
+                verticalPadding = SettingsDesign.HomeSwitchVerticalPadding,
+                alignControlWithTitle = true,
                 title = "Скачанные",
-                subtitle = "Показывать скачанные книги отдельным разделом.",
                 checked = settings.homeShowDownloads,
                 onCheckedChange = vm::setShowDownloads,
             )
         }
 
-        item { AbredSettingsSectionTitle("Кэш") }
+        item { AbredInnerSettingsSectionTitle("Подборки", bottomPadding = SettingsDesign.CompactGroupBottomPadding) }
 
         item {
             AbredSettingsDropdownRow(
+                modifier = Modifier.heightIn(min = AbredSizes.MinimumTouchTarget),
+                verticalPadding = SettingsDesign.InnerChoiceVerticalPadding,
                 title = "Обновлять подборки",
-                subtitle = "При старте сначала используется сохранённый кэш. После истечения срока подборки обновляются в фоне.",
+                subtitle = "Обновление в фоне после указанного срока.",
                 selected = settings.homeCacheDays,
                 options = HOME_CACHE_DAY_OPTIONS,
                 optionLabel = { days ->
@@ -95,12 +108,12 @@ internal fun PreparedHomeSettingsScreen(
             )
         }
 
-        item { AbredSettingsSectionTitle("Популярное") }
-
         item {
             AbredSettingsDropdownRow(
-                title = "Период по умолчанию",
-                subtitle = "Какой период открывать при входе на Главную.",
+                modifier = Modifier.heightIn(min = AbredSizes.MinimumTouchTarget),
+                verticalPadding = SettingsDesign.InnerChoiceVerticalPadding,
+                title = "Период популярного",
+                subtitle = "При открытии главной страницы.",
                 selected = settings.homePopularDefaultPeriod,
                 options = HomePopularDefaultPeriod.entries,
                 optionLabel = { period ->
@@ -117,3 +130,4 @@ internal fun PreparedHomeSettingsScreen(
         item { Spacer(Modifier.height(AbredSpacing.Md)) }
     }
 }
+

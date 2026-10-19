@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -47,9 +45,12 @@ import com.example.data.player.SleepTimerState
 import com.example.data.player.UndoSeekPoint
 import com.example.data.player.estimateOverallProgressPercent
 import com.example.data.settings.PlayerSettingsStore
+import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -84,7 +85,7 @@ internal fun PlayerTransientOverlay(
                     shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError,
-                    shadowElevation = 6.dp,
+                    shadowElevation = AbredElevation.Overlay,
                 ) {
                     Row(
                         modifier = Modifier.padding(
@@ -120,9 +121,9 @@ internal fun PlayerTransientOverlay(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                     ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = AbredElevation.Overlay),
                 ) {
-                    Icon(Icons.Default.Undo, null, Modifier.size(18.dp))
+                    Icon(Icons.Default.Undo, null, Modifier.size(AbredSizes.IconSmall))
                     Spacer(Modifier.width(AbredSpacing.Xs))
                     Text(
                         "Вернуться к ${playerFormatMillis(undo.positionMs)}",
@@ -149,8 +150,8 @@ internal fun PlayerTransientOverlay(
                         shape = MaterialTheme.shapes.large,
                         color = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.primary,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        shadowElevation = 6.dp,
+                        border = abredOutlineBorder(),
+                        shadowElevation = AbredElevation.Overlay,
                     ) {
                         Row(
                             modifier = Modifier.padding(
@@ -162,7 +163,7 @@ internal fun PlayerTransientOverlay(
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(AbredSizes.IconSmall),
-                                strokeWidth = 2.dp,
+                                strokeWidth = AbredStroke.Spinner,
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.outlineVariant,
                             )
@@ -179,3 +180,4 @@ internal fun PlayerTransientOverlay(
         }
     }
 }
+

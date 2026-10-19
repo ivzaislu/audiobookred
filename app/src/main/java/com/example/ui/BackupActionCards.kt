@@ -21,10 +21,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import com.example.ui.viewmodel.GeneralSettingsViewModel
 
 @Composable
@@ -35,7 +36,7 @@ internal fun BackupExportCard(
     isError: Boolean,
     onExport: () -> Unit,
 ) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         BackupCardHeader(
             icon = Icons.Default.FileUpload,
             title = "Экспорт данных",
@@ -51,12 +52,12 @@ internal fun BackupExportCard(
         ) {
             if (exporting) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(AbredSizes.IconSmall),
+                    strokeWidth = AbredStroke.Spinner,
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Icon(Icons.Default.FileUpload, null, Modifier.size(18.dp))
+                Icon(Icons.Default.FileUpload, null, Modifier.size(AbredSizes.IconSmall))
             }
             Spacer(Modifier.width(AbredSpacing.Xs))
             Text(if (exporting) "Создаём резервную копию…" else "Создать резервную копию")
@@ -73,7 +74,7 @@ internal fun BackupImportCard(
     isError: Boolean,
     onImport: () -> Unit,
 ) {
-    AbredSettingsCard {
+    AbredInnerSettingsCard {
         BackupCardHeader(
             icon = Icons.Default.Restore,
             title = "Восстановление",
@@ -89,12 +90,12 @@ internal fun BackupImportCard(
         ) {
             if (importing) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(AbredSizes.IconSmall),
+                    strokeWidth = AbredStroke.Spinner,
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Icon(Icons.Default.FolderOpen, null, Modifier.size(18.dp))
+                Icon(Icons.Default.FolderOpen, null, Modifier.size(AbredSizes.IconSmall))
             }
             Spacer(Modifier.width(AbredSpacing.Xs))
             Text(if (importing) "Восстанавливаем данные…" else "Выбрать файл и восстановить")
@@ -154,3 +155,4 @@ private fun BackupStatus(message: String?, isError: Boolean) {
         }
     }
 }
+

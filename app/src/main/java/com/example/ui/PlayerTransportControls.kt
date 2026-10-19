@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -49,11 +47,12 @@ import com.example.data.player.estimateOverallProgressPercent
 import com.example.data.settings.PlayerSettingsStore
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
 
 @Composable
 internal fun PlayerTransportControls(
@@ -77,7 +76,7 @@ internal fun PlayerTransportControls(
             onClick = onPreviousChapter,
             modifier = Modifier.size(AbredSizes.MinimumTouchTarget),
         ) {
-            Icon(Icons.Default.SkipPrevious, "Предыдущая глава", Modifier.size(28.dp))
+            Icon(Icons.Default.SkipPrevious, "Предыдущая глава", Modifier.size(AbredSizes.IconLarge))
         }
         PlayerSeekButton(
             seconds = rewindSeconds,
@@ -96,7 +95,7 @@ internal fun PlayerTransportControls(
             Icon(
                 if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 if (isPlaying) "Пауза" else "Играть",
-                Modifier.size(if (compactIcons) 34.dp else 40.dp),
+                Modifier.size(if (compactIcons) PlayerDesign.CompactPlayIconSize else PlayerDesign.PlayIconSize),
             )
         }
         PlayerSeekButton(
@@ -109,7 +108,7 @@ internal fun PlayerTransportControls(
             onClick = onNextChapter,
             modifier = Modifier.size(AbredSizes.MinimumTouchTarget),
         ) {
-            Icon(Icons.Default.SkipNext, "Следующая глава", Modifier.size(28.dp))
+            Icon(Icons.Default.SkipNext, "Следующая глава", Modifier.size(AbredSizes.IconLarge))
         }
     }
 }
@@ -126,7 +125,7 @@ private fun PlayerSeekButton(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = abredOutlineBorder(),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -135,7 +134,7 @@ private fun PlayerSeekButton(
                         if (seconds == 30) Icons.Default.Forward30 else Icons.Default.FastForward
                     },
                     contentDescription = if (backwards) "Назад $seconds секунд" else "Вперёд $seconds секунд",
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(AbredSizes.IconCompact),
                 )
                 Text(
                     if (backwards) "−$seconds" else "+$seconds",
@@ -146,3 +145,4 @@ private fun PlayerSeekButton(
         }
     }
 }
+

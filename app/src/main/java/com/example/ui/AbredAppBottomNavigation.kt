@@ -1,32 +1,31 @@
 package com.example.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryBooks
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import com.example.R
+import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
+import com.example.ui.theme.NavigationDesign
+import com.example.ui.theme.abredNavigationItemColors
 
 private data class AppBottomNavigationItem(
     val destination: TopLevelDestination,
     val label: String,
-    val icon: ImageVector,
+    val iconRes: Int,
 )
 
 private val AppBottomNavigationItems = listOf(
-    AppBottomNavigationItem(TopLevelDestination.Home, "Главная", Icons.Default.Home),
-    AppBottomNavigationItem(TopLevelDestination.Catalog, "Каталог", Icons.Default.AutoStories),
-    AppBottomNavigationItem(TopLevelDestination.Library, "Библиотека", Icons.Default.LibraryBooks),
-    AppBottomNavigationItem(TopLevelDestination.Settings, "Настройки", Icons.Default.Settings),
+    AppBottomNavigationItem(TopLevelDestination.Home, "Главная", R.drawable.ic_abred_nav_home),
+    AppBottomNavigationItem(TopLevelDestination.Catalog, "Каталог", R.drawable.ic_abred_nav_catalog),
+    AppBottomNavigationItem(TopLevelDestination.Library, "Библиотека", R.drawable.ic_abred_nav_library),
+    AppBottomNavigationItem(TopLevelDestination.Settings, "Настройки", R.drawable.ic_abred_nav_settings),
 )
 
 @Composable
@@ -38,9 +37,9 @@ internal fun AppBottomNavigation(
     val largeText = abredLargeFontScale()
     val extraLargeText = abredExtraLargeFontScale()
     val navigationMinHeight = when {
-        extraLargeText -> 112.dp
-        largeText -> 96.dp
-        else -> 80.dp
+        extraLargeText -> NavigationDesign.ExtraLargeTextHeight
+        largeText -> NavigationDesign.LargeTextHeight
+        else -> NavigationDesign.Height
     }
 
     Column(
@@ -49,13 +48,13 @@ internal fun AppBottomNavigation(
     ) {
         if (showTopDivider) {
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.SectionOutline),
             )
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
-            tonalElevation = 0.dp,
+            tonalElevation = AbredElevation.Flat,
         ) {
             Box(
                 modifier = Modifier.fillMaxWidth(),
@@ -67,7 +66,7 @@ internal fun AppBottomNavigation(
                         .fillMaxWidth()
                         .heightIn(min = navigationMinHeight),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    tonalElevation = 0.dp,
+                    tonalElevation = AbredElevation.Flat,
                 ) {
                     AppBottomNavigationItems.forEach { item ->
                         val selected = selectedDestination == item.destination
@@ -76,7 +75,7 @@ internal fun AppBottomNavigation(
                             onClick = { onDestinationSelected(item.destination) },
                             icon = {
                                 Icon(
-                                    imageVector = item.icon,
+                                    painter = painterResource(item.iconRes),
                                     contentDescription = null,
                                     modifier = Modifier.size(AbredSizes.Icon),
                                 )
@@ -95,7 +94,7 @@ internal fun AppBottomNavigation(
                                 )
                             },
                             alwaysShowLabel = true,
-                            colors = appNavigationItemColors(),
+                            colors = abredNavigationItemColors(),
                         )
                     }
                 }
@@ -104,11 +103,3 @@ internal fun AppBottomNavigation(
     }
 }
 
-@Composable
-private fun appNavigationItemColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-)

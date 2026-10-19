@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
 import com.example.ui.viewmodel.PlayerSettingsViewModel
 
 /** Standalone player settings. No profile/sync UI is compiled into this screen. */
@@ -27,7 +28,7 @@ internal fun PreparedPlayerSettingsScreen(
             horizontal = AbredSpacing.ScreenHorizontal,
             vertical = AbredSpacing.ScreenVertical,
         ),
-        verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SettingsDesign.CompactItemSpacing),
     ) {
         item(key = "player-settings-header") {
             AbredSubpageHeader(
@@ -36,31 +37,39 @@ internal fun PreparedPlayerSettingsScreen(
             )
         }
 
-        item { AbredSettingsSectionTitle("Для аудиокниг") }
         item {
             PlayerSettingsSwitch(
                 title = "Умная перемотка после паузы",
-                subtitle = "После долгой паузы немного отматывать назад, чтобы легче вспомнить контекст.",
+                subtitle = "После долгой паузы немного возвращаться назад.",
                 checked = settings.smartRewindAfterPause,
                 onCheckedChange = vm::setSmartRewindAfterPause,
             )
         }
 
-        item { AbredSettingsSectionTitle("Главы") }
+        item { AbredInnerSettingsSectionTitle("Главы", bottomPadding = SettingsDesign.CompactGroupBottomPadding) }
         item {
             PlayerSettingsSwitch(
                 title = "Короткие названия глав",
-                subtitle = "Показывать в мини-плеере и плеере «Глава 1», «Глава 2» и так далее вместо исходных названий.",
+                subtitle = "В плеере и мини-плеере: «Глава 1», «Глава 2» вместо исходных названий.",
                 checked = settings.simplifyChapterTitles,
                 onCheckedChange = vm::setSimplifyChapterTitles,
             )
         }
 
-        item { AbredSettingsSectionTitle("Скорость") }
+        item {
+            PlayerSettingsSwitch(
+                title = "Следующая глава автоматически",
+                subtitle = "Продолжать воспроизведение после окончания главы.",
+                checked = settings.autoNextChapter,
+                onCheckedChange = vm::setAutoNextChapter,
+            )
+        }
+
+        item { AbredInnerSettingsSectionTitle("Скорость", bottomPadding = SettingsDesign.CompactGroupBottomPadding) }
         item {
             PlayerChoiceCard(
                 title = "Скорость по умолчанию",
-                subtitle = "Используется для книг без собственной сохранённой скорости.",
+                subtitle = "Для книг без сохранённой скорости.",
                 selected = settings.defaultSpeed,
                 options = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f),
                 optionLabel = ::playerSpeedLabel,
@@ -69,26 +78,17 @@ internal fun PreparedPlayerSettingsScreen(
         }
         item {
             PlayerSettingsSwitch(
-                title = "Помнить скорость для каждой книги",
-                subtitle = "Восстанавливать скорость вместе с локальной позицией прослушивания.",
+                title = "Помнить скорость книги",
+                subtitle = "Восстанавливать при возвращении к книге.",
                 checked = settings.rememberBookSpeed,
                 onCheckedChange = vm::setRememberBookSpeed,
             )
         }
-        item {
-            PlayerSettingsSwitch(
-                title = "Автоматически включать следующую главу",
-                subtitle = "После окончания главы сразу продолжать воспроизведение.",
-                checked = settings.autoNextChapter,
-                onCheckedChange = vm::setAutoNextChapter,
-            )
-        }
-
-        item { AbredSettingsSectionTitle("Перемотка") }
+        item { AbredInnerSettingsSectionTitle("Перемотка", bottomPadding = SettingsDesign.CompactGroupBottomPadding) }
         item {
             PlayerChoiceCard(
                 title = "Назад",
-                subtitle = "Шаг кнопки перемотки назад.",
+                subtitle = null,
                 selected = settings.rewindSeconds,
                 options = listOf(5, 10, 15, 30),
                 optionLabel = { it.toString() + " сек" },
@@ -98,7 +98,7 @@ internal fun PreparedPlayerSettingsScreen(
         item {
             PlayerChoiceCard(
                 title = "Вперёд",
-                subtitle = "Шаг кнопки перемотки вперёд.",
+                subtitle = null,
                 selected = settings.forwardSeconds,
                 options = listOf(10, 15, 30, 60),
                 optionLabel = { it.toString() + " сек" },
@@ -106,11 +106,11 @@ internal fun PreparedPlayerSettingsScreen(
             )
         }
 
-        item { AbredSettingsSectionTitle("Прогресс") }
+        item { AbredInnerSettingsSectionTitle("Прогресс", bottomPadding = SettingsDesign.CompactGroupBottomPadding) }
         item {
             PlayerSettingsSwitch(
                 title = "Показывать процент прослушанного",
-                subtitle = "Отображать процент и полоску прогресса в интерфейсе.",
+                subtitle = "Процент и полоска прогресса в интерфейсе.",
                 checked = settings.showProgressPercent,
                 onCheckedChange = vm::setShowProgressPercent,
             )
@@ -118,3 +118,4 @@ internal fun PreparedPlayerSettingsScreen(
         item { Spacer(Modifier.height(AbredSpacing.Md)) }
     }
 }
+

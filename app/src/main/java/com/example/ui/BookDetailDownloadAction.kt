@@ -6,9 +6,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.example.data.local.DownloadBookEntity
 import com.example.ui.theme.AbredSizes
+import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
+import com.example.ui.theme.BookDetailDesign
 
 @Composable
 internal fun CompactDownloadAction(
@@ -49,7 +51,7 @@ internal fun CompactDownloadAction(
         enabled = enabled && action != null,
         modifier = Modifier.size(AbredSizes.ControlHeight),
         shape = MaterialTheme.shapes.medium,
-        contentPadding = PaddingValues(0.dp),
+        contentPadding = PaddingValues(AbredSpacing.None),
         colors = if (completed) {
             ButtonDefaults.buttonColors(
                 disabledContainerColor = MaterialTheme.colorScheme.primary,
@@ -61,8 +63,8 @@ internal fun CompactDownloadAction(
     ) {
         if (busy) {
             CircularProgressIndicator(
-                modifier = Modifier.size(19.dp),
-                strokeWidth = 2.dp,
+                modifier = Modifier.size(BookDetailDesign.DownloadSpinnerSize),
+                strokeWidth = AbredStroke.Spinner,
                 color = LocalContentColor.current,
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
             )
@@ -75,3 +77,4 @@ internal fun CompactDownloadAction(
         }
     }
 }
+

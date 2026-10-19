@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -14,17 +13,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookCardDto
 import com.example.data.model.MySeriesDto
 import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.HomeDesign
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.HomePopularPeriod
 import kotlin.math.roundToInt
 
@@ -41,8 +43,8 @@ internal fun NextSeriesCard(series: MySeriesDto, onClick: () -> Unit) {
             .padding(horizontal = AbredSpacing.ScreenHorizontal)
             .clickable(onClickLabel = "Открыть цикл", onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
         border = abredBookCardBorder(),
     ) {
         Row(
@@ -106,24 +108,24 @@ internal fun PopularPeriodSelector(
     Box {
         Surface(
             onClick = { expanded = true },
-            modifier = Modifier.heightIn(min = AbredSizes.MinimumTouchTarget),
+            modifier = Modifier.heightIn(min = HomeDesign.PeriodSelectorMinHeight),
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            border = abredOutlineBorder(),
         ) {
             Row(
                 modifier = Modifier.padding(
-                    start = AbredSpacing.Sm,
-                    end = AbredSpacing.Xs,
-                    top = AbredSpacing.Xs,
-                    bottom = AbredSpacing.Xs,
+                    start = HomeDesign.PeriodSelectorHorizontalPadding,
+                    end = HomeDesign.PeriodSelectorHorizontalPadding,
+                    top = HomeDesign.PeriodSelectorVerticalPadding,
+                    bottom = HomeDesign.PeriodSelectorVerticalPadding,
                 ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     selected.label,
-                    modifier = Modifier.widthIn(max = 120.dp),
+                    modifier = Modifier.widthIn(max = HomeDesign.SeriesFilterMaxWidth),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = if (abredLargeFontScale()) 2 else 1,
@@ -147,22 +149,26 @@ internal fun PopularPeriodSelector(
                     text = {
                         Text(
                             period.label,
-                            modifier = Modifier.widthIn(max = 180.dp),
+                            modifier = Modifier.widthIn(max = HomeDesign.PeriodMenuMaxWidth),
                             fontWeight = if (period == selected) FontWeight.Bold else FontWeight.Normal,
                             maxLines = if (abredLargeFontScale()) 2 else 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    leadingIcon = if (period == selected) {
-                        {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
+                    leadingIcon = {
+                        Box(
+                            modifier = Modifier.size(AbredSizes.Icon),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (period == selected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(AbredSizes.Icon),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
-                    } else {
-                        null
                     },
                     onClick = {
                         expanded = false
@@ -173,3 +179,4 @@ internal fun PopularPeriodSelector(
         }
     }
 }
+

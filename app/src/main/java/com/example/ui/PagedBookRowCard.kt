@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -25,11 +23,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import com.example.data.model.BookCardDto
@@ -37,6 +34,8 @@ import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
 import kotlin.math.roundToInt
 
 @Composable
@@ -60,10 +59,8 @@ internal fun PagedBookRowCard(
             .padding(horizontal = AbredSpacing.ScreenHorizontal)
             .clickable(onClickLabel = "Открыть книгу", onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
         border = abredBookCardBorder(),
     ) {
         Row(
@@ -90,7 +87,7 @@ internal fun PagedBookRowCard(
                             bottom = if (sourceLabel.isNotBlank()) {
                                 sourceReserve
                             } else {
-                                0.dp
+                                AbredSpacing.None
                             },
                         ),
                 ) {
@@ -157,3 +154,4 @@ internal fun PagedBookRowCard(
         }
     }
 }
+

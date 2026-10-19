@@ -17,12 +17,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.GenreDto
 import com.example.data.model.PersonDto
+import com.example.ui.theme.AbredAdaptive
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import com.example.ui.theme.abredAccentText
 
 @Composable
@@ -56,8 +58,8 @@ internal fun BookDetailMetadataSection(
             if (!seriesName.isNullOrBlank()) {
                 Column {
                     HorizontalDivider(
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        thickness = AbredStroke.Hairline,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Subtle),
                     )
                     BookDetailMetadataRow(
                         label = "Цикл / серия",
@@ -78,8 +80,8 @@ internal fun BookDetailMetadataSection(
                         )
                     }
                     HorizontalDivider(
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        thickness = AbredStroke.Hairline,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Subtle),
                     )
                 }
             }
@@ -114,7 +116,7 @@ private fun BookDetailMetadataRow(
 ) {
     val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        if (maxWidth < 260.dp || fontScale >= 1.5f) {
+        if (maxWidth < AbredAdaptive.MetadataStackWidth || fontScale >= AbredAdaptive.MetadataStackFontScale) {
             Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs)) {
                 Text(label, style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -312,3 +314,4 @@ internal fun bookDetailSeriesSubtitle(
         append("$total книг")
     }
 }
+

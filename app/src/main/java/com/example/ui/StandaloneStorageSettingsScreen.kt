@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
 import com.example.ui.theme.abredAccentText
 import com.example.ui.viewmodel.StorageSettingsViewModel
 import com.example.ui.viewmodel.StorageUiState
@@ -35,7 +36,7 @@ internal fun StandaloneStorageSettingsScreen(
             horizontal = AbredSpacing.ScreenHorizontal,
             vertical = AbredSpacing.ScreenVertical,
         ),
-        verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SettingsDesign.InnerItemSpacing),
     ) {
         item(key = "storage-settings-header") {
             AbredSubpageHeader(
@@ -45,7 +46,7 @@ internal fun StandaloneStorageSettingsScreen(
         }
         item { StorageOverviewCard(state) }
 
-        item { AbredSettingsSectionTitle("Кэш") }
+        item { AbredInnerSettingsSectionTitle("Кэш") }
         item {
             LocalSwitchCard(
                 title = "Кэшировать каталог и страницы",
@@ -56,10 +57,10 @@ internal fun StandaloneStorageSettingsScreen(
         }
         item { CacheControlCard(state, settings.catalogCacheEnabled, vm::clearCatalogCache) }
 
-        item { AbredSettingsSectionTitle("Локальные данные") }
+        item { AbredInnerSettingsSectionTitle("Локальные данные") }
         item { LocalUserDataCard(state) }
 
-        item { AbredSettingsSectionTitle("Скачанные книги") }
+        item { AbredInnerSettingsSectionTitle("Скачанные книги") }
         item {
             LocalSwitchCard(
                 title = "Только по Wi‑Fi",
@@ -72,3 +73,4 @@ internal fun StandaloneStorageSettingsScreen(
         item { Spacer(Modifier.height(AbredSpacing.Md)) }
     }
 }
+

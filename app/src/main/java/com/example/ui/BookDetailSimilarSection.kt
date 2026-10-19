@@ -9,12 +9,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.example.ui.paging.BookPageRequest
 import com.example.ui.paging.BookPagingViewModel
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
 
 @Composable
@@ -41,10 +41,10 @@ internal fun SimilarBooksSection(
         when {
             books.loadState.refresh is LoadState.Loading && books.itemCount == 0 -> {
                 Box(
-                    Modifier.fillMaxWidth().height(100.dp),
+                    Modifier.fillMaxWidth().height(AbredSizes.LoadingSectionHeight),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(Modifier.size(28.dp))
+                    CircularProgressIndicator(Modifier.size(AbredSizes.LoadingIndicator))
                 }
             }
             books.loadState.refresh is LoadState.Error && books.itemCount == 0 -> {
@@ -92,3 +92,4 @@ internal fun SimilarBooksSection(
         }
     }
 }
+

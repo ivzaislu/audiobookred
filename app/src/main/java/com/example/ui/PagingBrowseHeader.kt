@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,7 +12,6 @@ import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,10 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.BrowseKind
 
 internal fun browseKindLabel(kind: BrowseKind): String = when (kind) {
@@ -60,14 +61,9 @@ internal fun PagingBrowseHero(
                 vertical = AbredSpacing.Xxs,
             ),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-        ),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
+        border = abredOutlineBorder(opacity = AbredOpacity.SectionOutline),
     ) {
         Row(
             modifier = Modifier
@@ -115,3 +111,4 @@ internal fun PagingBrowseHero(
         }
     }
 }
+

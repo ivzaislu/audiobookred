@@ -1,5 +1,6 @@
 package com.example.data.parser
 
+import com.example.data.diagnostics.DiagnosticOperations
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -368,17 +369,29 @@ internal abstract class BaseBrowserChallengeSession(
 
     protected abstract fun initializeProvider(context: Context)
 
-    final override fun requireChallenge(targetUrl: String): Long =
-        runtime.requireChallenge(targetUrl)
+    final override fun requireChallenge(targetUrl: String): Long {
+        val id = runtime.requireChallenge(targetUrl)
+        DiagnosticOperations.record("challenge_required", mapOf(
+            "source" to challengeSpec.sourceId, "challengeId" to id.toString(),
+        ))
+        return id
+    }
 
     final override suspend fun awaitResolution(
         requestId: Long,
         timeoutMs: Long,
-    ): Boolean =
-        runtime.awaitResolution(
-            requestId = requestId,
-            timeoutMs = timeoutMs,
-        )
+    ): Boolean {
+        val fields = mapOf("source" to challengeSpec.sourceId, "challengeId" to requestId.toString())
+        DiagnosticOperations.record("challenge_wait", fields)
+        return try {
+            runtime.awaitResolution(requestId = requestId, timeoutMs = timeoutMs).also { resolved ->
+                DiagnosticOperations.record("challenge_wait_complete", fields + ("resolved" to resolved.toString()))
+            }
+        } catch (cancelled: CancellationException) {
+            DiagnosticOperations.record("challenge_cancelled", fields)
+            throw cancelled
+        }
+    }
 
     final override fun completeChallenge(
         requestId: Long,
@@ -386,13 +399,17 @@ internal abstract class BaseBrowserChallengeSession(
         cookieHeader: String,
         userAgent: String,
     ) {
-        runtime.completeChallenge(requestId) {
+        val completed = runtime.completeChallenge(requestId) {
             persistChallengeResult(
                 targetUrl = targetUrl,
                 cookieHeader = cookieHeader,
                 userAgent = userAgent,
             )
         }
+        DiagnosticOperations.record("challenge_completed", mapOf(
+            "source" to challengeSpec.sourceId, "challengeId" to requestId.toString(),
+            "resolved" to completed.toString(),
+        ))
     }
 
     protected abstract fun persistChallengeResult(
@@ -402,7 +419,11 @@ internal abstract class BaseBrowserChallengeSession(
     )
 
     final override fun cancelChallenge(requestId: Long) {
-        runtime.cancelChallenge(requestId)
+        val canceled = runtime.cancelChallenge(requestId)
+        DiagnosticOperations.record("challenge_cancelled", mapOf(
+            "source" to challengeSpec.sourceId, "challengeId" to requestId.toString(),
+            "resolved" to canceled.toString(),
+        ))
     }
 
     final override fun attachInlineHost() {

@@ -183,6 +183,7 @@ class PlaybackService : MediaLibraryService() {
                     progressController.saveLocalSnapshot()
                     val trulyCompleted =
                         player.currentMediaItemIndex == player.mediaItemCount - 1
+                    tracePlaybackEvent("completion_decision", player, "value=$trulyCompleted")
                     progressController.saveProgressAsync(
                         completedOverride = trulyCompleted
                     )
@@ -253,7 +254,8 @@ class PlaybackService : MediaLibraryService() {
             }
         })
 
-        tracePlaybackEvent("service_created", player, "version=${BuildConfig.VERSION_NAME}")
+        tracePlaybackEvent("service_created", player,
+            "autoNext=${settingsStore.state.value.autoNextChapter} smartRewind=${settingsStore.state.value.smartRewindAfterPause}")
 
         val sessionActivity = PendingIntent.getActivity(
             this,
@@ -276,6 +278,8 @@ class PlaybackService : MediaLibraryService() {
 
         serviceScope.launch {
             settingsStore.state.collectLatest { settings ->
+                tracePlaybackEvent("settings_changed", player,
+                    "autoNext=${settings.autoNextChapter} smartRewind=${settings.smartRewindAfterPause}")
                 player.setSkipSilenceEnabled(settings.skipSilenceEnabled)
                 player.setSeekBackIncrementMs(settings.rewindSeconds.toLong() * 1_000L)
                 player.setSeekForwardIncrementMs(settings.forwardSeconds.toLong() * 1_000L)

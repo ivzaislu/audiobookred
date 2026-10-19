@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -49,11 +47,12 @@ import com.example.data.player.estimateOverallProgressPercent
 import com.example.data.settings.PlayerSettingsStore
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,7 +97,7 @@ internal fun PlayerChaptersSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.82f),
+                    .fillMaxHeight(PlayerDesign.ListSheetHeightFraction),
                 contentPadding = PaddingValues(
                     start = AbredSpacing.Sm,
                     end = AbredSpacing.Sm,
@@ -129,7 +128,7 @@ internal fun PlayerChaptersSheet(
                         border = if (selected) {
                             null
                         } else {
-                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            abredOutlineBorder()
                         },
                     ) {
                         Row(
@@ -140,7 +139,7 @@ internal fun PlayerChaptersSheet(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(PlayerDesign.ChapterPlaySize),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
@@ -197,3 +196,4 @@ internal fun PlayerChaptersSheet(
         }
     }
 }
+

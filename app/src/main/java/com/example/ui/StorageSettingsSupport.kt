@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
 import com.example.ui.theme.abredAccentText
 import com.example.ui.viewmodel.StorageSettingsViewModel
 import com.example.ui.viewmodel.StorageUiState
@@ -26,6 +27,8 @@ internal fun LocalSwitchCard(
     onChecked: (Boolean) -> Unit,
 ) {
     AbredSettingsSwitchRow(
+        trailingControl = true,
+        verticalPadding = SettingsDesign.InnerRowVerticalPadding,
         title = title,
         subtitle = subtitle,
         checked = checked,
@@ -59,3 +62,4 @@ internal fun StatusSurface(message: String, error: Boolean) {
         )
     }
 }
+

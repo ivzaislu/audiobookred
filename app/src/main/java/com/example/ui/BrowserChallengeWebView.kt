@@ -8,6 +8,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,7 +27,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,13 +36,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.parser.BrowserChallengeRegistry
 import com.example.data.parser.BrowserChallengeSession
+import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
 import kotlinx.coroutines.delay
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -143,7 +144,7 @@ internal fun BrowserChallengeWebView(
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                tonalElevation = 3.dp,
+                tonalElevation = AbredElevation.Tonal,
             ) {
                 Row(
                     modifier = Modifier
@@ -170,7 +171,7 @@ internal fun BrowserChallengeWebView(
                             modifier = Modifier
                                 .padding(horizontal = AbredSpacing.Xs)
                                 .size(AbredSizes.Icon),
-                            strokeWidth = 2.dp,
+                            strokeWidth = AbredStroke.Spinner,
                         )
                     }
                     IconButton(onClick = onCancel) {
@@ -390,3 +391,4 @@ private const val MOBILE_VIEWPORT_SCRIPT = """
   return true;
 })()
 """
+

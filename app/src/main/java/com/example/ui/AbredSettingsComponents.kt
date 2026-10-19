@@ -12,13 +12,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
 
 /**
  * Shared settings container.
@@ -29,19 +33,20 @@ import com.example.ui.theme.AbredSpacing
 @Composable
 internal fun AbredSettingsCard(
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = AbredSpacing.Xxs,
+        vertical = AbredSpacing.Xs,
+    ),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = Color.Transparent,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        tonalElevation = AbredElevation.Flat,
+        shadowElevation = AbredElevation.Flat,
     ) {
         Column(
-            Modifier.padding(
-                horizontal = AbredSpacing.Xxs,
-                vertical = AbredSpacing.Xs,
-            ),
+            Modifier.padding(contentPadding),
             content = content,
         )
     }
@@ -51,22 +56,61 @@ internal fun AbredSettingsCard(
 internal fun AbredSettingsSectionTitle(
     title: String,
     modifier: Modifier = Modifier,
+    compactTop: Boolean = false,
+    topPadding: Dp = AbredSpacing.Lg,
+    bottomPadding: Dp = AbredSpacing.Xs,
+    startPadding: Dp = AbredSpacing.Xxs,
 ) {
     Text(
         title.uppercase(),
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AbredOpacity.SectionLabel),
         modifier = modifier.padding(
-            top = AbredSpacing.Lg,
-            start = AbredSpacing.Xxs,
-            bottom = AbredSpacing.Xs,
+            top = if (compactTop) AbredSpacing.None else topPadding,
+            start = startPadding,
+            bottom = bottomPadding,
         ),
     )
 }
 
+/** Compact layout shared by settings subpages; root settings keeps its defaults. */
+@Composable
+internal fun AbredInnerSettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    AbredSettingsCard(
+        contentPadding = PaddingValues(vertical = SettingsDesign.InnerRowVerticalPadding),
+        content = content,
+    )
+}
+
+@Composable
+internal fun AbredInnerSettingsSectionTitle(
+    title: String,
+    first: Boolean = false,
+    bottomPadding: Dp = SettingsDesign.InnerGroupBottomPadding,
+) {
+    Column {
+        if (!first) {
+            HorizontalDivider(
+                modifier = Modifier.padding(
+                    vertical = SettingsDesign.InnerGroupTopPadding / 2,
+                ),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(
+                    alpha = AbredOpacity.SectionOutline,
+                ),
+            )
+        }
+        AbredSettingsSectionTitle(
+            title = title,
+            compactTop = true,
+            bottomPadding = bottomPadding,
+            startPadding = AbredSpacing.None,
+        )
+    }
+}
+
 /**
- * Audiobookshelf-like toggle row: control first, text second.
+ * Shared toggle row; the root settings screen opts into a trailing control.
  * AudioBookRed still owns all colors, typography and Material behavior.
  */
 @Composable
@@ -76,25 +120,41 @@ internal fun AbredSettingsSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    trailingControl: Boolean = false,
+    verticalPadding: Dp = AbredSpacing.Xs,
+    alignControlWithTitle: Boolean = false,
+    enabled: Boolean = true,
 ) {
+    // Match the first title line to the centre of the unchanged Material touch target.
+    val titleTopPadding = if (alignControlWithTitle) {
+        val lineHeight = with(LocalDensity.current) {
+            MaterialTheme.typography.bodyLarge.lineHeight.toDp()
+        }
+        ((AbredSizes.MinimumTouchTarget - lineHeight) / 2).coerceAtLeast(AbredSpacing.None)
+    } else {
+        AbredSpacing.None
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = AbredSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = verticalPadding),
+        verticalAlignment = if (alignControlWithTitle) Alignment.Top else Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier.width(48.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-            )
+        if (!trailingControl) {
+            Box(
+                modifier = Modifier.width(SettingsDesign.ValueColumnWidth),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Switch(
+                    checked = checked,
+                    enabled = enabled,
+                    onCheckedChange = onCheckedChange,
+                )
+            }
+            Spacer(Modifier.width(AbredSpacing.Xs))
         }
-        Spacer(Modifier.width(AbredSpacing.Xs))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).padding(top = titleTopPadding)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
@@ -102,13 +162,21 @@ internal fun AbredSettingsSwitchRow(
                 overflow = TextOverflow.Ellipsis,
             )
             if (!subtitle.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AbredSpacing.Micro))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        if (trailingControl) {
+            Spacer(Modifier.width(AbredSpacing.Sm))
+            Switch(
+                checked = checked,
+                enabled = enabled,
+                onCheckedChange = onCheckedChange,
+            )
         }
     }
 }
@@ -128,6 +196,7 @@ internal fun <T> AbredSettingsDropdownRow(
     onSelected: (T) -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    verticalPadding: Dp = AbredSpacing.Sm,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -135,7 +204,7 @@ internal fun <T> AbredSettingsDropdownRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable { expanded = true }
-            .padding(vertical = AbredSpacing.Sm),
+            .padding(vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -146,7 +215,7 @@ internal fun <T> AbredSettingsDropdownRow(
                 overflow = TextOverflow.Ellipsis,
             )
             if (!subtitle.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AbredSpacing.Micro))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -173,8 +242,8 @@ internal fun <T> AbredSettingsDropdownRow(
                 Icon(
                     Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                    modifier = Modifier.size(AbredSizes.IconSmall),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AbredOpacity.Chevron),
                 )
             }
 
@@ -195,3 +264,4 @@ internal fun <T> AbredSettingsDropdownRow(
         }
     }
 }
+

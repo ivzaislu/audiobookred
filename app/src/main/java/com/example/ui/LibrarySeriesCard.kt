@@ -13,16 +13,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.MySeriesDto
 import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredStroke
+import com.example.ui.theme.LibraryDesign
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
+import com.example.ui.theme.abredOutlineBorder
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -58,16 +63,14 @@ internal fun LibrarySeriesCard(
                 },
             ),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
+        colors = abredCardColors(),
+        elevation = abredFlatCardElevation(),
         border = BorderStroke(
-            1.dp,
+            AbredStroke.Hairline,
             if (selected) {
                 MaterialTheme.colorScheme.error
             } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Soft)
             },
         ),
     ) {
@@ -82,22 +85,22 @@ internal fun LibrarySeriesCard(
                     model = focusBook.coverUrl,
                     contentDescription = null,
                     modifier = Modifier
-                        .width(68.dp)
-                        .height(100.dp)
+                        .width(LibraryDesign.SeriesCoverWidth)
+                        .height(LibraryDesign.SeriesCoverHeight)
                         .clip(MaterialTheme.shapes.small),
                 )
             } else {
                 Surface(
                     modifier = Modifier
-                        .width(68.dp)
-                        .height(100.dp),
+                        .width(LibraryDesign.SeriesCoverWidth)
+                        .height(LibraryDesign.SeriesCoverHeight),
                     shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    border = abredOutlineBorder(),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.LibraryBooks, null, Modifier.size(28.dp))
+                        Icon(Icons.Default.LibraryBooks, null, Modifier.size(AbredSizes.IconLarge))
                     }
                 }
             }
@@ -138,7 +141,7 @@ internal fun LibrarySeriesCard(
                     Spacer(Modifier.height(AbredSpacing.Xxs))
                     TextButton(
                         onClick = { onContinueBook(focusBook.id) },
-                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                        contentPadding = PaddingValues(horizontal = AbredSpacing.None, vertical = AbredSpacing.None),
                     ) {
                         Icon(
                             Icons.Default.PlayArrow,
@@ -171,3 +174,4 @@ internal fun LibrarySeriesCard(
         }
     }
 }
+

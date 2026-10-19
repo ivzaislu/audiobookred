@@ -7,7 +7,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AbredSpacing
 
 @Composable
@@ -40,10 +39,11 @@ internal fun DescriptionSection(
         if (hasOverflow || expanded) {
             TextButton(
                 onClick = { expanded = !expanded },
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = AbredSpacing.Xxs),
+                contentPadding = PaddingValues(horizontal = AbredSpacing.None, vertical = AbredSpacing.Xxs),
             ) {
                 Text(if (expanded) "Свернуть" else "Показать полностью")
             }
         }
     }
 }
+

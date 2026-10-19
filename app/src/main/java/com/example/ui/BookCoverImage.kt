@@ -18,10 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.image.PosterImageCache
-import coil.ImageLoader
+import com.example.ui.theme.CoverDesign
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -96,7 +97,7 @@ internal fun BookCoverImage(
         Icon(
             imageVector = Icons.Default.MenuBook,
             contentDescription = contentDescription,
-            modifier = Modifier.fillMaxSize(0.34f),
+            modifier = Modifier.fillMaxSize(CoverDesign.PlaceholderIconFraction),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -140,3 +141,4 @@ internal fun BookCoverImage(
 private const val POSTER_LOG_TAG = "AbredPoster"
 private const val POSTER_MAX_RETRIES = 2
 private const val POSTER_RETRY_DELAY_MS = 700L
+

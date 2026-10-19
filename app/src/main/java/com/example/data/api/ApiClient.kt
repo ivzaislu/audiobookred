@@ -1,6 +1,7 @@
 package com.example.data.api
 
 import com.example.BuildConfig
+import com.example.data.diagnostics.DiagnosticsHttpInterceptor
 import java.io.IOException
 import java.net.InetAddress
 import java.net.URI
@@ -104,6 +105,7 @@ object ApiClient {
 
         val httpBuilder = OkHttpClient.Builder()
             .dns(StandalonePublicDns())
+            .addInterceptor(DiagnosticsHttpInterceptor())
             .addInterceptor(standaloneRequestPolicy)
             .addNetworkInterceptor(standaloneRedirectPolicy)
             .connectTimeout(15, TimeUnit.SECONDS)

@@ -13,12 +13,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import com.example.data.model.SeriesDetailDto
 import com.example.ui.paging.SeriesPageRequest
 import com.example.ui.paging.SeriesSwitchOption
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.CatalogDesign
 
 @Composable
 internal fun PagingSeriesSummary(
@@ -95,7 +95,7 @@ internal fun PagingSeriesSwitcher(
                     label = {
                         Text(
                             option.typeLabel + " · " + option.title,
-                            modifier = Modifier.widthIn(max = 240.dp),
+                            modifier = Modifier.widthIn(max = CatalogDesign.SeriesMenuMaxWidth),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -144,4 +144,5 @@ internal fun PagingSeriesSearchOtherSources(
         )
     }
 }
+
 

@@ -21,10 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.theme.AbredOpacity
+import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.SettingsDesign
 import com.example.ui.viewmodel.GeneralSettingsViewModel
 
 /** Import/export controls kept out of the top-level settings screen. */
@@ -76,7 +78,7 @@ internal fun StandaloneDataSettingsScreen(
             horizontal = AbredSpacing.ScreenHorizontal,
             vertical = AbredSpacing.ScreenVertical,
         ),
-        verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SettingsDesign.InnerItemSpacing),
     ) {
         item(key = "backup-header") {
             AbredSubpageHeader(
@@ -86,7 +88,7 @@ internal fun StandaloneDataSettingsScreen(
             )
         }
         item { BackupContentsCard() }
-        item { AbredSettingsSectionTitle("Резервная копия") }
+        item { AbredInnerSettingsSectionTitle("Резервная копия") }
         item {
             BackupExportCard(
                 exporting = exportState.exporting,
@@ -94,6 +96,12 @@ internal fun StandaloneDataSettingsScreen(
                 message = exportState.message,
                 isError = exportState.isError,
                 onExport = exportBackup,
+            )
+        }
+        item {
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = AbredSpacing.Xs),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.SectionOutline),
             )
         }
         item {
@@ -137,7 +145,7 @@ internal fun StandaloneDataSettingsScreen(
                         vm.importUserData(uri)
                     },
                 ) {
-                    Icon(Icons.Default.Restore, null, Modifier.size(18.dp))
+                    Icon(Icons.Default.Restore, null, Modifier.size(AbredSizes.IconSmall))
                     Spacer(Modifier.width(AbredSpacing.Xs))
                     Text("Восстановить")
                 }
@@ -151,3 +159,4 @@ internal fun StandaloneDataSettingsScreen(
         )
     }
 }
+

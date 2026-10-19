@@ -1,6 +1,5 @@
 package com.example.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -11,12 +10,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.BookmarkDto
 import com.example.ui.theme.AbredElevation
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.BookDetailDesign
+import com.example.ui.theme.abredCardColors
+import com.example.ui.theme.abredFlatCardElevation
+import com.example.ui.theme.abredOutlineBorder
 
 @Composable
 internal fun BookmarksSection(
@@ -42,14 +45,9 @@ internal fun BookmarksSection(
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = AbredElevation.Flat),
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-            ),
+            colors = abredCardColors(),
+            elevation = abredFlatCardElevation(),
+            border = abredOutlineBorder(opacity = AbredOpacity.Soft),
         ) {
             bookmarks.forEachIndexed { index, bookmark ->
                 Row(
@@ -69,7 +67,7 @@ internal fun BookmarksSection(
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     ) {
                         Box(
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.size(BookDetailDesign.BookmarkPlaySize),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
@@ -101,7 +99,7 @@ internal fun BookmarksSection(
                 }
                 if (index != bookmarks.lastIndex) {
                     HorizontalDivider(
-                        Modifier.padding(start = 60.dp),
+                        Modifier.padding(start = BookDetailDesign.BookmarkContentInset),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
                 }
@@ -109,3 +107,4 @@ internal fun BookmarksSection(
         }
     }
 }
+

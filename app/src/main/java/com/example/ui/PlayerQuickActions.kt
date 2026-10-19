@@ -1,7 +1,6 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,13 +30,12 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -49,11 +47,12 @@ import com.example.data.player.estimateOverallProgressPercent
 import com.example.data.settings.PlayerSettingsStore
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.PlayerDesign
 import com.example.ui.theme.abredAccentText
+import com.example.ui.theme.abredOutlineBorder
 import com.example.ui.viewmodel.PlaybackPreparationUiState
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
 
 @Composable
 internal fun PlayerQuickActions(
@@ -183,19 +182,19 @@ private fun PlayerQuickAction(
             border = if (active) {
                 null
             } else {
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                abredOutlineBorder()
             },
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(
-                        min = if (largeText) 54.dp else AbredSizes.MinimumTouchTarget,
+                        min = if (largeText) PlayerDesign.LargeTextActionMinHeight else AbredSizes.MinimumTouchTarget,
                     ),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
-                    icon != null -> Icon(icon, contentDescription = null, modifier = Modifier.size(23.dp))
+                    icon != null -> Icon(icon, contentDescription = null, modifier = Modifier.size(PlayerDesign.QuickActionIconSize))
                     textIcon != null -> Text(
                         textIcon,
                         style = MaterialTheme.typography.labelLarge,
@@ -204,7 +203,7 @@ private fun PlayerQuickAction(
                 }
             }
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(AbredSpacing.Micro))
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
@@ -220,3 +219,4 @@ private fun PlayerQuickAction(
         )
     }
 }
+

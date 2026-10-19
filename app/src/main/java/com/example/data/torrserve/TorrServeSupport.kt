@@ -1,11 +1,13 @@
 package com.example.data.torrserve
 
+import com.example.data.diagnostics.DiagnosticsHttpInterceptor
 import com.example.data.settings.ServiceCredentials
 import java.util.concurrent.TimeUnit
 
 internal fun buildTorrServeHttpClient(
     readTimeoutSeconds: Long,
 ): okhttp3.OkHttpClient = okhttp3.OkHttpClient.Builder()
+    .addInterceptor(DiagnosticsHttpInterceptor(torrServe = true))
     .connectTimeout(15L, TimeUnit.SECONDS)
     .readTimeout(readTimeoutSeconds.coerceAtLeast(30L), TimeUnit.SECONDS)
     .followRedirects(false)
