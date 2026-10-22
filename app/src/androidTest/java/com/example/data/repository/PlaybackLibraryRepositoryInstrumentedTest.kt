@@ -46,6 +46,7 @@ class PlaybackLibraryRepositoryInstrumentedTest {
             cacheStore = cacheStore,
             libraryStore = libraryStore,
             resumeStore = PlaybackResumeStore(context),
+            textBooks = com.example.data.textbook.TextLibraryRepository(context),
         )
         val book = BookDetailDto(
             id = "playback-book",

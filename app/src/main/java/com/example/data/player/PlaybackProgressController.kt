@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import com.example.data.backup.UserDataRestoreGate
 import com.example.data.local.LocalCacheStore
+import com.example.data.narration.TEXT_NARRATION_SOURCE
 import com.example.data.model.ProgressResponse
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ internal class PlaybackProgressController(
     private val resumeStore: PlaybackResumeStore,
     private val localCacheStore: LocalCacheStore,
     private val scope: CoroutineScope,
+    private val textResumeStore: PlaybackResumeStore? = null,
 ) {
     private val progressWrites =
         CoalescingWriteQueue<ProgressWriteKey, ProgressCheckpoint> { write ->
@@ -91,7 +93,7 @@ internal class PlaybackProgressController(
                 currentDurationMs = duration,
                 completed = completed,
             )
-            resumeStore.save(
+            resumeFor(sourceCode).save(
                 bookId = bookId,
                 sourceCode = sourceCode,
                 chapterId = chapterId,
@@ -153,7 +155,7 @@ internal class PlaybackProgressController(
 
         // The current player already points at the new item. Persist the position
         // supplied by Media3 for the item that actually ended.
-        resumeStore.saveImmediate(
+        resumeFor(sourceCode).saveImmediate(
             bookId = bookId,
             sourceCode = sourceCode,
             chapterId = chapterId,
@@ -185,6 +187,7 @@ internal class PlaybackProgressController(
         if (bookId.isBlank()) return
         val position = player.currentPosition.coerceAtLeast(0L)
         if (position <= 0L && !allowZero) return
+        val sourceCode = extras.getString(PlaybackMetadata.EXTRA_SOURCE_CODE).orEmpty()
         val chapterIndex = player.currentMediaItemIndex.coerceAtLeast(0)
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
         val progressPercent = estimatePlaybackProgressPercent(
@@ -193,7 +196,7 @@ internal class PlaybackProgressController(
             positionMs = position,
             currentDurationMs = duration,
         )
-        resumeStore.saveImmediate(
+        resumeFor(sourceCode).saveImmediate(
             bookId = bookId,
             sourceCode = extras.getString(PlaybackMetadata.EXTRA_SOURCE_CODE).orEmpty(),
             chapterId = extras.getString(PlaybackMetadata.EXTRA_CHAPTER_ID),
@@ -270,7 +273,11 @@ internal class PlaybackProgressController(
         return null
     }
 
+    private fun resumeFor(source: String): PlaybackResumeStore =
+        if (source == TEXT_NARRATION_SOURCE) checkNotNull(textResumeStore) else resumeStore
+
     private suspend fun persistProgress(checkpoint: ProgressCheckpoint) {
+        if (checkpoint.sourceCode == TEXT_NARRATION_SOURCE) return
         localCacheStore.writeProgress(
             bookId = checkpoint.bookId,
             sourceCode = checkpoint.sourceCode,
@@ -308,3 +315,4 @@ internal class PlaybackProgressController(
         const val TAG = "PlaybackProgress"
     }
 }
+

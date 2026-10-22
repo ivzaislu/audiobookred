@@ -64,6 +64,25 @@ class PlaybackLoadCancellationInstrumentedTest {
         f.join(load)
     }
 
+    @Test
+    fun pendingLoadPublishesRequestedTimeInsteadOfPreviousAudioClock() = Fixture().use { f ->
+        val load = f.startLoad(42_000L)
+        // Forces a controller state refresh while playlist construction is suspended.
+        f.main { f.manager.setSpeed(1.25f) }
+        f.instrumentation.waitForIdleSync()
+        f.main {
+            val state = f.manager.state.value
+            assertEquals(f.book.id, state.book?.id)
+            assertEquals(42_000L, state.positionMs)
+            assertEquals(120_000L, state.durationMs)
+            assertTrue(state.isLoading)
+            assertFalse(state.isPlaying)
+            f.manager.pause()
+        }
+        f.items.complete(listOf(f.item()))
+        f.join(load)
+    }
+
     private class Fixture(recoverSnapshot: Boolean = false) : AutoCloseable {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val items = CompletableDeferred<List<MediaItem>>()
@@ -71,7 +90,7 @@ class PlaybackLoadCancellationInstrumentedTest {
         val snapshotRequested = CountDownLatch(1)
         val snapshot = CompletableDeferred<BookDetailDto?>()
         val book = BookDetailDto(id = "load-test:new", title = "New", selectedSource = "test",
-            chapters = listOf(ChapterDto(id = "new-1", position = 0, title = "Chapter")))
+            chapters = listOf(ChapterDto(id = "new-1", position = 0, title = "Chapter", durationSeconds = 120L)))
         val oldBook = book.copy(id = "load-test:old", title = "Old")
         lateinit var player: ExoPlayer
         lateinit var session: MediaSession
@@ -107,8 +126,8 @@ class PlaybackLoadCancellationInstrumentedTest {
         fun item() = MediaItem.Builder().setMediaId("new")
             .setUri("https://example.test/new").build()
         fun main(block: () -> Unit) = instrumentation.runOnMainSync(block)
-        fun startLoad(): Job {
-            main { manager.play(book, 0) }
+        fun startLoad(positionMs: Long = 0L): Job {
+            main { manager.play(book, 0, positionMs) }
             assertTrue(requested.await(10, TimeUnit.SECONDS))
             lateinit var job: Job
             main { job = requireNotNull(manager.pendingMediaLoadJob) }

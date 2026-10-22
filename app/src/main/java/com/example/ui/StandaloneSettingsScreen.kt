@@ -30,6 +30,7 @@ internal fun StandaloneSettingsScreen(
     onStorage: () -> Unit,
     onHome: () -> Unit,
     onPlayer: () -> Unit,
+    onReader: () -> Unit,
     onSources: () -> Unit,
     onExternalServices: () -> Unit,
 ) {
@@ -81,6 +82,13 @@ internal fun StandaloneSettingsScreen(
                         chevronOpacity = AbredOpacity.Chevron,
                         icon = Icons.Default.Headphones,
                         onClick = onPlayer,
+                    )
+                    StandaloneNavigationRow(
+                        title = "Чтение и озвучка",
+                        subtitle = "Оформление текста, голос и произношение",
+                        chevronOpacity = AbredOpacity.Chevron,
+                        icon = Icons.Default.MenuBook,
+                        onClick = onReader,
                     )
                 }
             }

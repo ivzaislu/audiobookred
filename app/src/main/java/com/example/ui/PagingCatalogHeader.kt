@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -57,6 +58,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import com.example.data.model.BookCardDto
 import com.example.data.parser.BrowserChallengeSession
+import com.example.ui.theme.AbredOpacity
 import com.example.ui.theme.AbredElevation
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
@@ -75,6 +77,11 @@ internal fun CatalogHeaderContent(
     onSearchAllSources: (Boolean) -> Unit,
     onGenre: (String?) -> Unit,
     onSource: (String) -> Unit,
+    sourceOptions: List<CatalogSourceOption>? = null,
+    sourceIcon: ImageVector = Icons.Default.Headphones,
+    searchScopeEnabled: Boolean = true,
+    selectedSourceLabel: String? = null,
+    headerActions: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.padding(
@@ -86,6 +93,7 @@ internal fun CatalogHeaderContent(
     ) {
         AbredBrandHeader(
             sectionTitle = "Каталог",
+            actions = headerActions,
             height = CatalogDesign.BrandHeaderHeight,
             contentPadding = PaddingValues(top = CatalogDesign.BrandHeaderTopPadding),
         )
@@ -107,6 +115,8 @@ internal fun CatalogHeaderContent(
             CatalogSearchScopeToggle(
                 searchAllSources = state.searchAllSources,
                 selectedSource = state.selectedSource,
+                enabled = searchScopeEnabled,
+                sourceLabelOverride = selectedSourceLabel,
                 onToggle = { enabled ->
                     onSearchAllSources(enabled)
                     if (text.trim().isNotBlank() && text.trim() != state.query) {
@@ -129,6 +139,8 @@ internal fun CatalogHeaderContent(
                 onSource = onSource,
                 modifier = Modifier.weight(CatalogDesign.SourceFilterWeight),
                 active = state.selectedSourceIsApplied,
+                options = sourceOptions,
+                icon = sourceIcon,
             )
             CatalogGenreSelector(
                 genres = state.genres,
@@ -145,11 +157,14 @@ internal fun CatalogSearchScopeToggle(
     searchAllSources: Boolean,
     selectedSource: String,
     onToggle: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    sourceLabelOverride: String? = null,
 ) {
-    val sourceLabel = sourceDisplayLabel(selectedSource)
+    val sourceLabel = sourceLabelOverride ?: sourceDisplayLabel(selectedSource)
     Surface(
         modifier = Modifier
             .size(AbredSizes.RootHeaderSearchHeight)
+            .graphicsLayer { alpha = if (enabled) 1f else AbredOpacity.Subtle }
             .semantics(mergeDescendants = true) {
                 contentDescription = "Область поиска"
                 stateDescription = if (searchAllSources) {
@@ -160,6 +175,7 @@ internal fun CatalogSearchScopeToggle(
             }
             .toggleable(
                 value = searchAllSources,
+                enabled = enabled,
                 role = Role.Switch,
                 onValueChange = onToggle,
             ),

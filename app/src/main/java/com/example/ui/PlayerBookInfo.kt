@@ -3,11 +3,15 @@ package com.example.ui
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import com.example.data.narration.*
 import com.example.data.model.BookDetailDto
 import kotlin.math.roundToInt
 
@@ -39,6 +43,9 @@ internal fun PlayerBookInfo(
     actions: PlayerLayoutActions,
     style: PlayerBookInfoStyle,
 ) {
+    val starts = remember(book.chapters, book.selectedSource) {
+        if (book.selectedSource == TEXT_NARRATION_SOURCE) textChapterStarts(book.chapters.map { it.id }) else emptyList()
+    }
     Spacer(Modifier.height(style.coverTopSpacing))
     PlayerBookCover(
         book = book,
@@ -49,7 +56,9 @@ internal fun PlayerBookInfo(
 
     Spacer(Modifier.height(style.progressTopSpacing))
     PlayerProgressBadge(
-        text = "${layoutState.overall.roundToInt()}%${style.progressSuffix}",
+        text = if (book.selectedSource == TEXT_NARRATION_SOURCE) {
+            "Книга · глава ${starts.indexOfLast { it <= layoutState.player.chapterIndex } + 1} из ${starts.size}"
+        } else "${layoutState.overall.roundToInt()}%${style.progressSuffix}",
         horizontalPadding = style.progressHorizontalPadding,
         verticalPadding = style.progressVerticalPadding,
         textStyle = style.progressTextStyle,
@@ -66,10 +75,16 @@ internal fun PlayerBookInfo(
     PlayerBookPeople(
         book = book,
         tiny = style.peopleTiny,
-        interactive = !layoutState.ruTrackerBook,
+        interactive = !layoutState.ruTrackerBook && book.selectedSource != TEXT_NARRATION_SOURCE && book.selectedSource != "text_audio",
         onAuthor = actions.onAuthor,
         onNarrator = actions.onNarrator,
     )
+    if (book.selectedSource == TEXT_NARRATION_SOURCE || book.selectedSource == TEXT_AUDIO_SOURCE) {
+        TextButton(onClick = actions.onReadFromAudio) {
+            Text("Читать с места прослушивания")
+        }
+    }
+
     PlayerSeriesLink(
         book = book,
         ruTrackerBook = layoutState.ruTrackerBook,
@@ -82,3 +97,4 @@ internal fun PlayerBookInfo(
 
     Spacer(Modifier.height(style.bottomSpacing))
 }
+

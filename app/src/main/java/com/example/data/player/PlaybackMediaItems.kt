@@ -8,6 +8,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import com.example.data.api.ApiClient
 import com.example.data.local.DownloadStore
+import com.example.data.narration.*
 import com.example.data.model.BookDetailDto
 import java.net.URI
 import kotlinx.coroutines.CancellationException
@@ -78,7 +79,13 @@ internal suspend fun buildPlaybackMediaItems(
 
     return book.chapters.map { chapter ->
         val localRow = byChapterId[chapter.id] ?: byPosition[chapter.position]
-        val localUri = localRow?.let { row -> downloadStore.playbackUri(row) }
+        val localUri = if (book.selectedSource == TEXT_NARRATION_SOURCE) {
+            Uri.parse(chapter.streamUrl).also { uri ->
+                require(uri.scheme == TEXT_NARRATION_SCHEME && uri.authority == "fragment" && uri.pathSegments.size == 3 &&
+                    uri.pathSegments[1] == book.id && uri.pathSegments[2] == textFragmentId(chapter.id) &&
+                    uri.pathSegments[0] == chapter.id.substringAfter('|') && uri.query == null && uri.fragment == null)
+            }
+        } else localRow?.let { row -> downloadStore.playbackUri(row) }
         val chapterLabel = chapter.title.ifBlank { "Глава ${chapter.position + 1}" }
         val playbackUri = localUri
             ?: Uri.parse(
@@ -89,6 +96,7 @@ internal suspend fun buildPlaybackMediaItems(
                 )
             )
         val extras = Bundle().apply {
+            if (book.selectedSource == TEXT_NARRATION_SOURCE) putString(EXTRA_TEXT_CONTRACT, localUri!!.pathSegments[0])
             putString(PlaybackMetadata.EXTRA_BOOK_ID, book.id)
             putString(PlaybackMetadata.EXTRA_CHAPTER_ID, chapter.id)
             putString(PlaybackMetadata.EXTRA_SOURCE_CODE, book.selectedSource)
@@ -101,6 +109,7 @@ internal suspend fun buildPlaybackMediaItems(
             .setMediaId("${book.id}:${chapter.id}")
             .setUri(playbackUri)
             .apply {
+                if (book.selectedSource == TEXT_NARRATION_SOURCE) setMimeType("audio/wav")
                 if (localUri == null) {
                     playbackProviderCacheKey(book.selectedSource, playbackUri.toString())
                         ?.let(::setCustomCacheKey)
@@ -112,10 +121,11 @@ internal suspend fun buildPlaybackMediaItems(
                     .setSubtitle(chapter.title.ifBlank { "Глава ${chapter.position}" })
                     .setAlbumTitle(book.title)
                     .setArtist(book.authorText)
-                    .setArtworkUri(ApiClient.coverImageUrl(book.coverUrl)?.let(Uri::parse))
+                    .setArtworkUri(downloadStore.importedCoverUri(book.coverUrl) ?: ApiClient.coverImageUrl(book.coverUrl)?.let(Uri::parse))
                     .setExtras(extras)
                     .build()
             )
             .build()
     }
 }
+

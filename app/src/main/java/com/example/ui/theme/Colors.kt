@@ -11,6 +11,13 @@ private val DarkAccentText = Color(0xFFE1525D)
 
 internal val AudioBookRedBrandRed = BrandRed
 
+internal val ReaderDayBackground = Color(0xFFFAFAF8)
+internal val ReaderDayText = Color(0xFF202020)
+internal val ReaderNightBackground = Color(0xFF121212)
+internal val ReaderNightText = Color(0xFFE2E2E2)
+internal val ReaderSepiaBackground = Color(0xFFF3E8D2)
+internal val ReaderSepiaText = Color(0xFF352B20)
+
 internal val ColorScheme.abredAccentText: Color
     get() = when {
         primary != BrandRed -> primary
@@ -150,3 +157,7 @@ internal val AudioBookRedLightColors = lightColorScheme(
 internal object AbredFixedColors {
     val FaviconBackground = Color.White
 }
+
+internal val ReaderDayHighlight = Color(0xFFFFE5A3)
+internal val ReaderNightHighlight = Color(0xFF51472B)
+internal val ReaderSepiaHighlight = Color(0xFFE6D19C)

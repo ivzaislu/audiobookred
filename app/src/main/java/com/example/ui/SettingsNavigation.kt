@@ -12,6 +12,7 @@ internal enum class SettingsDestination : NavKey {
     Sync,
     Storage,
     Player,
+    Reader,
     Sources,
     ExternalServices,
     Home,

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 data class LibrarySnapshot(
+    val historyActivityTimes: Map<String, Long> = emptyMap(),
     val favorites: List<BookCardDto> = emptyList(),
     val bookmarks: List<BookmarkUiItem> = emptyList(),
     val history: List<BookCardDto> = emptyList(),
@@ -78,6 +79,7 @@ class LibraryRepository(
     ): LibrarySnapshot {
         val library = snapshot.library
         return LibrarySnapshot(
+            historyActivityTimes = library.history.associate { it.id to (resumeStore.get(it.id)?.savedAtMs ?: 0L) },
             favorites = applyResumeProgress(
                 library.favorites.map { it.copy(isFavorite = true) }
             ).distinctBy(BookCardDto::id),

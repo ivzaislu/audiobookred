@@ -5,6 +5,10 @@ import com.example.data.model.MySeriesDto
 import kotlin.math.roundToInt
 
 internal fun librarySeriesProgressDetail(item: MySeriesDto): String {
+    if (item.provider.startsWith("text:")) {
+        val number = item.currentBook?.position?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }
+        return "На устройстве: ${item.availableCount} книг" + (number?.let { " · Книга $it" } ?: "")
+    }
     val available = item.availableCount.coerceAtLeast(0)
     val completed = if (available > 0) {
         item.completedCount.coerceIn(0, available)
@@ -26,11 +30,19 @@ internal fun librarySeriesProgressDetail(item: MySeriesDto): String {
     }
 }
 
+/** Distinguish locally synthesized audiobook WAVs from downloaded provider audio. */
+internal fun isRuVoiceAudioExport(item: DownloadBookEntity): Boolean =
+    item.sourceCode == "text_audio" && item.bookSourceId.startsWith("text_audio:")
+
+internal fun isCompletedRuVoiceAudiobook(item: DownloadBookEntity): Boolean =
+    isRuVoiceAudioExport(item) && item.state == "completed" &&
+        item.filesCount > 0 && item.completedFiles == item.filesCount
+
 internal fun libraryDownloadStatusLabel(item: DownloadBookEntity): String = buildString {
     append(
         when (item.state) {
-            "completed" -> "Скачано"
-            "downloading" -> "Скачивание"
+            "completed" -> if (isRuVoiceAudioExport(item)) "Озвучено RuVoice · готово к прослушиванию" else "Скачано"
+            "downloading" -> if (isRuVoiceAudioExport(item)) "Озвучка RuVoice · подготовка WAV" else "Скачивание"
             "paused" -> "Пауза"
             "failed" -> "Ошибка"
             else -> "В очереди"

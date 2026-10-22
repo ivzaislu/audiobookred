@@ -9,6 +9,12 @@ import com.example.data.local.LocalCacheStore
 import com.example.data.model.BookDetailDto
 import com.example.data.model.BookmarkDto
 import com.example.data.model.ChapterDto
+import com.example.data.model.PersonDto
+import java.io.File
+import android.util.AtomicFile
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.data.model.SeriesDetailDto
 import com.example.data.model.SourceVariantDto
 import com.example.data.parser.AndroidLiveParserLocator
@@ -74,6 +80,7 @@ class BookDetailRepository @Inject constructor(
 ) {
     private val database = AbredDatabase.get(context.applicationContext)
     private val remote = BookDetailRemoteDataSource()
+    private val audioMetadataFolder = File(context.filesDir, "text-audio-exports")
 
     fun observe(routeId: String, downloaded: Boolean): Flow<BookDetailSnapshot?> =
         database.invalidationTracker
@@ -89,6 +96,13 @@ class BookDetailRepository @Inject constructor(
             .map { cachedSnapshot(routeId, downloaded) }
 
     suspend fun refresh(bookId: String): String {
+        if (bookId.startsWith("audio_txt_")) {
+            val stored = downloadStore.books().firstOrNull { it.bookId == bookId && it.sourceCode == "text_audio" }
+                ?: error("Сохранённая аудиокнига больше не найдена.")
+            val book = applyEffectiveState(downloadedBookDetail(stored.bookSourceId))
+            cacheStore.writeBook(book)
+            return book.id
+        }
         val preferred = resolvePreferredSource(bookId)
         val rawBook = if (preferred == null) {
             remote.book(bookId)
@@ -118,6 +132,7 @@ class BookDetailRepository @Inject constructor(
 
     suspend fun selectSource(bookId: String, sourceCode: String) {
         if (bookId.isBlank() || sourceCode.isBlank()) return
+        if (sourceCode == "text_audio") return
 
         val cached = cacheStore.readBook(bookId, sourceCode)
             ?.takeIf { playbackSourceMatches(it.selectedSource, sourceCode) }
@@ -242,18 +257,29 @@ class BookDetailRepository @Inject constructor(
     private suspend fun downloadedBookDetail(bookSourceId: String): BookDetailDto {
         val stored = downloadStore.book(bookSourceId) ?: error("Загрузка не найдена")
         cacheStore.readBook(stored.bookId, stored.sourceCode)?.let { cached ->
-            if (cached.selectedBookSourceId == bookSourceId && cached.chapters.isNotEmpty()) return cached
+            if (stored.sourceCode != "text_audio" && cached.selectedBookSourceId == bookSourceId && cached.chapters.isNotEmpty()) return cached
         }
-        require(stored.state == "completed") {
+        val textAudio = stored.sourceCode == "text_audio"
+        require(stored.state == "completed" || (textAudio && stored.deletedAtMs == null && stored.state != "purged")) {
             "Для незавершённой загрузки нужен сохранённый локальный кэш книги"
         }
         val files = downloadStore.files(bookSourceId)
+            .filter { !textAudio || it.state == "completed" }
             .sortedWith(compareBy({ it.chapterPosition }, { it.fileId }))
         require(files.isNotEmpty()) { "У скачанной книги нет сохранённых глав" }
         val duration = files.sumOf { it.durationSeconds.coerceAtLeast(0L) }
+        val author = if (stored.sourceCode == "text_audio" && stored.manifestId.matches(Regex("[0-9a-f]{64}"))) withContext(Dispatchers.IO) {
+            runCatching {
+                AtomicFile(File(audioMetadataFolder, "${stored.manifestId}.json")).openRead().use {
+                    JSONObject(it.bufferedReader().readText()).optString("author").take(1000)
+                }
+            }.getOrDefault("")
+        } else ""
         return BookDetailDto(
             id = stored.bookId,
             title = stored.title,
+            narrators = if (stored.sourceCode == "text_audio") listOf(PersonDto("local:ruvoice", "RuVoice")) else emptyList(),
+            authors = if (author.isBlank()) emptyList() else listOf(PersonDto("local:author", author)),
             coverUrl = stored.coverUrl,
             durationSeconds = duration,
             sourceCodes = listOf(stored.sourceCode),

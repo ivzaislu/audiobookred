@@ -8,6 +8,8 @@ import com.example.data.model.BookmarkDto
 import com.example.data.model.MySeriesDto
 import com.example.data.model.SeriesProgressBookDto
 import com.example.data.player.PlaybackResumeStore
+import com.example.data.textbook.TextLibraryRepository
+import com.example.data.textbook.textLibraryPlaybackBookId
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,12 +20,18 @@ import javax.inject.Singleton
  * not enqueue legacy profile/backend synchronization.
  */
 @Singleton
-class PlaybackLibraryRepository @Inject constructor(
+class PlaybackLibraryRepository @Inject internal constructor(
     private val cacheStore: LocalCacheStore,
     private val libraryStore: LibraryCacheStore,
     private val resumeStore: PlaybackResumeStore,
+    private val textBooks: TextLibraryRepository,
 ) {
     suspend fun recordPlaybackStarted(book: BookDetailDto, chapterIndex: Int) {
+        val textId = textLibraryPlaybackBookId(book.selectedSource, book.id, book.selectedBookSourceId)
+        if (textId != null && textBooks.contains(textId)) {
+            textBooks.recordActivity(textId)
+            return
+        }
         recordLocalHistory(book)
         recordListenedSeries(book)
     }

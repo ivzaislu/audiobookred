@@ -131,4 +131,27 @@ class PlaybackSpeedResolverTest {
 
         assertEquals(1.0f, result, 0.0001f)
     }
+    @Test
+    fun newNarratedBookUsesReaderDefaultInsteadOfNormalSpeed() {
+        assertEquals(1.5f, resolvePlaybackSpeed(true, 1.5f, chapters, 1, null, null), 0.0001f)
+    }
+
+    @Test
+    fun narratedBookResumesRememberedSpeedWhenEnabled() {
+        val saved = PlaybackSpeedCheckpoint("chapter-1|ruvoice", 1.75f, preferOverPersisted = true)
+        assertEquals(1.75f, resolvePlaybackSpeed(true, 1.5f, chapters, 1, null, saved), 0.0001f)
+    }
+
+    @Test
+    fun readerDefaultWinsOverNarrationCheckpointWhenRememberIsDisabled() {
+        val saved = PlaybackSpeedCheckpoint("chapter-1|ruvoice", 1f, preferOverPersisted = true)
+        assertEquals(1.5f, resolvePlaybackSpeed(false, 1.5f, chapters, 1, null, saved), 0.0001f)
+    }
+
+    @Test
+    fun invalidNarrationCheckpointDoesNotOverrideReaderDefault() {
+        val saved = PlaybackSpeedCheckpoint("chapter-1|ruvoice", Float.NaN, preferOverPersisted = true)
+        assertEquals(1.5f, resolvePlaybackSpeed(true, 1.5f, chapters, 1, null, saved), 0.0001f)
+    }
+
 }

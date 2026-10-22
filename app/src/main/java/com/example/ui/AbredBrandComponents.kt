@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -113,6 +114,7 @@ internal fun AbredBrandHeader(
     modifier: Modifier = Modifier,
     height: Dp = AbredSizes.RootHeaderHeight,
     contentPadding: PaddingValues = PaddingValues(AbredSpacing.None),
+    actions: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier
@@ -121,14 +123,17 @@ internal fun AbredBrandHeader(
         color = MaterialTheme.colorScheme.background,
         tonalElevation = AbredElevation.Flat,
     ) {
-        Box(
+        Row(
             modifier = Modifier.fillMaxSize().padding(contentPadding),
-            contentAlignment = Alignment.CenterStart,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AbredBrandLockup(
-                sectionTitle = sectionTitle,
-                modifier = Modifier.width(AbredSizes.RootHeaderBrandWidth),
-            )
+            Box(Modifier.weight(1f)) {
+                AbredBrandLockup(
+                    sectionTitle = sectionTitle,
+                    modifier = Modifier.widthIn(max = AbredSizes.RootHeaderBrandWidth).fillMaxWidth(),
+                )
+            }
+            actions?.invoke()
         }
     }
 }

@@ -42,6 +42,13 @@ internal fun LibraryTilesV2(
                 modifier = Modifier.weight(1f),
                 onClick = { onSelect(LibraryTabV2.Favorites) },
             )
+            LibraryTileV2(
+                tab = LibraryTabV2.Texts,
+                count = counts[LibraryTabV2.Texts] ?: 0,
+                selected = selected == LibraryTabV2.Texts,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(LibraryTabV2.Texts) },
+            )
         }
         Spacer(Modifier.height(AbredSpacing.Xs))
         Row(
@@ -90,6 +97,7 @@ private fun LibraryTileV2(
         LibraryTabV2.Series -> "Циклы"
         LibraryTabV2.Bookmarks -> "Закладки"
         LibraryTabV2.Device -> "Скачанные"
+        LibraryTabV2.Texts -> "Книги"
     }
     val iconRes = when (tab) {
         LibraryTabV2.History -> R.drawable.ic_abred_library_history
@@ -97,6 +105,7 @@ private fun LibraryTileV2(
         LibraryTabV2.Series -> R.drawable.ic_abred_library_series
         LibraryTabV2.Bookmarks -> R.drawable.ic_abred_library_bookmarks
         LibraryTabV2.Device -> R.drawable.ic_abred_library_downloads
+        LibraryTabV2.Texts -> R.drawable.ic_abred_library_texts
     }
 
     Surface(
@@ -140,4 +149,5 @@ private fun LibraryTileV2(
         }
     }
 }
+
 

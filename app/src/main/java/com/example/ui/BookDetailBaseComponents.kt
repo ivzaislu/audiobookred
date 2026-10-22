@@ -12,6 +12,11 @@ import com.example.ui.theme.abredFlatCardElevation
 import com.example.ui.theme.abredOutlineBorder
 
 @Composable
+internal fun BookDetailActionsCard(content: @Composable ColumnScope.() -> Unit) {
+    BookDetailSectionCard(modifier = Modifier.padding(top = AbredSpacing.Sm), content = content)
+}
+
+@Composable
 internal fun BookDetailSectionCard(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(AbredSpacing.Md),

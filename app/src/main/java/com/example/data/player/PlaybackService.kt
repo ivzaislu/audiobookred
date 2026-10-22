@@ -13,6 +13,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.datasource.DataSource
+import com.example.data.narration.*
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -65,11 +67,13 @@ class PlaybackService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var narrationPrefetch: TextNarrationPrefetch
     private lateinit var progressController: PlaybackProgressController
     private lateinit var sleepTimerController: PlaybackSleepTimerController
     private lateinit var androidAutoController: AndroidAutoSessionController
     private var pauseAnchor: PauseAnchor? = null
 
+    @Inject lateinit var textNarration: TextNarrationPlayback
     @Inject lateinit var settingsStore: PlayerSettingsStore
     @Inject lateinit var resumeStore: PlaybackResumeStore
     @Inject lateinit var localCacheStore: LocalCacheStore
@@ -99,7 +103,7 @@ class PlaybackService : MediaLibraryService() {
             upstreamFactory = httpDataSourceFactory,
             rutrackerUpstreamFactory = torrServeHttpDataSourceFactory,
         )
-        val dataSourceFactory = DefaultDataSource.Factory(this, remoteDataSourceFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(this, DataSource.Factory { TextNarrationDataSource(textNarration, remoteDataSourceFactory.createDataSource()) })
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
         val bitmapLoader = CacheBitmapLoader(
             DataSourceBitmapLoader.Builder(this)
@@ -122,11 +126,13 @@ class PlaybackService : MediaLibraryService() {
 
             }
 
+        narrationPrefetch = TextNarrationPrefetch(player, textNarration, serviceScope)
         progressController = PlaybackProgressController(
             player = player,
             resumeStore = resumeStore,
             localCacheStore = localCacheStore,
             scope = serviceScope,
+            textResumeStore = textNarration.resumeStore,
         ).also(PlaybackProgressController::start)
         sleepTimerController = PlaybackSleepTimerController(
             player = player,
@@ -155,9 +161,13 @@ class PlaybackService : MediaLibraryService() {
             playbackLibraryRepository = playbackLibraryRepository,
             preparePlayback = preparePlayback,
             scope = serviceScope,
+            textNarration = textNarration,
         )
 
         player.addListener(object : Player.Listener {
+            override fun onEvents(player: androidx.media3.common.Player, events: androidx.media3.common.Player.Events) {
+                narrationPrefetch.update()
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 tracePlaybackEvent("is_playing", player, "value=$isPlaying")
                 if (isPlaying) {
@@ -198,6 +208,7 @@ class PlaybackService : MediaLibraryService() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 tracePlaybackEvent("media_transition", player, "reason=$reason")
                 androidAutoController.notifyContinueIfChanged(mediaItem)
+                sleepTimerController.applyPauseAtEndPolicy()
             }
 
             override fun onRepeatModeChanged(repeatMode: Int) {
@@ -234,6 +245,9 @@ class PlaybackService : MediaLibraryService() {
                 when (reason) {
                     Player.DISCONTINUITY_REASON_AUTO_TRANSITION -> {
                         progressController.saveAutoTransitionCheckpoint(oldPosition)
+                        if (player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackMetadata.EXTRA_SOURCE_CODE) == TEXT_NARRATION_SOURCE) {
+                            progressController.saveLocalSnapshot(allowZero = true)
+                        }
                         sleepTimerController.onAutoTransition(oldPosition.mediaItemIndex)
                     }
                     Player.DISCONTINUITY_REASON_SEEK -> {
@@ -346,6 +360,7 @@ class PlaybackService : MediaLibraryService() {
             progressController.saveLocalSnapshot()
             progressController.close()
         }
+        if (::narrationPrefetch.isInitialized) narrationPrefetch.close()
         if (::sleepTimerController.isInitialized) sleepTimerController.close()
         if (::androidAutoController.isInitialized) androidAutoController.detachSession()
         mediaSession?.run {
@@ -403,3 +418,4 @@ class PlaybackService : MediaLibraryService() {
 
 
 }
+

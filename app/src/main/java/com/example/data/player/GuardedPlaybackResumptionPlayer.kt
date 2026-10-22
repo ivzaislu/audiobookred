@@ -1,6 +1,7 @@
 package com.example.data.player
 
 import androidx.annotation.OptIn
+import com.example.data.narration.*
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
@@ -106,6 +107,19 @@ internal class GuardedPlaybackResumptionPlayer(
         }
     }
 
+    private fun seekTextChapter(next: Boolean): Boolean {
+        val player = underlyingPlayer
+        if (player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackMetadata.EXTRA_SOURCE_CODE) != TEXT_NARRATION_SOURCE) return false
+        val ids = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaMetadata.extras?.getString(PlaybackMetadata.EXTRA_CHAPTER_ID).orEmpty() }
+        textChapterTarget(ids, player.currentMediaItemIndex, next)?.let { player.seekTo(it, 0L) }
+        return true
+    }
+
+    override fun seekToNextMediaItem() { if (!seekTextChapter(true)) super.seekToNextMediaItem() }
+    override fun seekToPreviousMediaItem() { if (!seekTextChapter(false)) super.seekToPreviousMediaItem() }
+    override fun seekToNext() { if (!seekTextChapter(true)) super.seekToNext() }
+    override fun seekToPrevious() { if (!seekTextChapter(false)) super.seekToPrevious() }
+
     override fun pause() {
         cancelPendingResumption()
         super.pause()
@@ -161,3 +175,4 @@ internal class GuardedPlaybackResumptionPlayer(
 @OptIn(UnstableApi::class)
 internal fun emptyPlaybackResumptionItems() =
     MediaSession.MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, 0L)
+

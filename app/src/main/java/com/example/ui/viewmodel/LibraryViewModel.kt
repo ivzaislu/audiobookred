@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class LibraryUiState(
+    val historyActivityTimes: Map<String, Long> = emptyMap(),
     val favorites: List<BookCardDto> = emptyList(),
     val bookmarks: List<BookmarkUiItem> = emptyList(),
     val history: List<BookCardDto> = emptyList(),
@@ -79,6 +80,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             repository.observe().collect { snapshot ->
                 _state.value = LibraryUiState(
+                    historyActivityTimes = snapshot.historyActivityTimes,
                     favorites = snapshot.favorites,
                     bookmarks = snapshot.bookmarks,
                     history = snapshot.history,

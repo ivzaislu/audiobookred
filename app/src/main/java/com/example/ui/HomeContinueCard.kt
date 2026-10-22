@@ -35,6 +35,7 @@ internal fun ContinueHeroCard(
     showProgressPercent: Boolean,
     onOpen: () -> Unit,
     onContinue: () -> Unit,
+    isTextBook: Boolean = false,
 ) {
     val sourceLabel = book.sourceDisplayLabel()
     val seriesLabel = book.seriesDisplayLabel()
@@ -104,11 +105,13 @@ internal fun ContinueHeroCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.height(AbredSpacing.Sm))
-                AbredBookProgress(
-                    progressPercent = book.progressPercent,
-                    showPercentLabel = showProgressPercent,
-                )
+                if (!isTextBook) {
+                    Spacer(Modifier.height(AbredSpacing.Sm))
+                    AbredBookProgress(
+                        progressPercent = book.progressPercent,
+                        showPercentLabel = showProgressPercent,
+                    )
+                }
                 Spacer(Modifier.height(AbredSpacing.Xs))
                 Button(
                     onClick = onContinue,
@@ -125,7 +128,9 @@ internal fun ContinueHeroCard(
                     )
                     Spacer(Modifier.width(AbredSpacing.Xxs))
                     Text(
-                        if (showProgressPercent && book.progressPercent > 0.05) {
+                        if (isTextBook) {
+                            "Продолжить слушать"
+                        } else if (showProgressPercent && book.progressPercent > 0.05) {
                             "Продолжить · ${book.progressPercent.roundToInt()}%"
                         } else {
                             "Продолжить"

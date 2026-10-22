@@ -345,6 +345,7 @@ class PreparePlaybackUseCase @Inject constructor(
 
     suspend fun downloaded(bookSourceId: String): PreparedPlayback {
         val book = bookDetailRepository.downloadedBook(bookSourceId)
+        if (book.selectedSource == "text_audio") cacheStore.writeBook(book)
         val saved = loadProgress(book)
         val point = resolveResumePoint(book, saved)
         return prepared(book, point.first, point.second, saved)
@@ -460,7 +461,7 @@ class PreparePlaybackUseCase @Inject constructor(
     }
 
     private suspend fun completedDownloadedBookOrNull(book: BookDetailDto): BookDetailDto? {
-        if (!book.selectedSource.equals("rutracker", ignoreCase = true)) return null
+        if (!book.selectedSource.equals("rutracker", ignoreCase = true) && book.selectedSource != "text_audio") return null
         val bookSourceId = book.selectedBookSourceId.trim().takeIf(String::isNotBlank) ?: return null
         return completedDownloadedBookForSourceIdOrNull(bookSourceId)
     }
@@ -469,7 +470,8 @@ class PreparePlaybackUseCase @Inject constructor(
         bookId: String,
         sourceHint: String?,
     ): BookDetailDto? {
-        if (!sourceHint.equals("rutracker", ignoreCase = true)) return null
+        val localSource = sourceHint ?: "text_audio".takeIf { bookId.startsWith("audio_txt_") }
+        if (!localSource.equals("rutracker", ignoreCase = true) && localSource != "text_audio") return null
         val candidates = try {
             downloadStore.books()
         } catch (error: CancellationException) {
@@ -481,7 +483,7 @@ class PreparePlaybackUseCase @Inject constructor(
         for (download in candidates) {
             if (
                 download.bookId == bookId &&
-                download.sourceCode.equals("rutracker", ignoreCase = true)
+                download.sourceCode.equals(localSource, ignoreCase = true)
             ) {
                 completedDownloadedBookForSourceIdOrNull(download.bookSourceId)?.let { return it }
             }
@@ -509,6 +511,8 @@ class PreparePlaybackUseCase @Inject constructor(
         }
 
         if (
+            !(download.sourceCode == "text_audio" && download.state == "completed" && download.deletedAtMs == null &&
+                files.isNotEmpty() && files.size == download.filesCount && files.all { it.state == "completed" }) &&
             !shouldUseCompletedRuTrackerDownload(
                 sourceCode = download.sourceCode,
                 bookSourceId = download.bookSourceId,

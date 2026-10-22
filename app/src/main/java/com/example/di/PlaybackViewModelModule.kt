@@ -3,6 +3,7 @@ package com.example.di
 import android.content.Context
 import com.example.data.local.DownloadStore
 import com.example.data.local.LocalCacheStore
+import com.example.data.narration.TextNarrationPlayback
 import com.example.data.player.AudiobookPlayerManager
 import com.example.data.player.PlaybackResumeStore
 import com.example.data.settings.PlayerSettingsStore
@@ -25,12 +26,15 @@ object PlaybackViewModelModule {
         downloadStore: DownloadStore,
         cacheStore: LocalCacheStore,
         settingsStore: PlayerSettingsStore,
+        textNarration: TextNarrationPlayback,
     ): AudiobookPlayerManager = AudiobookPlayerManager(
         context = context,
         resumeStore = resumeStore,
         downloadStore = downloadStore,
         cacheStore = cacheStore,
+        textNarration = textNarration,
     ).also { player ->
         player.setDefaultSpeed(settingsStore.state.value.defaultSpeed)
     }
 }
+

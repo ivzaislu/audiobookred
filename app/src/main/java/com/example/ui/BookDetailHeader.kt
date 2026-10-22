@@ -25,6 +25,27 @@ internal fun BookDetailTopBar(
     onBack: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
+    BookDetailPageTopBar(onBack = onBack) {
+        IconButton(
+            onClick = onToggleFavorite,
+            modifier = Modifier.size(AbredSizes.MinimumTouchTarget),
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = if (book.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        ) {
+            Icon(
+                if (book.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                if (book.isFavorite) "Убрать из избранного" else "В избранное",
+            )
+        }
+    }
+}
+
+@Composable
+internal fun BookDetailPageTopBar(
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = { Spacer(Modifier.size(AbredSizes.MinimumTouchTarget)) },
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -44,22 +65,7 @@ internal fun BookDetailTopBar(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
-        IconButton(
-            onClick = onToggleFavorite,
-            modifier = Modifier.size(AbredSizes.MinimumTouchTarget),
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = if (book.isFavorite) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            ),
-        ) {
-            Icon(
-                if (book.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                if (book.isFavorite) "Убрать из избранного" else "В избранное",
-            )
-        }
+        actions()
     }
 }
 

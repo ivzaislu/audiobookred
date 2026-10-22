@@ -36,9 +36,7 @@ internal fun BookDetailActionsSection(
     onRetryDownload: (String) -> Unit,
 ) {
     val challengeActive = browserChallengeSession != null && browserChallengeRequestId != null
-    BookDetailSectionCard(
-        modifier = Modifier.padding(top = AbredSpacing.Sm),
-    ) {
+    BookDetailActionsCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AbredSpacing.Xs),

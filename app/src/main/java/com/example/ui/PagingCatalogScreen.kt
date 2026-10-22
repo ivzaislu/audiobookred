@@ -41,6 +41,10 @@ internal fun PagingCatalogScreen(
     onRefreshMetadata: () -> Unit,
     showProgressPercent: Boolean,
     browserChallengeSession: BrowserChallengeSession?,
+    headerContent: (@Composable () -> Unit)? = null,
+    sourceLabelOverride: String? = null,
+    bookRow: (@Composable (BookCardDto) -> Unit)? = null,
+    headerActions: (@Composable () -> Unit)? = null,
 ) {
     var text by remember(state.query) { mutableStateOf(state.query) }
     val focusManager = LocalFocusManager.current
@@ -84,6 +88,7 @@ internal fun PagingCatalogScreen(
             onSource = onSource,
             session = browserChallengeSession,
             requestId = challengeState.requestId,
+            headerActions = headerActions,
         )
         return
     }
@@ -102,7 +107,7 @@ internal fun PagingCatalogScreen(
             contentPadding = PaddingValues(bottom = AbredSpacing.Xl),
         ) {
             item(key = "catalog-header") {
-                CatalogHeaderContent(
+                if (headerContent != null) headerContent() else CatalogHeaderContent(
                     state = state,
                     text = text,
                     onTextChange = onTextChange,
@@ -110,6 +115,7 @@ internal fun PagingCatalogScreen(
                     onSearchAllSources = onSearchAllSources,
                     onGenre = onGenre,
                     onSource = onSource,
+                    headerActions = headerActions,
                 )
             }
 
@@ -139,6 +145,8 @@ internal fun PagingCatalogScreen(
                             state.searchAllSources,
                     showProgressPercent = showProgressPercent,
                     onBook = onBook,
+                    sourceLabelOverride = sourceLabelOverride,
+                    bookRow = bookRow,
                 )
             }
         }

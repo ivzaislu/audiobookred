@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import com.example.data.narration.*
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -66,6 +67,9 @@ internal fun PlayerChaptersSheet(
     onDismiss: () -> Unit,
     onPlayChapter: (Int) -> Unit,
 ) {
+    val textBook = book.selectedSource == TEXT_NARRATION_SOURCE
+    val indices = remember(book.chapters, textBook) { if (textBook) textChapterStarts(book.chapters.map { it.id }) else book.chapters.indices.toList() }
+    val currentLogical = indices.indexOfLast { it <= currentChapterIndex }.coerceAtLeast(0)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -85,7 +89,7 @@ internal fun PlayerChaptersSheet(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "${book.chapters.size} · сейчас ${currentChapterIndex + 1}",
+                        "${indices.size} · сейчас ${currentLogical + 1}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -104,8 +108,9 @@ internal fun PlayerChaptersSheet(
                     bottom = AbredSpacing.Xl,
                 ),
             ) {
-                itemsIndexed(book.chapters, key = { _, item -> item.id }) { index, item ->
-                    val selected = index == currentChapterIndex
+                itemsIndexed(indices, key = { _, index -> book.chapters[index].id }) { logicalIndex, index ->
+                    val item = book.chapters[index]
+                    val selected = logicalIndex == currentLogical
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -161,7 +166,7 @@ internal fun PlayerChaptersSheet(
                                 Text(
                                     chapterDisplayLabel(
                                         title = item.title,
-                                        chapterIndex = index,
+                                        chapterIndex = logicalIndex,
                                         simplify = simplifyChapterTitles,
                                     ),
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
@@ -181,7 +186,7 @@ internal fun PlayerChaptersSheet(
                                 }
                             }
                             Text(
-                                "${index + 1}",
+                                "${logicalIndex + 1}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (selected) {
                                     MaterialTheme.colorScheme.onPrimaryContainer
@@ -196,4 +201,5 @@ internal fun PlayerChaptersSheet(
         }
     }
 }
+
 

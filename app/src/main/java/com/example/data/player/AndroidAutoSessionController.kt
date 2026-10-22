@@ -14,6 +14,7 @@ import androidx.media3.session.SessionError
 import com.example.data.backup.UserDataRestoreGate
 import com.example.data.local.DownloadStore
 import com.example.data.local.LocalCacheStore
+import com.example.data.narration.*
 import com.example.data.model.BookDetailDto
 import com.example.data.repository.PlaybackLibraryRepository
 import com.example.domain.playback.PreparedPlayback
@@ -45,6 +46,7 @@ internal class AndroidAutoSessionController(
     private val playbackLibraryRepository: PlaybackLibraryRepository,
     private val preparePlayback: PreparePlaybackUseCase,
     private val scope: CoroutineScope,
+    private val textNarration: TextNarrationPlayback? = null,
 ) {
     private var session: MediaLibrarySession? = null
     private var pendingResumptionBook: BookDetailDto? = null
@@ -366,17 +368,22 @@ internal class AndroidAutoSessionController(
     ): SessionPlaybackResumption {
         val playbackWriteEpoch = UserDataRestoreGate.currentPlaybackWriteEpoch()
 
-        val snapshot = resumeStore.latestSnapshot()
+        val snapshot = latestSnapshot()
             ?: error("Нет сохранённой позиции для продолжения")
         val sourceCode = snapshot.sourceCode
             .takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
             ?: standalonePlaybackSourceFromBookId(snapshot.bookId)
-        val cachedProgress = localCacheStore.readProgress(snapshot.bookId, sourceCode)
+        val cachedProgress = if (sourceCode == TEXT_NARRATION_SOURCE) null else localCacheStore.readProgress(snapshot.bookId, sourceCode)
         if (cachedProgress?.completed == true || snapshot.progressPercent >= 100.0) {
             error("Последняя книга уже завершена")
         }
 
-        val prepared = preparePlayback.resumption(snapshot)
+        val prepared = if (sourceCode == TEXT_NARRATION_SOURCE) {
+            val text = checkNotNull(textNarration).prepare(snapshot.bookId)
+            val epoch = UserDataRestoreGate.registerPreparedPlaybackTarget(text.book.id, TEXT_NARRATION_SOURCE, playbackWriteEpoch)
+                ?: error("Состояние воспроизведения изменилось")
+            text.copy(playbackWriteEpoch = epoch)
+        } else preparePlayback.resumption(snapshot)
             ?: error("Не удалось подготовить последнюю книгу для продолжения")
         if (!UserDataRestoreGate.playbackWriteEpochCurrent(playbackWriteEpoch)) {
             error("Состояние воспроизведения изменилось во время восстановления")
@@ -386,12 +393,12 @@ internal class AndroidAutoSessionController(
         if (items.isEmpty()) error("Не удалось восстановить плейлист книги")
         val chapterIndex = prepared.chapterIndex.coerceIn(0, items.lastIndex)
         val positionMs = prepared.positionMs.coerceAtLeast(0L)
-        if (localCacheStore.readProgress(snapshot.bookId, sourceCode)?.completed == true) {
+        if (sourceCode != TEXT_NARRATION_SOURCE && localCacheStore.readProgress(snapshot.bookId, sourceCode)?.completed == true) {
             error("Последняя книга уже завершена")
         }
         fun authorized(): Boolean =
             UserDataRestoreGate.playbackWriteEpochCurrent(playbackWriteEpoch) &&
-                resumeStore.latestSnapshot() == snapshot
+                latestSnapshot() == snapshot
 
         if (isForPlayback) {
             return SessionPlaybackResumption(
@@ -411,7 +418,11 @@ internal class AndroidAutoSessionController(
         )
     }
 
+    private fun latestSnapshot(): PlaybackResumeStore.Snapshot? =
+        listOfNotNull(resumeStore.latestSnapshot(), textNarration?.resumeStore?.latestSnapshot()).maxByOrNull { it.savedAtMs }
+
     private companion object {
         const val TAG = "AndroidAutoSession"
     }
 }
+

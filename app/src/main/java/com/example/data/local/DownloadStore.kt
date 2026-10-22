@@ -109,6 +109,7 @@ class DownloadStore(
     )
 
     fun canPublishCompletedFiles(): Boolean = completedStorage.canPublish()
+    internal fun importedCoverUri(raw: String): Uri? = com.example.data.image.LocalBookCover.uri(appContext, raw)
 
     internal fun markDownloadGenerationActive(bookSourceId: String, manifestId: String) {
         generationStorage.markActive(bookSourceId, manifestId)
@@ -491,6 +492,7 @@ class DownloadStore(
     suspend fun publishCompletedFile(
         file: DownloadFileEntity,
         expectedManifestId: String,
+        durationSeconds: Long? = null,
     ): Long = lifecycleMutex(file.bookSourceId).withLock {
         val book = dao.book(file.bookSourceId)
             ?: error("Загрузка больше не существует")
@@ -523,6 +525,7 @@ class DownloadStore(
                 listOf(
                     current.copy(
                         state = "completed",
+                        durationSeconds = durationSeconds ?: current.durationSeconds,
                         downloadedBytes = publishedBytes,
                         error = "",
                         updatedAtMs = now,

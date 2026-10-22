@@ -10,6 +10,7 @@ internal fun PreparedSettingsScreen(
     onStorage: () -> Unit,
     onHome: () -> Unit,
     onPlayer: () -> Unit,
+    onReader: () -> Unit,
     onSources: () -> Unit,
     onExternalServices: () -> Unit,
 ) {
@@ -19,6 +20,7 @@ internal fun PreparedSettingsScreen(
         onStorage = onStorage,
         onHome = onHome,
         onPlayer = onPlayer,
+        onReader = onReader,
         onSources = onSources,
         onExternalServices = onExternalServices,
     )

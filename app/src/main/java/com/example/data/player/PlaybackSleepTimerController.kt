@@ -3,6 +3,7 @@ package com.example.data.player
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.example.data.narration.*
 import com.example.data.settings.PlayerSettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -53,9 +54,13 @@ internal class PlaybackSleepTimerController(
 
     fun applyPauseAtEndPolicy() {
         val sleepAtChapterEnd = store.state.value.mode == SleepTimerMode.END_OF_CHAPTER
-        player.setPauseAtEndOfMediaItems(
-            sleepAtChapterEnd || !settingsStore.state.value.autoNextChapter
-        )
+        val current = player.currentMediaItem
+        val index = player.currentMediaItemIndex
+        val textBook = current?.mediaMetadata?.extras?.getString(PlaybackMetadata.EXTRA_SOURCE_CODE) == TEXT_NARRATION_SOURCE
+        val currentId = current?.mediaMetadata?.extras?.getString(PlaybackMetadata.EXTRA_CHAPTER_ID).orEmpty()
+        val nextId = if (index + 1 in 0 until player.mediaItemCount) player.getMediaItemAt(index + 1).mediaMetadata.extras?.getString(PlaybackMetadata.EXTRA_CHAPTER_ID) else null
+        val lastInChapter = !textBook || nextId == null || textChapterId(currentId) != textChapterId(nextId)
+        player.setPauseAtEndOfMediaItems(lastInChapter && (sleepAtChapterEnd || !settingsStore.state.value.autoNextChapter))
     }
 
     fun onPlaybackEnded() {
@@ -74,6 +79,11 @@ internal class PlaybackSleepTimerController(
         val timer = store.state.value
         if (timer.mode != SleepTimerMode.END_OF_CHAPTER) return
         if (newIndex == timer.chapterIndex) return
+        if (timer.sourceCode == TEXT_NARRATION_SOURCE && newIndex in 0 until player.mediaItemCount && timer.chapterIndex in 0 until player.mediaItemCount) {
+            val target = player.getMediaItemAt(newIndex).mediaMetadata.extras?.getString(PlaybackMetadata.EXTRA_CHAPTER_ID).orEmpty()
+            val anchor = player.getMediaItemAt(timer.chapterIndex).mediaMetadata.extras?.getString(PlaybackMetadata.EXTRA_CHAPTER_ID).orEmpty()
+            if (textChapterId(target) == textChapterId(anchor)) return
+        }
         store.clear()
     }
 
@@ -95,3 +105,4 @@ internal class PlaybackSleepTimerController(
             (timer.sourceCode == null || sourceCode == timer.sourceCode)
     }
 }
+

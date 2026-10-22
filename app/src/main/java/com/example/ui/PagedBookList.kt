@@ -42,6 +42,8 @@ internal fun LazyListScope.pagedBookShelves(
     keyPrefix: String,
     showProgressPercent: Boolean,
     onBook: (String) -> Unit,
+    sourceLabelOverride: String? = null,
+    bookRow: (@Composable (BookCardDto) -> Unit)? = null,
 ) {
     repeat(items.itemCount) { index ->
         item(
@@ -49,9 +51,10 @@ internal fun LazyListScope.pagedBookShelves(
             contentType = "book-row",
         ) {
             items[index]?.let { book ->
-                PagedBookRowCard(
+                if (bookRow != null) bookRow(book) else PagedBookRowCard(
                     book = book,
                     showProgressPercent = showProgressPercent,
+                    sourceLabelOverride = sourceLabelOverride,
                     onClick = { onBook(book.id) },
                 )
             } ?: Spacer(Modifier.fillMaxWidth().height(AbredSizes.LoadingCardHeight))

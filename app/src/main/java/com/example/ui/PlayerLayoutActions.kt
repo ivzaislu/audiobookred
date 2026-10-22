@@ -15,6 +15,7 @@ internal class PlayerLayoutActions(
     val onAddBookmark: () -> Unit,
     val onBack: () -> Unit,
     val onOpenBook: (String) -> Unit,
+    val onReadFromAudio: () -> Unit,
     val onAuthor: (PersonDto) -> Unit,
     val onNarrator: (PersonDto) -> Unit,
     val onSeries: (String) -> Unit,

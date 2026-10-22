@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,77 +40,83 @@ internal fun BookDetailMetadataSection(
     seriesTotal: Int? = null,
     onOpenSeries: () -> Unit = {},
 ) {
-    BookDetailSectionCard(
-        modifier = Modifier.padding(top = AbredSpacing.Sm),
-        contentPadding = PaddingValues(
-            horizontal = AbredSpacing.Md,
-            vertical = AbredSpacing.Xs,
-        ),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs)) {
-            BookDetailMetadataRow("Автор") {
-                BookDetailPeopleValues(book.authors, !ruTrackerBook, onAuthor)
+    BookDetailMetadataCard {
+        BookDetailMetadataRow("Автор") {
+            BookDetailPeopleValues(book.authors, !ruTrackerBook && book.selectedSource != "text_audio", onAuthor)
+        }
+        if (book.narrators.isNotEmpty()) {
+            BookDetailMetadataRow("Читает") {
+                BookDetailPeopleValues(book.narrators, !ruTrackerBook && book.selectedSource != "text_audio", onNarrator)
             }
-            if (book.narrators.isNotEmpty()) {
-                BookDetailMetadataRow("Читает") {
-                    BookDetailPeopleValues(book.narrators, !ruTrackerBook, onNarrator)
-                }
+        }
+        if (!seriesName.isNullOrBlank()) {
+            BookDetailSeriesMetadataRow(
+                name = seriesName,
+                subtitle = bookDetailSeriesSubtitle(seriesPosition, seriesTotal),
+                onOpen = onOpenSeries,
+                valueColor = MaterialTheme.colorScheme.abredAccentText,
+            )
+        }
+        if (book.durationSeconds > 0) {
+            BookDetailMetadataRow("Длительность") {
+                Text(
+                    detailFormatSeconds(book.durationSeconds),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
-            if (!seriesName.isNullOrBlank()) {
-                Column {
-                    HorizontalDivider(
-                        thickness = AbredStroke.Hairline,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Subtle),
-                    )
-                    BookDetailMetadataRow(
-                        label = "Цикл / серия",
-                        modifier = Modifier
-                            .heightIn(min = AbredSizes.MinimumTouchTarget)
-                            .clip(MaterialTheme.shapes.small)
-                            .clickable(
-                                role = Role.Button,
-                                onClickLabel = "Открыть цикл «$seriesName»",
-                                onClick = onOpenSeries,
-                            )
-                            .padding(vertical = AbredSpacing.Xs),
-                    ) {
-                        BookDetailSeriesValue(
-                            name = seriesName,
-                            position = seriesPosition,
-                            total = seriesTotal,
-                        )
-                    }
-                    HorizontalDivider(
-                        thickness = AbredStroke.Hairline,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Subtle),
-                    )
-                }
+        }
+        if (book.genres.isNotEmpty()) {
+            BookDetailMetadataRow("Жанры") {
+                BookDetailGenreValues(book.genres, !ruTrackerBook, onGenre)
             }
-            if (book.durationSeconds > 0) {
-                BookDetailMetadataRow("Длительность") {
-                    Text(
-                        detailFormatSeconds(book.durationSeconds),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-            if (book.genres.isNotEmpty()) {
-                BookDetailMetadataRow("Жанры") {
-                    BookDetailGenreValues(book.genres, !ruTrackerBook, onGenre)
-                }
-            }
-            detailSourceCode(book).takeIf(String::isNotBlank)?.let { code ->
-                BookDetailMetadataRow("Источник") {
-                    Text(sourceDisplayLabel(code), style = MaterialTheme.typography.bodyMedium)
-                }
+        }
+        detailSourceCode(book).takeIf(String::isNotBlank)?.let { code ->
+            BookDetailMetadataRow("Источник") {
+                Text(sourceDisplayLabel(code), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
 }
 
 @Composable
-private fun BookDetailMetadataRow(
+internal fun BookDetailMetadataCard(content: @Composable ColumnScope.() -> Unit) {
+    BookDetailSectionCard(
+        modifier = Modifier.padding(top = AbredSpacing.Sm),
+        contentPadding = PaddingValues(horizontal = AbredSpacing.Md, vertical = AbredSpacing.Xs),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs), content = content)
+    }
+}
+
+@Composable
+internal fun BookDetailSeriesMetadataRow(
+    name: String,
+    subtitle: String,
+    onOpen: () -> Unit,
+    enabled: Boolean = true,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Column {
+        HorizontalDivider(thickness = AbredStroke.Hairline,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Subtle))
+        BookDetailMetadataRow(
+            label = "Цикл / серия",
+            modifier = Modifier.heightIn(min = AbredSizes.MinimumTouchTarget)
+                .clip(MaterialTheme.shapes.small)
+                .clickable(enabled = enabled, role = Role.Button,
+                    onClickLabel = "Открыть цикл «$name»", onClick = onOpen)
+                .padding(vertical = AbredSpacing.Xs),
+        ) {
+            BookDetailSeriesValue(name = name, subtitle = subtitle, valueColor = valueColor)
+        }
+        HorizontalDivider(thickness = AbredStroke.Hairline,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AbredOpacity.Subtle))
+    }
+}
+
+@Composable
+internal fun BookDetailMetadataRow(
     label: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
@@ -137,10 +144,11 @@ private fun BookDetailMetadataRow(
 }
 
 @Composable
-private fun BookDetailPeopleValues(
+internal fun BookDetailPeopleValues(
     people: List<PersonDto>,
     interactive: Boolean,
     onPerson: (PersonDto) -> Unit,
+    enabled: Boolean = true,
 ) {
     if (people.isEmpty()) {
         Text("Не указан", style = MaterialTheme.typography.bodyMedium,
@@ -151,6 +159,7 @@ private fun BookDetailPeopleValues(
         values = people.map { it.name },
         allowNavigation = interactive,
         onSelect = { onPerson(people[it]) },
+        enabled = enabled,
     )
 }
 
@@ -172,6 +181,7 @@ private fun BookDetailMetadataValueList(
     values: List<String>,
     allowNavigation: Boolean,
     onSelect: (Int) -> Unit,
+    enabled: Boolean = true,
 ) {
     if (values.isEmpty()) return
     var expanded by remember(values, allowNavigation) { mutableStateOf(false) }
@@ -183,6 +193,7 @@ private fun BookDetailMetadataValueList(
                 .clip(MaterialTheme.shapes.small)
                 .clickable(
                     role = Role.Button,
+                    enabled = enabled,
                     onClickLabel = if (opensList) "Показать список" else "Открыть",
                 ) {
                     if (opensList) expanded = true else onSelect(0)
@@ -210,7 +221,7 @@ private fun BookDetailMetadataValueList(
             }
         }
         DropdownMenu(
-            expanded = expanded,
+            expanded = expanded && enabled,
             onDismissRequest = { expanded = false },
         ) {
             values.forEachIndexed { index, value ->
@@ -269,8 +280,8 @@ internal fun BookDetailSourceSection(
 @Composable
 private fun BookDetailSeriesValue(
     name: String,
-    position: Int?,
-    total: Int?,
+    subtitle: String,
+    valueColor: Color,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -281,9 +292,8 @@ private fun BookDetailSeriesValue(
                 name,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.abredAccentText,
+                color = valueColor,
             )
-            val subtitle = bookDetailSeriesSubtitle(position, total)
             if (subtitle.isNotBlank()) {
                 Spacer(Modifier.height(AbredSpacing.Xxs))
                 Text(

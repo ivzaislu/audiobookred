@@ -1,6 +1,12 @@
 package com.example.data.player
 
 import android.content.Context
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import android.content.SharedPreferences
 import com.example.data.backup.UserDataRestoreGate
 
@@ -18,9 +24,9 @@ internal fun sanitizePlaybackProgressPercent(value: Double): Double = value
  * standalone mode it means that the fast SharedPreferences checkpoint should
  * take precedence over the durable Room mirror when playback is prepared.
  */
-class PlaybackResumeStore(context: Context) {
+class PlaybackResumeStore(context: Context, preferencesName: String = "audiobookred_playback_resume") {
     private val prefs = context.applicationContext.getSharedPreferences(
-        PREFS_NAME,
+        preferencesName,
         Context.MODE_PRIVATE
     )
 
@@ -172,6 +178,14 @@ class PlaybackResumeStore(context: Context) {
     }
 
     private fun snapshotsForBook(bookId: String): List<Snapshot> = allSnapshots().filter { it.bookId == bookId }
+
+    /** Read-only updates, including explicit seeks back to zero and restored checkpoints. */
+    internal fun observeSnapshots(): Flow<List<Snapshot>> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> trySend(Unit) }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(Unit)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.conflate().map { backupSnapshots() }.distinctUntilChanged()
 
     /** Most recently persisted playback checkpoint across all books/sources. */
     fun latestSnapshot(): Snapshot? {
@@ -389,3 +403,4 @@ class PlaybackResumeStore(context: Context) {
         const val LEGACY_KEY_SAVED_AT_MS = "saved_at_ms"
     }
 }
+

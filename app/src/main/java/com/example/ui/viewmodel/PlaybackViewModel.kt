@@ -1,5 +1,7 @@
 package com.example.ui.viewmodel
 
+import com.example.data.narration.*
+
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -67,8 +69,14 @@ class PlaybackViewModel @Inject constructor(
     private val audiobookRepository: AudiobookRepository,
     private val cacheStore: LocalCacheStore,
     private val downloadStore: DownloadStore,
+    private val textNarration: TextNarrationPlayback,
+    private val ruVoicePreferences: RuVoiceVoicePreferences,
+    private val audioResumeStore: com.example.data.player.PlaybackResumeStore,
+    private val textPlaybackTracker: TextPlaybackTracker,
 ) : ViewModel() {
     val playerState = player.state
+    private val mutableTextHighlight = kotlinx.coroutines.flow.MutableStateFlow<TextPlaybackHighlight?>(null)
+    internal val textHighlight = mutableTextHighlight.asStateFlow()
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
@@ -83,6 +91,11 @@ class PlaybackViewModel @Inject constructor(
     private var proactivePlaybackRefresh: ProactivePlaybackRefresh? = null
 
     init {
+        viewModelScope.launch {
+            playerState.collect { state ->
+                mutableTextHighlight.value = textPlaybackTracker.resolve(state.book, state.chapterIndex, state.positionMs, state.durationMs)
+            }
+        }
         viewModelScope.launch {
             player.playbackStarts.collect { event ->
                 markTorrServePlaybackStarted(
@@ -105,6 +118,7 @@ class PlaybackViewModel @Inject constructor(
             playerState.collect { state ->
                 updateTorrServePlaybackLifecycle(state)
                 val book = state.book
+                if (book?.selectedSource == TEXT_NARRATION_SOURCE || book?.selectedSource == TEXT_AUDIO_SOURCE) return@collect
                 val hasPlaybackError = !state.error.isNullOrBlank() && !state.isPlaying
                 val recoveryRequest = if (hasPlaybackError) player.captureRecoveryRequest() else null
                 val isLocalFile = if (book != null && hasPlaybackError) {
@@ -132,6 +146,10 @@ class PlaybackViewModel @Inject constructor(
         book: BookDetailDto,
         onStarted: (() -> Unit)? = null,
     ) = viewModelScope.launch {
+        if (book.selectedSource == TEXT_NARRATION_SOURCE) {
+            if (prepareAndPlay { textNarration.prepare(book.id) }) onStarted?.invoke()
+            return@launch
+        }
         val torrServePreparationStarted = AtomicBoolean(false)
         if (
             prepareAndPlay { onTorrServeStage ->
@@ -148,6 +166,10 @@ class PlaybackViewModel @Inject constructor(
     }
 
     fun resume(bookId: String, onStarted: (() -> Unit)? = null) = viewModelScope.launch {
+        if (bookId.startsWith("txt_")) {
+            if (prepareAndPlay { textNarration.prepare(bookId) }) onStarted?.invoke()
+            return@launch
+        }
         val torrServePreparationStarted = AtomicBoolean(false)
         if (
             prepareAndPlay { onTorrServeStage ->
@@ -163,7 +185,98 @@ class PlaybackViewModel @Inject constructor(
         }
     }
 
+    /** Resume audio owns its source/chapter/time; the reader's cursor is never consulted. */
+    internal fun playTextBook(bookId: String, fragmentId: String?, onStarted: () -> Unit) = viewModelScope.launch {
+        if (fragmentId != null) {
+            if (prepareAndPlay { textNarration.prepare(bookId, fragmentId) }) onStarted()
+            return@launch
+        }
+        val current = playerState.value
+        if (current.book?.let { isAudioForText(it, bookId) } == true) {
+            if (!current.isPlaying && !current.isLoading) togglePlayback().join()
+            onStarted()
+            return@launch
+        }
+        if (prepareAndPlay {
+            val exports = playableTextAudio(bookId)
+            val live = textNarration.resumeStore.get(bookId, TEXT_NARRATION_SOURCE)
+            val sourceId = textAudioResumeSource(live?.savedAtMs, exports.map { row ->
+                row.bookSourceId to audioResumeStore.get(row.bookId, TEXT_AUDIO_SOURCE)?.savedAtMs
+            })
+            if (sourceId != null) preparePlayback.downloaded(sourceId) else textNarration.prepare(bookId)
+        }) onStarted()
+    }
+
+    internal fun playLiveTextBook(bookId: String) = viewModelScope.launch {
+        prepareAndPlay { textNarration.prepare(bookId) }
+    }
+
+    private fun isAudioForText(audio: BookDetailDto, bookId: String): Boolean =
+        (audio.selectedSource == TEXT_NARRATION_SOURCE && audio.id == bookId) ||
+            (audio.selectedSource == TEXT_AUDIO_SOURCE && audio.selectedBookSourceId.startsWith("text_audio:$bookId:"))
+
+    private suspend fun playableTextAudio(bookId: String) = downloadStore.books().filter {
+        it.bookSourceId.startsWith("text_audio:$bookId:") && it.state != "purged" &&
+            it.deletedAtMs == null && it.completedFiles > 0
+    }.sortedByDescending { it.bookSourceId == textAudioSourceId(bookId, null) }
+
+    /** Only this explicit command moves the audio bookmark to the visible text. */
+    internal fun listenFromText(bookId: String, fragmentId: String, fraction: Double) = viewModelScope.launch {
+        val active = playerState.value.book?.takeIf { isAudioForText(it, bookId) }
+        val selectedSpeed = playerState.value.takeIf { active != null }?.speed
+        prepareAndPlay {
+            val chapterId = fragmentId.substringBeforeLast(":f")
+            val saved = if (active?.selectedSource == TEXT_NARRATION_SOURCE) null else {
+                playableTextAudio(bookId).sortedByDescending { it.bookSourceId == active?.selectedBookSourceId }
+                    .firstOrNull { row -> downloadStore.files(row.bookSourceId).any { it.chapterId == chapterId && it.state == "completed" } }
+            }
+            if (saved == null) {
+                val prepared = textNarration.prepareAt(bookId, fragmentId, fraction)
+                prepared.copy(speed = selectedSpeed ?: prepared.speed)
+            } else {
+                val prepared = preparePlayback.downloaded(saved.bookSourceId)
+                val index = prepared.book.chapters.indexOfFirst { it.id == chapterId }
+                check(index >= 0) { "Аудиоглава больше не найдена." }
+                val duration = prepared.book.chapters[index].durationSeconds * 1000L
+                val time = textNarration.savedAudioTime(saved.bookSourceId, chapterId, fragmentId, fraction, duration)
+                prepared.copy(chapterIndex = index, positionMs = time, speed = selectedSpeed ?: prepared.speed)
+            }
+        }
+    }
+
+    /** A voice choice is global; reload the current book so Media3 prefetch shares its voice contract. */
+    internal fun setRuVoiceVoice(bookId: String, voiceName: String) {
+        ruVoicePreferences.select(voiceName)
+        val before = playerState.value
+        if (before.book?.id != bookId || before.book?.selectedSource != TEXT_NARRATION_SOURCE) return
+        // Reload all Media3 URIs so playback and prefetch observe the new immutable
+        // pronunciation/style contract. Stay in the same text fragment and keep speed.
+        // Milliseconds are approximate because internal pause durations may differ.
+        val currentIndex = before.chapterIndex
+        val currentPosition = before.positionMs.coerceAtLeast(0L)
+        val wasPlaying = before.isPlaying || before.isLoading
+        viewModelScope.launch {
+            prepareAndPlay(autoPlay = wasPlaying) {
+                val prepared = textNarration.prepare(bookId, useSavedContract = false)
+                val target = textNarrationStyleSwitchPosition(
+                    prepared.book.chapters.map { it.id },
+                    before.book.chapters.getOrNull(currentIndex)?.id,
+                    currentIndex,
+                    currentPosition,
+                )
+                prepared.copy(chapterIndex = target.fragmentIndex, positionMs = target.positionMs, speed = before.speed)
+            }
+        }
+    }
+
     fun play(book: BookDetailDto, chapterIndex: Int) = viewModelScope.launch {
+        if (book.selectedSource == TEXT_NARRATION_SOURCE) {
+            val current = playerState.value
+            val speed = current.speed.takeIf { current.book?.let { isAudioForText(it, book.id) } == true }
+                ?: textNarration.playbackSpeed(book)
+            prepareAndPlay { PreparedPlayback(book, chapterIndex, 0, speed) }
+            return@launch
+        }
         prepareAndPlay { preparePlayback.chapter(book, chapterIndex) }
     }
 
@@ -206,9 +319,23 @@ class PlaybackViewModel @Inject constructor(
         }
     }
 
+    /** Invalidate an in-flight preparation too, so a late handoff cannot overlap the sample. */
+    fun pauseForNarrationPreview() {
+        preparationGeneration.incrementAndGet()
+        torrServePlaybackHandoff = null
+        _preparationState.value = PlaybackPreparationUiState()
+        player.pause()
+    }
+
     fun togglePlayback() = viewModelScope.launch {
         val before = playerState.value
         val book = before.book
+        if (book?.selectedSource == TEXT_NARRATION_SOURCE) {
+            if (!before.isPlaying && player.needsRecovery() && !before.error.isNullOrBlank()) {
+                prepareAndPlay { textNarration.prepare(book.id) }
+            } else player.toggle()
+            return@launch
+        }
 
         if (!before.isPlaying && book != null && player.needsRecovery()) {
             val recoveryRequest = player.captureRecoveryRequest()
@@ -240,10 +367,20 @@ class PlaybackViewModel @Inject constructor(
     }
 
     fun nextChapter() {
+        val state = playerState.value
+        if (state.book?.selectedSource == TEXT_NARRATION_SOURCE) {
+            textChapterTarget(state.book.chapters.map { it.id }, state.chapterIndex, true)?.let(player::seekToChapter)
+            return
+        }
         player.next()
     }
 
     fun previousChapter() {
+        val state = playerState.value
+        if (state.book?.selectedSource == TEXT_NARRATION_SOURCE) {
+            textChapterTarget(state.book.chapters.map { it.id }, state.chapterIndex, false)?.let(player::seekToChapter)
+            return
+        }
         player.previous()
     }
 
@@ -278,11 +415,21 @@ class PlaybackViewModel @Inject constructor(
     fun addBookmark(note: String = "") = viewModelScope.launch {
         val state = playerState.value
         val book = state.book ?: return@launch
+        if (book.selectedSource == TEXT_NARRATION_SOURCE) return@launch
         playbackLibraryRepository.addBookmark(
             book = book,
             chapterIndex = state.chapterIndex,
             positionMs = state.positionMs,
             note = note,
+        )
+    }
+
+    /** Read at the place where audio playback is currently paused/playing. */
+    internal suspend fun currentTextReadingPosition(): TextAudioReadingPosition? {
+        pauseForNarrationPreview()
+        val state = playerState.value
+        return textNarration.readingPosition(
+            state.book, state.chapterIndex, state.positionMs, state.durationMs,
         )
     }
 
@@ -294,6 +441,7 @@ class PlaybackViewModel @Inject constructor(
         book: BookDetailDto,
         chapterIndex: Int,
     ) {
+        if (book.selectedSource == TEXT_AUDIO_SOURCE || book.selectedSource == TEXT_NARRATION_SOURCE) return
         val identity = playbackRefreshIdentity(book)
         val existing = proactivePlaybackRefresh
         if (existing?.identity == identity && existing.deferred.isActive) return
@@ -330,6 +478,10 @@ class PlaybackViewModel @Inject constructor(
         emitFailure: Boolean,
         expectedRecoveryRequest: Long? = null,
     ): Boolean {
+        if (book.selectedSource == TEXT_AUDIO_SOURCE) {
+            if (emitFailure) _messages.emit("Сохранённый аудиофайл недоступен. Запустите подготовку заново из книги.")
+            return false
+        }
         if (refreshRecoveryInFlight) return false
         val recoveryRequest = expectedRecoveryRequest ?: player.captureRecoveryRequest() ?: return false
         if (!player.isRecoveryRequestCurrent(recoveryRequest)) return false
@@ -462,6 +614,7 @@ class PlaybackViewModel @Inject constructor(
     }
 
     private suspend fun prepareAndPlay(
+        autoPlay: Boolean = true,
         block: suspend ((TorrServePreparationStage) -> Unit) -> PreparedPlayback?,
     ): Boolean {
         val preparationEpoch = UserDataRestoreGate.currentPlaybackWriteEpoch()
@@ -498,7 +651,7 @@ class PlaybackViewModel @Inject constructor(
                         TorrServePreparationStage.BUFFERING,
                     )
                 }
-                playPrepared(prepared, startBackgroundRefresh = true)
+                playPrepared(prepared, startBackgroundRefresh = true, autoPlay = autoPlay)
             }
             if (!started && preparationGeneration.get() == generation &&
                 player.isPlaybackLoadRequestCurrent(loadRequest)
@@ -634,6 +787,7 @@ class PlaybackViewModel @Inject constructor(
         prepared: PreparedPlayback,
         startBackgroundRefresh: Boolean = true,
         recoveryRequest: Long? = null,
+        autoPlay: Boolean = true,
     ) {
         // Keep the current MediaItem at its own speed until the manager swaps playlists.
         // Otherwise PlaybackService can persist the next book's speed into the old book
@@ -645,8 +799,9 @@ class PlaybackViewModel @Inject constructor(
             prepared.positionMs,
             playbackWriteEpoch = prepared.playbackWriteEpoch,
             recoveryRequest = recoveryRequest,
+            autoPlay = autoPlay,
         )
-        if (startBackgroundRefresh) {
+        if (startBackgroundRefresh && prepared.book.selectedSource != TEXT_NARRATION_SOURCE && prepared.book.selectedSource != TEXT_AUDIO_SOURCE) {
             startProactivePlaybackRefresh(prepared.book, prepared.chapterIndex)
         }
     }
@@ -666,4 +821,5 @@ class PlaybackViewModel @Inject constructor(
         const val PLAYBACK_ACTIVITY_ERROR = "Не удалось сохранить активность прослушивания"
     }
 }
+
 

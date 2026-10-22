@@ -22,6 +22,7 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.image.PosterImageCache
+import com.example.data.image.LocalBookCover
 import com.example.ui.theme.CoverDesign
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -48,7 +49,7 @@ internal fun BookCoverImage(
     val context = LocalContext.current
     val appContext = context.applicationContext
     var imageLoader by remember(appContext) { mutableStateOf<ImageLoader?>(null) }
-    val requestModel = remember(model) { PosterImageCache.requestUrl(model) }
+    val requestModel = remember(appContext, model) { LocalBookCover.uri(appContext, model)?.toString() ?: PosterImageCache.requestUrl(model) }
 
     LaunchedEffect(appContext) {
         imageLoader = withContext(Dispatchers.IO) {

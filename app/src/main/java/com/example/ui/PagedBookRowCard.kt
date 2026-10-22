@@ -42,9 +42,10 @@ import kotlin.math.roundToInt
 internal fun PagedBookRowCard(
     book: BookCardDto,
     showProgressPercent: Boolean,
+    sourceLabelOverride: String? = null,
     onClick: () -> Unit,
 ) {
-    val sourceLabel = book.sourceDisplayLabel()
+    val sourceLabel = sourceLabelOverride ?: book.sourceDisplayLabel()
     val seriesLabel = book.seriesDisplayLabel()
     val largeText = abredLargeFontScale()
     val sourceReserve = if (largeText) {

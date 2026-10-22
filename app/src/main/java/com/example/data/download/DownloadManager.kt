@@ -20,6 +20,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.data.api.ApiClient
+import com.example.data.narration.TextAudioExportWorker
+import com.example.data.narration.isTextAudioExport
 import com.example.data.local.DownloadBookEntity
 import com.example.data.local.DownloadFileEntity
 import com.example.data.local.DownloadStore
@@ -94,17 +96,22 @@ class AudiobookDownloadManager(
         }
         val current = store.book(bookSourceId) ?: error("Загрузка не найдена")
         require(current.deletedAtMs == null) { "Загрузка уже удалена" }
-        store.setWifiOnly(bookSourceId, wifiOnly)
+        val effectiveWifiOnly = wifiOnly && !isTextAudioExport(bookSourceId)
+        store.setWifiOnly(bookSourceId, effectiveWifiOnly)
         store.queue(bookSourceId)
         DownloadScheduler.enqueue(
             context = appContext,
             bookSourceId = bookSourceId,
             manifestId = current.manifestId,
-            wifiOnly = wifiOnly,
+            wifiOnly = effectiveWifiOnly,
         )
     }
 
     suspend fun retry(bookSourceId: String, wifiOnly: Boolean): DownloadBookEntity {
+        if (isTextAudioExport(bookSourceId)) {
+            resume(bookSourceId, wifiOnly = false)
+            return checkNotNull(store.book(bookSourceId))
+        }
         store.book(bookSourceId) ?: error("Загрузка не найдена")
         // Refreshing the manifest is mandatory after 409/stale source. DownloadStore
         // preserves partials only when manifest_id is still exactly the same.
@@ -115,7 +122,7 @@ class AudiobookDownloadManager(
     suspend fun updateNetworkPolicy(wifiOnly: Boolean) {
         val canPublish = store.canPublishCompletedFiles()
         store.books().forEach { book ->
-            store.setWifiOnly(book.bookSourceId, wifiOnly)
+            store.setWifiOnly(book.bookSourceId, wifiOnly && !isTextAudioExport(book.bookSourceId))
             if (canPublish && (book.state == "queued" || book.state == "downloading")) {
                 DownloadScheduler.enqueue(
                     context = appContext,
@@ -265,6 +272,13 @@ object DownloadScheduler {
     private fun workName(bookSourceId: String) = "abred-download-v1-$bookSourceId"
 
     fun enqueue(context: Context, bookSourceId: String, manifestId: String, wifiOnly: Boolean) {
+        if (isTextAudioExport(bookSourceId)) {
+            val request = OneTimeWorkRequestBuilder<TextAudioExportWorker>()
+                .setInputData(Data.Builder().putString("book_source_id", bookSourceId).putString("manifest_id", manifestId).build())
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(workName(bookSourceId), ExistingWorkPolicy.REPLACE, request)
+            return
+        }
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
             .build()

@@ -11,6 +11,8 @@ import com.example.data.model.MySeriesDto
 import com.example.data.repository.AudiobookRepository
 import com.example.data.repository.LibraryRepository
 import com.example.data.repository.LibrarySnapshot
+import com.example.data.narration.TextListeningProgressRepository
+import com.example.data.textbook.TextLibraryRepository
 import com.example.data.settings.HomePopularDefaultPeriod
 import com.example.data.settings.PlayerSettingsStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -69,6 +72,7 @@ enum class HomePopularPeriod(
 data class HomeUiState(
     val loading: Boolean = false,
     val continueListening: List<BookCardDto> = emptyList(),
+    val textBookIds: Set<String> = emptySet(),
     val rails: List<HomeRailDto> = emptyList(),
     val mySeries: List<MySeriesDto> = emptyList(),
     val downloadedBookSourceIds: Map<String, String> = emptyMap(),
@@ -87,9 +91,11 @@ data class HomeUiState(
 )
 
 @HiltViewModel
-class HomeViewModel @Inject constructor(
+class HomeViewModel @Inject internal constructor(
     private val repository: LibraryRepository,
     private val settingsStore: PlayerSettingsStore,
+    private val textBooks: TextLibraryRepository,
+    private val listeningProgress: TextListeningProgressRepository,
     application: Application,
 ) : ViewModel() {
     private val discoveryRepository = AudiobookRepository()
@@ -111,6 +117,7 @@ class HomeViewModel @Inject constructor(
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     private var latestSnapshot: LibrarySnapshot? = null
+    private var latestTextBookIds: Set<String> = emptySet()
     private var newJob: Job? = null
     private var popularJob: Job? = null
 
@@ -178,8 +185,20 @@ class HomeViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                repository.observe().collect { snapshot ->
+                combine(repository.observe(), textBooks.observeBooks(), textBooks.observeActivity(), listeningProgress.observe()) { audio, books, _, progress ->
+                    val ids = books.map { it.id }.toSet()
+                    textBooks.restoreReadingActivity(books)
+                    legacyTextHistoryActivity(audio.history, audio.historyActivityTimes, audio.downloads, ids)
+                        .forEach { (id, time) -> textBooks.restoreAudioActivity(id, time) }
+                    val metadata = books.associate { it.id to textBooks.metadata(it.id) }
+                    val membership = withContext(Dispatchers.Default) {
+                        textLibraryMembership(books, metadata, textBooks.observeActivity().value, progress)
+                    }
+                    audio.copy(history = mergeLocalLibraryHistory(audio.history, audio.historyActivityTimes,
+                        audio.downloads, ids, membership)) to ids
+                }.collect { (snapshot, textIds) ->
                     latestSnapshot = snapshot
+                    latestTextBookIds = textIds
                     applyLocalSnapshot(snapshot)
                 }
             } catch (cancelled: CancellationException) {
@@ -373,6 +392,7 @@ class HomeViewModel @Inject constructor(
             current.copy(
                 loading = false,
                 continueListening = local.continueListening,
+                textBookIds = latestTextBookIds,
                 rails = local.rails,
                 mySeries = local.mySeries,
                 downloadedBookSourceIds = local.downloadedBookSourceIds,
@@ -386,9 +406,7 @@ class HomeViewModel @Inject constructor(
             .distinctBy(BookCardDto::id)
             .take(HOME_RAIL_LIMIT)
 
-        val continueListening = recent
-            .filter { it.progressPercent < COMPLETED_PROGRESS_PERCENT }
-            .take(HOME_RAIL_LIMIT)
+        val continueListening = homeContinueBooks(history, HOME_RAIL_LIMIT)
 
         val visibleSeries = series
             .asSequence()
@@ -467,6 +485,5 @@ class HomeViewModel @Inject constructor(
     private companion object {
         const val HOME_RAIL_LIMIT = 10
         const val HOME_DISCOVERY_LIMIT = 12
-        const val COMPLETED_PROGRESS_PERCENT = 99.5
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.window.PopupProperties
 import com.example.R
 import com.example.data.model.GenreDto
@@ -27,7 +28,7 @@ import com.example.data.source.StandaloneSourceRegistry
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.theme.CatalogDesign
 
-private data class CatalogSourceOption(
+internal data class CatalogSourceOption(
     val code: String,
     val label: String,
     val faviconRes: Int?,
@@ -64,9 +65,11 @@ internal fun CatalogSourceSelector(
     onSource: (String) -> Unit,
     modifier: Modifier = Modifier,
     active: Boolean = true,
+    options: List<CatalogSourceOption>? = null,
+    icon: ImageVector = Icons.Default.Headphones,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val visibleOptions = CATALOG_SOURCE_OPTIONS.filter { it.code in enabledSources }
+    val visibleOptions = (options ?: CATALOG_SOURCE_OPTIONS).filter { it.code in enabledSources }
     val selectedOption = visibleOptions
         .firstOrNull { it.code == selectedSource }
     val selectedLabel = selectedOption
@@ -76,7 +79,7 @@ internal fun CatalogSourceSelector(
     Box(modifier) {
         CatalogFilterButton(
             label = selectedLabel,
-            icon = Icons.Default.Headphones,
+            icon = icon,
             leadingFaviconRes = selectedOption?.faviconRes,
             active = active,
             onClick = { expanded = true },

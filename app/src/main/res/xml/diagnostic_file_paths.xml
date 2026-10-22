@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="diagnostic_reports" path="diagnostic_reports/" />
+    <external-files-path name="ruvoice_install_apks" path="Download/ruvoice/" />
 </paths>

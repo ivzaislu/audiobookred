@@ -7,6 +7,7 @@ import com.example.data.backup.UserDataExportManager
 import com.example.data.backup.UserDataImportManager
 import com.example.data.download.AudiobookDownloadManager
 import com.example.data.settings.AppThemeMode
+import com.example.data.settings.ReaderSettingsStore
 import com.example.data.settings.PlayerSettingsStore
 import com.example.data.settings.SourceAvailabilityStore
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +34,7 @@ data class UserDataImportUiState(
 @HiltViewModel
 class GeneralSettingsViewModel @Inject constructor(
     private val settingsStore: PlayerSettingsStore,
+    private val readerSettingsStore: ReaderSettingsStore,
     private val sourceAvailabilityStore: SourceAvailabilityStore,
     private val downloadManager: AudiobookDownloadManager,
     private val userDataExportManager: UserDataExportManager,
@@ -120,6 +122,7 @@ class GeneralSettingsViewModel @Inject constructor(
 
     fun resetSettings() {
         settingsStore.reset()
+        readerSettingsStore.reset()
         sourceAvailabilityStore.reset()
         val wifiOnly = settingsStore.state.value.downloadWifiOnly
         viewModelScope.launch {

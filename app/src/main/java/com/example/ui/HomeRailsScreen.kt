@@ -34,9 +34,17 @@ internal fun PreparedHomeScreen(
     onSeries: (MySeriesDto) -> Unit,
     onSearch: (String) -> Unit,
     showProgressPercent: Boolean,
+    onOpenTextBook: (String) -> Unit,
+    onContinueTextBook: (String) -> Unit,
 ) {
     val homeViewModel: HomeViewModel = hiltViewModel()
     val state by homeViewModel.state.collectAsStateWithLifecycle()
+    val openHistoryBook: (String) -> Unit = { id ->
+        if (id in state.textBookIds) onOpenTextBook(id) else onBook(id)
+    }
+    val continueHistoryBook: (String) -> Unit = { id ->
+        if (id in state.textBookIds) onContinueTextBook(id) else onContinueBook(id)
+    }
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
 
@@ -98,8 +106,9 @@ internal fun PreparedHomeScreen(
                     HomeContinueSection(
                         book = book,
                         showProgressPercent = showProgressPercent,
-                        onOpen = { onBook(book.id) },
-                        onContinue = { onContinueBook(book.id) },
+                        onOpen = { openHistoryBook(book.id) },
+                        onContinue = { continueHistoryBook(book.id) },
+                        isTextBook = book.id in state.textBookIds,
                     )
                 }
             }
@@ -144,7 +153,7 @@ internal fun PreparedHomeScreen(
                     HomeRecentSection(
                         books = rail.items.take(10),
                         showProgressPercent = showProgressPercent,
-                        onBook = onBook,
+                        onBook = openHistoryBook,
                     )
                 }
             }

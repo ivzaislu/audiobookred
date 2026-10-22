@@ -38,6 +38,7 @@ internal fun PagingCatalogHost(
     onRefreshMetadata: () -> Unit,
     showProgressPercent: Boolean,
     browserChallengeSession: BrowserChallengeSession?,
+    headerActions: (@Composable () -> Unit)? = null,
 ) {
     val pagingVm: BookPagingViewModel = hiltViewModel()
     val sourceAvailabilityKey = state.enabledSources.sorted().joinToString("|")
@@ -79,6 +80,7 @@ internal fun PagingCatalogHost(
             onRefreshMetadata = onRefreshMetadata,
             showProgressPercent = showProgressPercent,
             browserChallengeSession = browserChallengeSession,
+            headerActions = headerActions,
         )
         if (browserChallengeSession == null) {
             ScrollToTopButton(listState)

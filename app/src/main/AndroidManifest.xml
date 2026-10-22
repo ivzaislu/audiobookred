@@ -13,6 +13,11 @@
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+
+    <queries>
+        <package android:name="ru.kost.ruvoice" />
+    </queries>
+
     <!-- Cleartext remains enabled for compatible local/legacy transports; catalog parsing is standalone. -->
     <application
         android:name=".AbredApplication"
@@ -113,3 +118,4 @@
         </service>
     </application>
 </manifest>
+

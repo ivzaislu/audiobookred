@@ -43,7 +43,8 @@ internal fun LibraryDeviceBookCard(
             .fillMaxWidth()
             .clickable(
                 enabled = item.state == "completed",
-                onClickLabel = "Открыть скачанную книгу",
+                onClickLabel = if (isCompletedRuVoiceAudiobook(item))
+                    "Открыть озвученную аудиокнигу" else "Открыть скачанную книгу",
                 onClick = onOpen,
             )
             .padding(vertical = AbredSpacing.Sm),
@@ -69,6 +70,25 @@ internal fun LibraryDeviceBookCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+
+            if (isCompletedRuVoiceAudiobook(item)) {
+                Spacer(Modifier.height(AbredSpacing.Xxs))
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Text(
+                        "Озвучено RuVoice · WAV",
+                        modifier = Modifier.padding(
+                            horizontal = AbredSpacing.Xs,
+                            vertical = AbredSpacing.Micro,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
 
             if (sourceLabel.isNotBlank()) {
                 Spacer(Modifier.height(AbredSpacing.Micro))
@@ -126,7 +146,8 @@ internal fun LibraryDeviceBookCard(
                 "completed" -> IconButton(onClick = onPlay) {
                     Icon(
                         Icons.Default.PlayArrow,
-                        contentDescription = "Слушать",
+                        contentDescription = if (isCompletedRuVoiceAudiobook(item))
+                            "Слушать готовую аудиокнигу без озвучки на ходу" else "Слушать",
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }

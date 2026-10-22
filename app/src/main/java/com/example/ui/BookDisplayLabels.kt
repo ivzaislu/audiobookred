@@ -6,6 +6,8 @@ import com.example.data.source.StandaloneSourceRegistry
 internal fun sourceDisplayLabel(code: String?): String {
     val clean = code?.trim().orEmpty()
     if (clean.isBlank()) return "Все"
+    if (clean == "fantasy_worlds") return "Fantasy Worlds"
+    if (clean == "text_audio" || clean == "text_narration") return "Ксения · книга"
     return StandaloneSourceRegistry.displayNameOrNull(clean) ?: clean
 }
 

@@ -1,5 +1,7 @@
 package com.example.domain.playback
 
+import com.example.data.narration.TEXT_NARRATION_SOURCE
+import com.example.data.narration.TextNarrationPlayback
 import com.example.data.model.BookDetailDto
 import com.example.data.player.PlaybackResumeStore
 import com.example.data.settings.PlayerSettingsStore
@@ -35,6 +37,7 @@ internal fun resolveRememberedPlaybackSpeedCheckpoint(
 class RememberPlaybackSpeedUseCase @Inject constructor(
     private val resumeStore: PlaybackResumeStore,
     private val settingsStore: PlayerSettingsStore,
+    private val textNarration: TextNarrationPlayback,
 ) {
     fun remember(
         book: BookDetailDto,
@@ -49,8 +52,9 @@ class RememberPlaybackSpeedUseCase @Inject constructor(
             positionMs = positionMs,
             speed = speed,
         ) ?: return
-        val existing = resumeStore.get(book.id, book.selectedSource)
-        resumeStore.saveImmediate(
+        val targetStore = if (book.selectedSource == TEXT_NARRATION_SOURCE) textNarration.resumeStore else resumeStore
+        val existing = targetStore.get(book.id, book.selectedSource)
+        targetStore.saveImmediate(
             bookId = book.id,
             sourceCode = book.selectedSource,
             chapterId = checkpoint.chapterId,

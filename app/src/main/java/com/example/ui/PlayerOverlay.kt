@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.data.narration.TEXT_NARRATION_SOURCE
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -169,7 +171,7 @@ internal fun PlayerTransientOverlay(
                             )
                             Spacer(Modifier.width(AbredSpacing.Sm))
                             Text(
-                                "Загрузка…",
+                                if (state.book?.selectedSource == TEXT_NARRATION_SOURCE) "Готовим озвучку Ксенией…" else "Загрузка…",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -180,4 +182,5 @@ internal fun PlayerTransientOverlay(
         }
     }
 }
+
 

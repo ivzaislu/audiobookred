@@ -1,3 +1,4 @@
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -38,8 +39,9 @@ android {
         applicationId = "com.aistudio.audiobookred.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = 97
-        versionName = "0.5.3.8.5.8"
+        versionCode = 98
+        versionName = "0.5.3.8.5.9"
+        ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "com.example.MigrationTestRunner"
         // Public raw.githubusercontent.com/latest.json. No token is embedded in APK.
         buildConfigField("String", "UPDATE_MANIFEST_URL", buildConfigString(updateManifestUrl))
@@ -72,6 +74,7 @@ android {
         }
     }
 
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -86,6 +89,7 @@ android {
 room {
     schemaDirectory("$projectDir/schemas")
 }
+
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
@@ -135,4 +139,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+
 

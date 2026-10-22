@@ -26,6 +26,7 @@ internal fun CatalogBrowserChallengeContent(
     onSource: (String) -> Unit,
     session: BrowserChallengeSession,
     requestId: Long,
+    headerActions: (@Composable () -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -45,6 +46,7 @@ internal fun CatalogBrowserChallengeContent(
                 onSearchAllSources = onSearchAllSources,
                 onGenre = onGenre,
                 onSource = onSource,
+                headerActions = headerActions,
             )
 
             Box(

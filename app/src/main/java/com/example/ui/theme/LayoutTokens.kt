@@ -126,3 +126,8 @@ internal object PlayerDesign {
 internal object CoverDesign {
     const val PlaceholderIconFraction = 0.34f
 }
+
+internal object TextReaderDesign {
+    const val HeaderMaxHeightFraction = 0.55f
+    val ArchivePickerMaxHeight = 360.dp
+}

@@ -62,12 +62,14 @@ internal fun HomeContinueSection(
     showProgressPercent: Boolean,
     onOpen: () -> Unit,
     onContinue: () -> Unit,
+    isTextBook: Boolean = false,
 ) {
     ContinueHeroCard(
         book = book,
         showProgressPercent = showProgressPercent,
         onOpen = onOpen,
         onContinue = onContinue,
+        isTextBook = isTextBook,
     )
 }
 

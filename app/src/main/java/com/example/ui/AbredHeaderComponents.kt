@@ -113,6 +113,7 @@ internal fun AbredBackTopBar(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
+    actions: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -138,7 +139,7 @@ internal fun AbredBackTopBar(
             maxLines = if (abredLargeFontScale()) 2 else 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.size(AbredSizes.MinimumTouchTarget))
+        if (actions != null) actions() else Spacer(Modifier.size(AbredSizes.MinimumTouchTarget))
     }
 }
 

@@ -64,6 +64,7 @@ internal fun PlayerQuickActions(
     onSleepTimer: () -> Unit,
     onToggleSilence: () -> Unit,
     onAddBookmark: () -> Unit,
+    showBookmark: Boolean = true,
 ) {
     @Composable
     fun RowScope.SpeedAction() {
@@ -132,7 +133,7 @@ internal fun PlayerQuickActions(
                 verticalAlignment = Alignment.Top,
             ) {
                 SilenceAction()
-                BookmarkAction()
+                if (showBookmark) BookmarkAction()
             }
         }
     } else {
@@ -144,7 +145,7 @@ internal fun PlayerQuickActions(
             SpeedAction()
             SleepAction()
             SilenceAction()
-            BookmarkAction()
+            if (showBookmark) BookmarkAction()
         }
     }
 }
@@ -219,4 +220,5 @@ private fun PlayerQuickAction(
         )
     }
 }
+
 
