@@ -4,6 +4,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -46,10 +52,27 @@ class TextReaderFollowInstrumentedTest {
                     onFollowChanged = { value -> state = state.copy(following = value) })
             }
         }
+        fun assertSpokenFragmentDisplayed(index: Int) {
+            val fragment = fragments[index]
+            val block = reader.blocks.first { fragment.id in it.fragmentIds }
+            val matcher = hasTestTag("reader-paragraph:${block.anchorId}") and
+                SemanticsMatcher.expectValue(TextReaderSpokenFragmentId, fragment.id)
+            val node = compose.onNode(matcher)
+            // Wait for the follow coroutine/layout/scroll, but never scroll from the test:
+            // the reader itself must bring this particular spoken fragment into view.
+            compose.waitUntil(timeoutMillis = 5_000) {
+                runCatching { node.assertIsDisplayed() }.isSuccess
+            }
+            node.assertIsDisplayed().assert(SemanticsMatcher("has a rendered highlight background") { semantics ->
+                semantics.config.getOrNull(SemanticsProperties.EditableText)?.spanStyles
+                    ?.any { it.item.background != Color.Unspecified } == true
+            })
+        }
+        assertSpokenFragmentDisplayed(0)
         compose.onNodeWithText("Следить за озвучкой").assertDoesNotExist()
         compose.onNodeWithText("Голос RuVoice и настройки").assertDoesNotExist()
         compose.runOnIdle { highlight = TextPlaybackHighlight("book", chapters[1].id, fragments[15].id, false) }
-        compose.onNodeWithTag("spoken-fragment").assertIsDisplayed()
+        assertSpokenFragmentDisplayed(15)
         compose.runOnIdle { assertEquals(0, writes) }
         compose.runOnIdle { settings = settings.copy(followNarration = false) }
         compose.onNodeWithTag("text-reader-content").performScrollToIndex(12)
@@ -63,7 +86,7 @@ class TextReaderFollowInstrumentedTest {
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText(fragments[12].text.removeSuffix("\n")).assertIsDisplayed()
         compose.runOnIdle { playing = true }
-        compose.onNodeWithTag("spoken-fragment").assertIsDisplayed()
+        assertSpokenFragmentDisplayed(0)
         compose.runOnIdle {
             assertEquals(0, writes)
             // An explicit reading action suppresses following for this reader session.

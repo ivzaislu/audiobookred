@@ -44,6 +44,7 @@ import com.example.data.narration.TextAudioReadingPosition
 import com.example.data.textbook.textReadingPercent
 import kotlinx.coroutines.launch
 import com.example.data.settings.ReaderSettings
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
@@ -437,7 +438,13 @@ private fun TextChapterReader(
                         textStyle = readerTextStyle(readerSettings).copy(color = colors.second),
                         interactionSource = textInteraction,
                         modifier = Modifier.fillMaxWidth().testTag("reader-paragraph:${block.anchorId}")
-                            .then(if (range != null) Modifier.testTag("spoken-fragment") else Modifier),
+                            .semantics {
+                                // Keep the paragraph's stable tag; a second testTag on the same
+                                // node masks one of the tags when Compose collapses semantics.
+                                if (range != null && !range.isEmpty()) {
+                                    spoken?.fragmentId?.let { this[TextReaderSpokenFragmentId] = it }
+                                }
+                            },
                         onTextLayout = { layout ->
                             textLayouts[block.anchorId] = layout
                             // Keep only a small set of visible/prefetched layouts, not the whole book.
