@@ -2,7 +2,6 @@ package com.example.ui
 
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertDoesNotExist
 import com.example.data.textsource.RemoteTextBook
 import com.example.data.textsource.RemoteTextDownload
 import com.example.ui.viewmodel.TextCatalogState
