@@ -3,6 +3,10 @@ package com.example.data.textbook
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.provider.DocumentsContract
+import com.example.data.storage.PublicTextBookStorage
+import com.example.data.textsource.TextBookFileStore
+import kotlinx.coroutines.CancellationException
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
@@ -17,11 +21,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-internal data class TextImportResult(val bookId: String, val duplicate: Boolean)
+internal data class TextImportResult(
+    val bookId: String, val duplicate: Boolean,
+    val originalMoved: Boolean = false, val moveError: String? = null,
+)
 internal data class TextNarrationBook(val book: TextBookEntity, val chapters: List<TextChapterEntity>, val fragments: List<TextFragmentEntity>, val metadata: TextBookMetadata = TextBookMetadata())
 internal data class TextReadingSnapshot(
     val book: TextBookEntity, val chapters: List<TextChapterEntity>, val chapter: TextChapterEntity,
@@ -43,7 +52,18 @@ internal class TextLibraryRepository private constructor(
     private val mutations = Mutex()
     private val sourceFolder get() = File(context.filesDir, "text-library")
     private val metadataStore get() = TextBookMetadataStore(sourceFolder)
+    private val originals by lazy { PublicTextBookStorage(context) }
+    private val originalFiles by lazy { TextBookFileStore(context.filesDir) }
     private val activityStore by lazy { TextLibraryActivityStore(context) }
+    private val metadataRevision = MutableStateFlow(0L)
+    fun observeMetadataChanges() = metadataRevision.asStateFlow()
+    suspend fun saveSourceDetails(bookId: String, description: String, authors: List<String>) = mutations.withLock {
+        withContext(Dispatchers.IO) {
+            if (dao.book(bookId) != null && metadataStore.saveSourceDetails(bookId, description, authors)) {
+                metadataRevision.value += 1
+            }
+        }
+    }
     fun observeActivity() = activityStore.state
     suspend fun saveCatalogActivity(value: TextLibraryActivity) = mutations.withLock {
         withContext(Dispatchers.IO) { if (dao.book(value.bookId) != null) activityStore.catalog(value) }
@@ -69,26 +89,89 @@ internal class TextLibraryRepository private constructor(
     fun observeBooks(): Flow<List<TextBookEntity>> = dao.observeBooks()
     suspend fun chapters(bookId: String): List<TextChapterEntity> = withContext(Dispatchers.IO) { dao.chapters(bookId) }
     suspend fun narrationFragment(bookId: String, fragmentId: String): TextFragmentEntity? = withContext(Dispatchers.IO) {
-        dao.narrationFragment(bookId, fragmentId)
+        val fragment = dao.narrationFragment(bookId, fragmentId) ?: return@withContext null
+        if (fragment.text.isNotBlank()) return@withContext fragment
+        // A reader cursor may point at a legacy whitespace-only fragment.
+        // Prefer nearby speech in the same chapter without rewriting its stored ID.
+        val spoken = dao.allFragments(bookId).filter { it.text.isNotBlank() }
+        spoken.firstOrNull { it.chapterId == fragment.chapterId && it.ordinal > fragment.ordinal }
+            ?: spoken.lastOrNull { it.chapterId == fragment.chapterId && it.ordinal < fragment.ordinal }
+            ?: spoken.firstOrNull { it.startOffset >= fragment.endOffset }
+            ?: spoken.lastOrNull { it.endOffset <= fragment.startOffset }
     }
 
     suspend fun narrationBook(bookId: String): TextNarrationBook = withContext(Dispatchers.IO) {
         database.withTransaction {
-            TextNarrationBook(checkNotNull(dao.book(bookId)) { "Текстовая книга удалена." }, dao.chapters(bookId), dao.allFragments(bookId), metadataStore.read(bookId))
+            val book = checkNotNull(dao.book(bookId)) { "Текстовая книга удалена." }
+            // Filter only the audio snapshot: existing text, fragment IDs and reading
+            // bookmarks stay intact, including books imported by earlier versions.
+            val fragments = dao.allFragments(bookId).filter { it.text.isNotBlank() }
+            val spokenChapters = fragments.mapTo(mutableSetOf()) { it.chapterId }
+            TextNarrationBook(book, dao.chapters(bookId).filter { it.id in spokenChapters }, fragments, metadataStore.read(bookId))
         }
     }
 
     suspend fun importTxt(uri: Uri): TextImportResult = importBook(uri)
 
-    suspend fun importBook(uri: Uri, selection: String? = null): TextImportResult = importSource(
-        resolveName = {
-            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) it.getString(0) else null
-            }?.take(240)?.takeIf { it.isNotBlank() } ?: "Книга.txt"
-        },
-        selection = selection,
-        openInput = { checkNotNull(context.contentResolver.openInputStream(uri)) { "Не удалось открыть книгу." } },
-    )
+    suspend fun importBook(uri: Uri, selection: String? = null, moveOriginal: Boolean = false): TextImportResult =
+        TextBookFileStore.lifecycle.withLock {
+            val result = importSource(
+                resolveName = {
+                    val displayName = if (uri.scheme == "file") uri.path?.let { File(it).name } else
+                        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                            if (it.moveToFirst()) it.getString(0) else null
+                        }
+                    val name = displayName?.takeIf { it.isNotBlank() } ?: "Книга.txt"
+                    val suffix = listOf(".fb2.zip", ".epub", ".fb2", ".zip", ".txt").firstOrNull { name.endsWith(it, true) }.orEmpty()
+                    name.dropLast(suffix.length).take(240 - suffix.length) + suffix
+                },
+                selection = selection,
+                openInput = { checkNotNull(context.contentResolver.openInputStream(uri)) { "Не удалось открыть книгу." } },
+            )
+            if (moveOriginal) moveImportedOriginal(uri, result) else result
+        }
+
+    private suspend fun moveImportedOriginal(uri: Uri, result: TextImportResult): TextImportResult = withContext(Dispatchers.IO) {
+        var published = false
+        try {
+            val book = checkNotNull(dao.book(result.bookId)) { "Книга больше не находится в библиотеке." }
+            val privateSource = File(sourceFolder, book.sourceFileName)
+            require(privateSource.length() in 1L..EbookImportParser.MAX_SOURCE_BYTES.toLong()) {
+                "Сохранённый исходник книги отсутствует или повреждён."
+            }
+            val bytes = privateSource.readBytes()
+            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            check(hash == book.sourceSha256) { "Сохранённый исходник книги повреждён. Исходный файл не перемещался." }
+            val coroutine = currentCoroutineContext()
+            val file = originalFiles.saveImported(book.originalName, bytes) { coroutine.ensureActive() }
+            originals.publishForMove(file, file.name.substring(65), when {
+                file.name.endsWith(".zip", true) -> "application/zip"
+                file.name.endsWith(".epub", true) -> "application/epub+zip"
+                file.name.endsWith(".txt", true) -> "text/plain"
+                else -> "application/octet-stream"
+            }, bytes) { coroutine.ensureActive() }
+            published = true
+            coroutine.ensureActive()
+            check(originals.matches(uri, bytes) { coroutine.ensureActive() }) {
+                "Исходный файл изменился или стал недоступен. Он не удалялся приложением."
+            }
+            val deleted = if (uri.scheme == "file") {
+                uri.path?.let { source -> File(source).let { !it.exists() || it.delete() } } ?: false
+            } else if (DocumentsContract.isDocumentUri(context, uri)) {
+                DocumentsContract.deleteDocument(context.contentResolver, uri)
+            } else {
+                context.contentResolver.delete(uri, null, null) > 0
+            }
+            check(deleted) { "Источник не разрешил удалить исходный файл." }
+            result.copy(originalMoved = true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            val message = if (published) "Книга добавлена, копия сохранена в Books. Перенос исходного файла не завершён: "
+                else "Книга добавлена, но перенести исходный файл в Books не удалось: "
+            result.copy(moveError = message + (error.message ?: "проверьте доступ к файлу."))
+        }
+    }
 
     suspend fun importDownloaded(file: File, displayName: String): TextImportResult =
         importSource({ displayName.take(240) }, null, { file.inputStream() })
@@ -208,14 +291,33 @@ internal class TextLibraryRepository private constructor(
         }
     }
 
-    suspend fun remove(bookId: String) = mutations.withLock {
-        withContext(Dispatchers.IO) {
-            val book = dao.book(bookId) ?: return@withContext
-            dao.delete(bookId)
-            activityStore.remove(bookId)
-            // Only generated file names are used; source provider URIs are never deleted.
-            File(sourceFolder, book.sourceFileName).delete()
-            metadataStore.remove(bookId)
+    suspend fun needsOriginalRemovalPermission(bookId: String): Boolean = withContext(Dispatchers.IO) {
+        if (originals.canPublish()) return@withContext false
+        val book = dao.book(bookId) ?: return@withContext false
+        if (dao.otherSourceOwners(book.sourceSha256, bookId) > 0) return@withContext false
+        originalFiles.originalsFor(book.sourceSha256).any { originals.hasPublicCopies(it) }
+    }
+
+    suspend fun remove(bookId: String) = TextBookFileStore.lifecycle.withLock {
+        mutations.withLock {
+            withContext(Dispatchers.IO) {
+                val book = dao.book(bookId) ?: return@withContext
+                // Several selected books can share one downloaded/imported archive.
+                if (dao.otherSourceOwners(book.sourceSha256, bookId) == 0) {
+                    originalFiles.originalsFor(book.sourceSha256).forEach { original ->
+                        currentCoroutineContext().ensureActive()
+                        originals.remove(original)
+                        check(!original.exists() || original.delete()) { "Не удалось удалить оригинал книги из папки приложения." }
+                        original.parentFile?.takeIf { it.list()?.isEmpty() == true }?.delete()
+                    }
+                }
+                val source = File(sourceFolder, book.sourceFileName)
+                check(source.canonicalFile.parentFile == sourceFolder.canonicalFile)
+                check(!source.exists() || source.delete()) { "Не удалось удалить импортированную копию книги." }
+                dao.delete(bookId)
+                activityStore.remove(bookId)
+                metadataStore.remove(bookId)
+            }
         }
     }
 }

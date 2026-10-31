@@ -11,6 +11,14 @@ internal fun textFragmentId(audioChapterId: String): String = audioChapterId.sub
 internal fun textChapterId(audioChapterId: String): String = textFragmentId(audioChapterId).substringBeforeLast(":f")
 internal fun textChapterStarts(ids: List<String>): List<Int> = ids.indices.filter { it == 0 || textChapterId(ids[it]) != textChapterId(ids[it - 1]) }
 
+/** Anchor the timer to the final audio fragment of the visible chapter. */
+internal fun textChapterEnd(ids: List<String>, currentIndex: Int): Int? {
+    if (currentIndex !in ids.indices) return null
+    val chapter = textChapterId(ids[currentIndex])
+    return (currentIndex..ids.lastIndex).firstOrNull { textChapterId(ids[it]) != chapter }
+        ?.minus(1) ?: ids.lastIndex
+}
+
 internal fun textChapterTarget(ids: List<String>, currentIndex: Int, next: Boolean): Int? {
     if (currentIndex !in ids.indices) return null
     val starts = textChapterStarts(ids)

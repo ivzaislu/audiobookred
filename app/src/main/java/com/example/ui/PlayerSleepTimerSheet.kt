@@ -38,6 +38,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.data.narration.TEXT_NARRATION_SOURCE
+import com.example.data.narration.textChapterEnd
 import com.example.data.model.BookDetailDto
 import com.example.data.model.PersonDto
 import com.example.data.player.PlaybackSleepTimerStore
@@ -125,7 +127,9 @@ internal fun PlayerSleepTimerSheet(
                     sleepTimerStore.setEndOfChapter(
                         bookId = book.id,
                         sourceCode = book.selectedSource.takeIf { it.isNotBlank() },
-                        chapterIndex = chapterIndex,
+                        chapterIndex = if (book.selectedSource == TEXT_NARRATION_SOURCE) {
+                            textChapterEnd(book.chapters.map { it.id }, chapterIndex) ?: return@Button
+                        } else chapterIndex,
                     )
                     onDismiss()
                 },

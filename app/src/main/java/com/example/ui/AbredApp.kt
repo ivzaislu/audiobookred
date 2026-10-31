@@ -13,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -62,8 +61,6 @@ fun AbredApp(
 
     var dismissedMiniPlayerBookId by remember { mutableStateOf<String?>(null) }
     var libraryEntryKey by remember { mutableIntStateOf(0) }
-    var readerFocused by remember { mutableStateOf(false) }
-    var requestedTextBookId by rememberSaveable { mutableStateOf<String?>(null) }
     var requestedAudioReadingPosition by remember { mutableStateOf<TextAudioReadingPosition?>(null) }
 
     val homeListState = rememberLazyListState()
@@ -100,6 +97,7 @@ fun AbredApp(
         player.book?.id,
     ) {
         if (
+            currentDestination !is TextReaderDestination &&
             shouldOpenPlayerForReadyPreparation(
                 preparationActive = playbackPreparation.active,
                 preparationReady = playbackPreparation.ready,
@@ -116,7 +114,8 @@ fun AbredApp(
             while (
                 index > 0 &&
                 appBackStack[index] !is TopLevelDestination &&
-                appBackStack[index] !is BookDestination
+                appBackStack[index] !is BookDestination &&
+                appBackStack[index] !is TextBookDestination
             ) {
                 appBackStack.removeAt(index)
                 index -= 1
@@ -129,6 +128,13 @@ fun AbredApp(
         if (appBackStack.lastOrNull() != destination) appBackStack.add(destination)
     }
     val openRootBook: (String) -> Unit = { id -> openBookDestination(id, false) }
+    val openTextBook: (String) -> Unit = { id ->
+        appBackStack.openOrReturnTo(TextBookDestination(id))
+    }
+    val readTextBook: (String) -> Unit = { id ->
+        requestedAudioReadingPosition = null
+        appBackStack.openOrReturnTo(TextReaderDestination(id))
+    }
 
     val openBrowseDestination: (BrowseDestinationKind, String, String) -> Unit = { kind, id, name ->
         resetBrowseViewport()
@@ -189,7 +195,7 @@ fun AbredApp(
             bottomBar = {
                 val showBottomNavigation = settings.pinBottomNavigation || !isNestedDestination
                 if (
-                    !(readerFocused && currentDestination == TopLevelDestination.Library) && !isPlayerDestination &&
+                    currentDestination !is TextReaderDestination && !isPlayerDestination &&
                     (playbackPreparation.active || showBottomNavigation)
                 ) {
                     Column(
@@ -247,11 +253,7 @@ fun AbredApp(
                                 PreparedHomeScreen(
                                     listState = homeListState,
                                     onBook = openRootBook,
-                                    onOpenTextBook = { id ->
-                                        requestedAudioReadingPosition = null
-                                        requestedTextBookId = id
-                                        navigateToTab(TopLevelDestination.Library)
-                                    },
+                                    onOpenTextBook = openTextBook,
                                     onContinueTextBook = { id -> vm.playTextBook(id, null, onStarted = openPlayer) },
                                     onContinueBook = { id ->
                                         if (player.book?.id == id) {
@@ -274,10 +276,9 @@ fun AbredApp(
                                 PreparedCatalogScreen(
                                     listState = catalogListState,
                                     onBook = openRootBook,
-                                    onOpenTextBook = { id ->
-                                        requestedTextBookId = id
-                                        navigateToTab(TopLevelDestination.Library)
-                                    },
+                                    onReadTextBook = readTextBook,
+                                    onListenTextBook = { id -> vm.playTextBook(id, null, onStarted = openPlayer) },
+                                    onPlaySavedAudio = vm::playDownloadedBook,
                                     showProgressPercent = settings.showProgressPercent,
                                 )
                             }
@@ -295,20 +296,8 @@ fun AbredApp(
                                     },
                                     onDownloadedBook = { id -> openBookDestination(id, true) },
                                     onPlayDownloaded = vm::playDownloadedBook,
-                                    audioSpeed = player.speed, onSetAudioSpeed = vm::setPlaybackSpeed,
-                                    onRuVoiceVoiceSelected = vm::setRuVoiceVoice,
                                     onPlayText = { bookId, fragmentId -> vm.playTextBook(bookId, fragmentId) {} },
-                                    onListenFromText = { bookId, fragmentId, fraction -> vm.listenFromText(bookId, fragmentId, fraction) },
-                                    onListenLive = { vm.playLiveTextBook(it) },
-                                    textHighlight = textHighlight,
-                                    audioBookId = player.book?.id, audioPlaying = player.isPlaying, audioBuffering = player.isLoading,
-                                    audioError = player.error,
-                                    onToggleAudio = vm::togglePlayback,
-                                    onReaderFocusChanged = { readerFocused = it },
-                                    requestedTextBookId = requestedTextBookId,
-                                    requestedAudioReadingPosition = requestedAudioReadingPosition,
-                                    onAudioReadingPositionConsumed = { requestedAudioReadingPosition = null },
-                                    onTextBookRequestConsumed = { requestedTextBookId = null },
+                                    onTextBook = openTextBook,
                                     onPlayBookmark = { item ->
                                         vm.playBookmark(item, onStarted = openPlayer)
                                     },
@@ -342,13 +331,70 @@ fun AbredApp(
                                 PreparedPlayerSettingsScreen(onBack = popAppDestination)
                             }
                             SettingsDestination.Reader -> NavEntry(key) {
-                                PreparedReaderSettingsScreen(onBack = popAppDestination, onBeforeListen = vm::pauseForNarrationPreview)
+                                PreparedReaderSettingsScreen(
+                                    onBack = popAppDestination,
+                                    onVoiceSelected = { voice ->
+                                        vm.playerState.value.book?.id?.let { bookId ->
+                                            vm.setRuVoiceVoice(bookId, voice)
+                                        }
+                                    },
+                                )
                             }
                             SettingsDestination.Sources -> NavEntry(key) {
                                 PreparedSourceSettingsScreen(onBack = popAppDestination)
                             }
                             SettingsDestination.ExternalServices -> NavEntry(key) {
                                 PreparedExternalServicesSettingsScreen(onBack = popAppDestination)
+                            }
+                            is TextBookDestination -> NavEntry(key) {
+                                PreparedTextBookDetailScreen(
+                                    bookId = key.bookId,
+                                    onBack = popAppDestination,
+                                    onRead = readTextBook,
+                                    onListen = { id -> vm.playTextBook(id, null, onStarted = openPlayer) },
+                                    onSeries = { series -> appBackStack.openOrReturnTo(TextCycleDestination(series)) },
+                                    showProgressPercent = settings.showProgressPercent,
+                                    onAuthorSearch = { source, name -> appBackStack.openOrReturnTo(TextAuthorDestination(source, name)) },
+                                    onPlaySavedAudio = vm::playDownloadedBook,
+                                )
+                            }
+                            is TextAuthorDestination -> NavEntry(key) {
+                                PreparedTextAuthorScreen(
+                                    sourceCode = key.sourceCode, authorName = key.authorName,
+                                    onBack = popAppDestination, onRead = readTextBook,
+                                    onListen = { id -> vm.playTextBook(id, null, onStarted = openPlayer) },
+                                    showProgressPercent = settings.showProgressPercent,
+                                    onPlaySavedAudio = vm::playDownloadedBook,
+                                )
+                            }
+                            is TextCycleDestination -> NavEntry(key) {
+                                PreparedTextCycleScreen(
+                                    seriesKey = key.seriesKey,
+                                    onBack = popAppDestination,
+                                    onBook = openTextBook,
+                                    onListen = { id -> vm.playTextBook(id, null, onStarted = openPlayer) },
+                                )
+                            }
+                            is TextReaderDestination -> NavEntry(key) {
+                                PreparedTextReaderScreen(
+                                    bookId = key.bookId,
+                                    onBack = popAppDestination,
+                                    onPlayText = { book, fragment -> vm.playTextBook(book, fragment) {} },
+                                    onListenFromText = { book, fragment, fraction -> vm.listenFromText(book, fragment, fraction) },
+                                    textHighlight = textHighlight,
+                                    audioBookId = player.book?.id,
+                                    audioPlaying = player.isPlaying,
+                                    audioBuffering = player.isLoading,
+                                    audioError = player.error,
+                                    onToggleAudio = vm::togglePlayback,
+                                    audioSpeed = player.speed,
+                                    onSeekBy = vm::seekBy,
+                                    onSetAudioSpeed = vm::setPlaybackSpeed,
+                                    rewindSeconds = settings.rewindSeconds,
+                                    forwardSeconds = settings.forwardSeconds,
+                                    requestedAudioReadingPosition = requestedAudioReadingPosition,
+                                    onAudioReadingPositionConsumed = { requestedAudioReadingPosition = null },
+                                )
                             }
                             is BookDestination -> NavEntry(key) {
                                 PreparedBookDetailScreen(
@@ -406,8 +452,7 @@ fun AbredApp(
                                                     snackbarHostState.showSnackbar("Текст этой аудиокниги не найден в библиотеке.")
                                                 } else {
                                                     requestedAudioReadingPosition = target
-                                                    requestedTextBookId = target.bookId
-                                                    navigateToTab(TopLevelDestination.Library)
+                                                    appBackStack.openOrReturnTo(TextReaderDestination(target.bookId))
                                                 }
                                             } catch (error: Exception) {
                                                 snackbarHostState.showSnackbar(
@@ -418,8 +463,7 @@ fun AbredApp(
                                     },
                                     onOpenBook = { bookId ->
                                         if (bookId.startsWith("txt_")) {
-                                            requestedTextBookId = bookId
-                                            navigateToTab(TopLevelDestination.Library)
+                                            openTextBook(bookId)
                                         } else {
                                         val underlyingBook = appBackStack.getOrNull(appBackStack.lastIndex - 1) as? BookDestination
                                         if (underlyingBook?.bookId == bookId) {

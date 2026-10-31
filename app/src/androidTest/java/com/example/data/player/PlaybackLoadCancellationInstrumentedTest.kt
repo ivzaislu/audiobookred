@@ -83,7 +83,35 @@ class PlaybackLoadCancellationInstrumentedTest {
         f.join(load)
     }
 
-    private class Fixture(recoverSnapshot: Boolean = false) : AutoCloseable {
+    @Test
+    fun emptyPlayerResumesAtRememberedFastSpeed() = assertRecoveredSpeed(1.75f)
+
+    @Test
+    fun emptyPlayerResumesAtRememberedSlowSpeed() = assertRecoveredSpeed(0.75f)
+
+    private fun assertRecoveredSpeed(speed: Float) = Fixture(recoverSnapshot = true, savedSpeed = speed).use { f ->
+        assertTrue(f.snapshotRequested.await(10, TimeUnit.SECONDS))
+        lateinit var recovery: Job
+        f.main { recovery = requireNotNull(f.manager.pendingSnapshotRecoveryJob) }
+        f.snapshot.complete(f.oldBook)
+        f.join(recovery)
+        f.main {
+            assertEquals(f.oldBook.id, f.manager.state.value.book?.id)
+            assertEquals(speed, f.manager.state.value.speed, 0f)
+            assertEquals(0, f.player.mediaItemCount)
+        }
+
+        // The reader's Continue action can toggle a recovered book before any
+        // playlist exists. Check the actual player, not just the restored UI.
+        val load = f.startRecoveredLoad()
+        f.items.complete(listOf(f.item()))
+        f.join(load)
+        f.main {
+            assertEquals(speed, f.player.playbackParameters.speed, 0f)
+        }
+    }
+
+    private class Fixture(recoverSnapshot: Boolean = false, savedSpeed: Float = 1f) : AutoCloseable {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val items = CompletableDeferred<List<MediaItem>>()
         private val requested = CountDownLatch(1)
@@ -100,7 +128,7 @@ class PlaybackLoadCancellationInstrumentedTest {
 
         init {
             UserDataRestoreGate.allowPlaybackWritesAfterFreshPrepare()
-            if (recoverSnapshot) resumeStore.saveImmediate(oldBook.id, "test", "new-1", 0, 1000L, 1f)
+            if (recoverSnapshot) resumeStore.saveImmediate(oldBook.id, "test", "new-1", 0, 1000L, savedSpeed)
             main {
                 val context = instrumentation.targetContext
                 player = ExoPlayer.Builder(context).build()
@@ -128,6 +156,13 @@ class PlaybackLoadCancellationInstrumentedTest {
         fun main(block: () -> Unit) = instrumentation.runOnMainSync(block)
         fun startLoad(positionMs: Long = 0L): Job {
             main { manager.play(book, 0, positionMs) }
+            assertTrue(requested.await(10, TimeUnit.SECONDS))
+            lateinit var job: Job
+            main { job = requireNotNull(manager.pendingMediaLoadJob) }
+            return job
+        }
+        fun startRecoveredLoad(): Job {
+            main { manager.toggle() }
             assertTrue(requested.await(10, TimeUnit.SECONDS))
             lateinit var job: Job
             main { job = requireNotNull(manager.pendingMediaLoadJob) }

@@ -16,6 +16,8 @@ internal data class TextLibraryMembership(
     val series: List<MySeriesDto> = emptyList(),
     val seriesBooks: Map<String, List<BookCardDto>> = emptyMap(),
     val activityTimes: Map<String, Long> = emptyMap(),
+    val books: Map<String, BookCardDto> = emptyMap(),
+    val availableSeries: Map<String, MySeriesDto> = emptyMap(),
 )
 
 internal fun textLibraryMembership(
@@ -27,7 +29,9 @@ internal fun textLibraryMembership(
         val record = activity[book.id]
         book.id to BookCardDto(id = book.id, title = book.title, coverUrl = info.coverUri,
             progressPercent = listeningProgress[book.id]?.takeIf { it.isFinite() }?.coerceIn(0.0, 100.0) ?: 0.0,
-            authors = info.author.takeIf { it.isNotBlank() }?.let { listOf(PersonDto("local:author", it)) }.orEmpty(),
+            authors = if (info.sourceAuthors.isNotEmpty()) info.sourceAuthors.mapIndexed { index, name ->
+                PersonDto("local:author:$index", name)
+            } else info.author.takeIf { it.isNotBlank() }?.let { listOf(PersonDto("local:author", it)) }.orEmpty(),
             sourceMeta = record?.sourceName.orEmpty(), primarySource = record?.sourceCode.orEmpty(),
             sourceSeriesName = record?.seriesName.orEmpty(), sourceSeriesPosition = record?.seriesNumber?.toIntOrNull(),
             series = record?.takeIf { it.seriesKey.isNotBlank() && it.seriesName.isNotBlank() }?.let {
@@ -36,22 +40,26 @@ internal fun textLibraryMembership(
                     isPrimary = true, provider = "text:${it.sourceCode}", externalId = it.seriesId))
             }.orEmpty())
     }
-    val groups = textLibraryCycles(activity.values, cards.keys)
+    val groups = textLibraryCycles(activity.values, cards.keys, includeInactive = true)
+    val visibleKeys = textLibraryCycles(activity.values, cards.keys).map { it.first().seriesKey }.toSet()
+    val allSeries = groups.map { members ->
+        val recent = members.maxBy { it.lastActivityAtMs }
+        val next = members.dropWhile { it.bookId != recent.bookId }.drop(1).firstOrNull { it.lastActivityAtMs == 0L }
+        fun progress(record: TextLibraryActivity) = SeriesProgressBookDto(
+            book = cards.getValue(record.bookId), position = record.seriesNumber.replace(',', '.').toDoubleOrNull()?.takeIf(Double::isFinite),
+            state = if (record.lastActivityAtMs > 0) "in_progress" else "not_started",
+        )
+        MySeriesDto(id = recent.seriesKey, name = recent.seriesName, provider = "text:${recent.sourceCode}",
+            externalId = recent.seriesId, sourceName = recent.sourceName,
+            availableCount = members.size, totalCount = members.size,
+            inProgressCount = members.count { it.lastActivityAtMs > 0 }, notStartedCount = members.count { it.lastActivityAtMs == 0L },
+            lastActivityAt = recent.lastActivityAtMs.toString(), currentBook = progress(recent), nextBook = next?.let(::progress))
+    }
     return TextLibraryMembership(
+        books = cards,
         history = textLibraryHistory(activity.values, cards.keys).mapNotNull { cards[it.bookId] },
-        series = groups.map { members ->
-            val recent = members.maxBy { it.lastActivityAtMs }
-            val next = members.dropWhile { it.bookId != recent.bookId }.drop(1).firstOrNull { it.lastActivityAtMs == 0L }
-            fun progress(record: TextLibraryActivity) = SeriesProgressBookDto(
-                book = cards.getValue(record.bookId), position = record.seriesNumber.replace(',', '.').toDoubleOrNull()?.takeIf(Double::isFinite),
-                state = if (record.lastActivityAtMs > 0) "in_progress" else "not_started",
-            )
-            MySeriesDto(id = recent.seriesKey, name = recent.seriesName, provider = "text:${recent.sourceCode}",
-                externalId = recent.seriesId, sourceName = recent.sourceName,
-                availableCount = members.size, totalCount = members.size,
-                inProgressCount = members.count { it.lastActivityAtMs > 0 }, notStartedCount = members.count { it.lastActivityAtMs == 0L },
-                lastActivityAt = recent.lastActivityAtMs.toString(), currentBook = progress(recent), nextBook = next?.let(::progress))
-        },
+        series = allSeries.filter { it.id in visibleKeys },
+        availableSeries = allSeries.associateBy { it.id },
         seriesBooks = groups.associate { members -> members.first().seriesKey to members.mapNotNull { cards[it.bookId] } },
         activityTimes = activity.mapValues { it.value.lastActivityAtMs },
     )

@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 
 internal data class TextLibraryUiState(
     val books: List<TextBookEntity> = emptyList(),
+    val membershipLoaded: Boolean = false,
     val membership: TextLibraryMembership = TextLibraryMembership(),
     val membershipError: String? = null,
     val importing: Boolean = false,
@@ -48,6 +49,7 @@ internal data class TextLibraryUiState(
     val startingAudioExport: Boolean = false,
     val metadata: Map<String, TextBookMetadata> = emptyMap(),
     val archiveEntries: List<String> = emptyList(),
+    val choosingImportLocation: Boolean = false,
 )
 
 @HiltViewModel
@@ -57,6 +59,7 @@ internal class TextLibraryViewModel @Inject constructor(
     private val audioExports: TextAudioExportRepository,
     private val downloadStore: DownloadStore,
     private val downloads: DownloadRepository,
+    private val textSources: com.example.data.textsource.RemoteTextSourceRegistry,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TextLibraryUiState())
     val state = mutableState.asStateFlow()
@@ -64,6 +67,7 @@ internal class TextLibraryViewModel @Inject constructor(
     private var readerRequest = 0L
     private val session = TextReaderSession()
     private var pendingImport: Uri? = null
+    private var pendingMoveOriginal = false
 
     init {
         viewModelScope.launch {
@@ -76,29 +80,48 @@ internal class TextLibraryViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                combine(repository.observeBooks(), repository.observeActivity(), listeningProgress.observe()) { books, _, progress ->
+                combine(repository.observeBooks(), repository.observeActivity(), listeningProgress.observe(), repository.observeMetadataChanges()) { books, _, progress, _ ->
                     repository.restoreReadingActivity(books)
                     val metadata = books.associate { it.id to repository.metadata(it.id) }
                     val membership = withContext(Dispatchers.Default) { textLibraryMembership(books, metadata, repository.observeActivity().value, progress) }
                     Triple(books, metadata, membership)
                 }.collect { (books, metadata, membership) ->
-                    mutableState.update { it.copy(books = books, metadata = metadata, membership = membership) }
+                    mutableState.update { it.copy(books = books, metadata = metadata, membership = membership, membershipLoaded = true) }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { message(error.message ?: "Не удалось открыть текстовую библиотеку.") }
+            catch (error: Exception) {
+                mutableState.update { it.copy(membershipLoaded = true, membershipError = error.message ?: "Не удалось открыть текстовую библиотеку.") }
+            }
         }
     }
 
-    fun importTxt(uri: Uri) = importBook(uri)
+    fun importTxt(uri: Uri) = requestImport(uri)
 
-    fun importBook(uri: Uri, entry: String? = null) {
+    fun requestImport(uri: Uri) {
+        if (state.value.importing || state.value.choosingImportLocation || state.value.archiveEntries.isNotEmpty()) return
+        pendingImport = uri
+        pendingMoveOriginal = false
+        mutableState.update { it.copy(choosingImportLocation = true, message = null) }
+    }
+
+    fun chooseImportLocation(moveOriginal: Boolean) {
+        val uri = pendingImport ?: return
+        importBook(uri, moveOriginal = moveOriginal)
+    }
+
+    fun importBook(uri: Uri, entry: String? = null, moveOriginal: Boolean = false) {
         if (state.value.importing) return
         pendingImport = null
-        mutableState.update { it.copy(importing = true, message = null, archiveEntries = emptyList()) }
+        pendingMoveOriginal = moveOriginal
+        mutableState.update { it.copy(importing = true, message = null, archiveEntries = emptyList(), choosingImportLocation = false) }
         viewModelScope.launch {
             try {
-                val result = repository.importBook(uri, entry)
-                message(if (result.duplicate) "Эта книга уже есть в библиотеке. Позиция чтения сохранена." else "Книга импортирована. Можно читать, слушать и сохранять аудио.")
+                val result = repository.importBook(uri, entry, moveOriginal)
+                message(result.moveError ?: when {
+                    result.originalMoved -> "Книга добавлена. Исходный файл перенесён в Download/AudioBookRed/Books."
+                    result.duplicate -> "Эта книга уже есть в библиотеке. Позиция чтения сохранена."
+                    else -> "Книга импортирована. Исходный файл оставлен на прежнем месте."
+                })
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (choice: EbookSelectionRequired) {
                 pendingImport = uri
@@ -109,8 +132,14 @@ internal class TextLibraryViewModel @Inject constructor(
         }
     }
 
-    fun chooseArchiveEntry(entry: String) { pendingImport?.let { if (entry in state.value.archiveEntries) importBook(it, entry) } }
-    fun cancelArchiveImport() { pendingImport = null; mutableState.update { it.copy(archiveEntries = emptyList()) } }
+    fun chooseArchiveEntry(entry: String) {
+        pendingImport?.let { if (entry in state.value.archiveEntries) importBook(it, entry, pendingMoveOriginal) }
+    }
+    fun cancelArchiveImport() {
+        pendingImport = null
+        pendingMoveOriginal = false
+        mutableState.update { it.copy(archiveEntries = emptyList(), choosingImportLocation = false) }
+    }
 
     fun ensureOpen(bookId: String) {
         if (!state.value.opening && state.value.reader?.book?.id != bookId) open(bookId)
@@ -151,6 +180,21 @@ internal class TextLibraryViewModel @Inject constructor(
         mutableState.update { it.copy(reader = null, opening = false, preview = false, following = false, committing = false, readingJump = null) }
     }
 
+    /** A navigation entry may be destroyed on return, so await the final bookmark before popping it. */
+    suspend fun closeReaderAndSave(token: Long, fragmentId: String, scrollOffsetPx: Int): Boolean {
+        if (token != state.value.readerSession) return false
+        val bookId = state.value.reader?.book?.id?.takeIf { session.canSave(token) }
+        try {
+            if (bookId != null) repository.savePosition(bookId, fragmentId, scrollOffsetPx)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            message("Не удалось сохранить позицию чтения.")
+            return false
+        }
+        closeReader(token)
+        return true
+    }
+
     fun savePosition(token: Long, bookId: String, chapterId: String, fragmentId: String, scrollOffsetPx: Int) {
         if (!session.canSave(token)) return
         val reader = state.value.reader ?: return
@@ -166,13 +210,19 @@ internal class TextLibraryViewModel @Inject constructor(
         val current = state.value
         if (current.reader == null || token != current.readerSession || current.committing) return
         if (enabled && !session.canFollow(token)) return
+        if (!enabled) session.suspendFollowing(token)
         if (enabled && !current.preview) {
             // Following is activated automatically from a global preference. Do not write
             // the visible cursor: only explicit reading may move the saved bookmark.
             if (!session.canSave(token)) return
             val next = session.open(true)
             mutableState.update { it.copy(readerSession = next, preview = true, following = true, readingJump = null) }
-        } else mutableState.update { it.copy(following = enabled) }
+        } else mutableState.update { it.copy(following = enabled, autoFollowAllowed = session.canFollow(token)) }
+    }
+
+    fun resumeFollowing(token: Long) {
+        allowFollowing(token)
+        setFollowing(token, true)
     }
 
     /** Explicit listening resumes the global follow preference after a manual reading action. */
@@ -212,9 +262,13 @@ internal class TextLibraryViewModel @Inject constructor(
         }
     }
 
-    fun remove(bookId: String) {
+    fun remove(bookId: String, onPermissionRequired: (() -> Unit)? = null) {
         viewModelScope.launch {
             try {
+                if (onPermissionRequired != null && repository.needsOriginalRemovalPermission(bookId)) {
+                    onPermissionRequired()
+                    return@launch
+                }
                 // Stop export leases before removing their source; saved audio remains available.
                 downloadStore.books().filter { it.bookSourceId.startsWith("$TEXT_AUDIO_SOURCE:$bookId:") && it.state in setOf("queued", "downloading") }
                     .forEach { downloads.pause(it.bookSourceId) }
@@ -240,6 +294,19 @@ internal class TextLibraryViewModel @Inject constructor(
             }
         }
     }
+
+    fun supportsTextSource(code: String) = textSources.sources.any { it.code == code }
+
+    suspend fun refreshSourceDetails(bookId: String) {
+        val metadata = repository.metadata(bookId)
+        if (metadata.description.isNotBlank() && metadata.sourceAuthors.isNotEmpty()) return
+        val origin = repository.observeActivity().value[bookId] ?: return
+        if (!supportsTextSource(origin.sourceCode) || origin.remoteBookId.isBlank()) return
+        val remote = textSources.provider(origin.sourceCode).book(origin.remoteBookId)
+        repository.saveSourceDetails(bookId, remote.description, remote.authors.map { it.name })
+    }
+
+    suspend fun narrationChapters(bookId: String) = repository.narrationBook(bookId).chapters
 
     fun saveAudio(bookId: String, chapterId: String?) {
         if (state.value.startingAudioExport) return

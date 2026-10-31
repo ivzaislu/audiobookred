@@ -30,10 +30,12 @@ internal fun textLibraryHistory(records: Collection<TextLibraryActivity>, existi
         .sortedWith(compareByDescending<TextLibraryActivity> { it.lastActivityAtMs }.thenBy { it.bookId })
 
 /** A cycle is promoted by actual reading/listening, but includes its unstarted downloaded members. */
-internal fun textLibraryCycles(records: Collection<TextLibraryActivity>, existingBookIds: Set<String>): List<List<TextLibraryActivity>> =
+internal fun textLibraryCycles(
+    records: Collection<TextLibraryActivity>, existingBookIds: Set<String>, includeInactive: Boolean = false,
+): List<List<TextLibraryActivity>> =
     records.filter { it.bookId in existingBookIds && it.seriesKey.isNotBlank() && it.seriesName.isNotBlank() }
         .groupBy { it.seriesKey }.values
-        .filter { members -> members.any { it.seriesVisible && it.lastActivityAtMs > 0 } }
+        .filter { members -> includeInactive || members.any { it.seriesVisible && it.lastActivityAtMs > 0 } }
         .sortedByDescending { members -> members.maxOf { it.lastActivityAtMs } }
         .map { members -> members.sortedWith(compareBy<TextLibraryActivity> {
             it.seriesNumber.replace(',', '.').toDoubleOrNull()?.takeIf(Double::isFinite) ?: Double.MAX_VALUE

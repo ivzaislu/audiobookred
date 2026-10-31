@@ -14,6 +14,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -93,9 +94,39 @@ internal data class RuVoiceDownloadState(
     val message: String = "",
 )
 
+/** Separate from download preferences: installation cleanup must not reset update checks. */
+internal data class RuVoiceUpdateCheck(
+    val latestVersion: String? = null,
+    val lastAttemptMs: Long = 0L,
+    val failed: Boolean = false,
+)
+
+internal object RuVoiceUpdateCheckPolicy {
+    const val INTERVAL_MS = 24L * 60L * 60L * 1_000L
+
+    fun isDue(lastAttemptMs: Long, nowMs: Long): Boolean =
+        lastAttemptMs <= 0L || nowMs < lastAttemptMs || nowMs - lastAttemptMs >= INTERVAL_MS
+
+    /** Null means that one of the package version strings is not a standard X.Y.Z. */
+    fun compare(latest: String, installed: String): Int? {
+        fun parts(version: String): List<Int>? = version.split('.')
+            .takeIf { it.size == 3 }
+            ?.map { it.toIntOrNull()?.takeIf { number -> number >= 0 } ?: return null }
+
+        val a = parts(latest) ?: return null
+        val b = parts(installed) ?: return null
+        for (index in 0..2) {
+            val result = a[index].compareTo(b[index])
+            if (result != 0) return result
+        }
+        return 0
+    }
+}
+
 /** The OS owns the long-running transfer. Install still requires Android user approval. */
 internal class RuVoiceReleaseInstaller(private val context: Context) {
     private val prefs = context.getSharedPreferences("ruvoice-installer-v1", Context.MODE_PRIVATE)
+    private val updatePrefs = context.getSharedPreferences("ruvoice-update-check-v1", Context.MODE_PRIVATE)
     private val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
     fun autoInstallArmed(): Boolean = prefs.getBoolean("auto_install", false)
@@ -142,6 +173,41 @@ internal class RuVoiceReleaseInstaller(private val context: Context) {
             require(body.length < 1_000_000) { "Ответ GitHub слишком большой." }
             RuVoiceReleaseMetadata.parse(body)
         }
+    }
+
+    fun cachedUpdateCheck(): RuVoiceUpdateCheck = RuVoiceUpdateCheck(
+        latestVersion = updatePrefs.getString("latest_version", null),
+        lastAttemptMs = updatePrefs.getLong("last_attempt_ms", 0L),
+        failed = updatePrefs.getBoolean("last_failed", false),
+    )
+
+    /** Checking the release never starts a download or launches an installer. */
+    suspend fun checkUpdateIfDue(): RuVoiceUpdateCheck {
+        val now = System.currentTimeMillis()
+        if (!RuVoiceUpdateCheckPolicy.isDue(cachedUpdateCheck().lastAttemptMs, now)) {
+            return cachedUpdateCheck()
+        }
+        // Rate-limit failed requests as well, so an offline device does not keep polling GitHub.
+        updatePrefs.edit().putLong("last_attempt_ms", now)
+            .putBoolean("last_failed", true).remove("latest_version").apply()
+        return try {
+            rememberLatest(latest())
+            cachedUpdateCheck()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            cachedUpdateCheck()
+        }
+    }
+
+    /** The explicit update button also refreshes the 24-hour status cache. */
+    fun rememberLatest(release: RuVoiceRelease) {
+        require(RuVoiceReleaseMetadata.valid(release)) { "Недопустимый релиз RuVoice." }
+        updatePrefs.edit()
+            .putLong("last_attempt_ms", System.currentTimeMillis())
+            .putString("latest_version", release.version)
+            .putBoolean("last_failed", false)
+            .apply()
     }
 
     private fun stored(): RuVoiceRelease? = runCatching {

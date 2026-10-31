@@ -171,7 +171,10 @@ internal fun PlayerTransientOverlay(
                             )
                             Spacer(Modifier.width(AbredSpacing.Sm))
                             Text(
-                                if (state.book?.selectedSource == TEXT_NARRATION_SOURCE) "Готовим озвучку Ксенией…" else "Загрузка…",
+                                if (state.book?.selectedSource == TEXT_NARRATION_SOURCE) {
+                                    val voiceName = state.book?.narrators?.firstOrNull()?.name.orEmpty()
+                                    if (voiceName.isBlank()) "Готовим озвучку…" else "Готовим озвучку: $voiceName…"
+                                } else "Загрузка…",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )

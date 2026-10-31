@@ -4,9 +4,13 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.URI
 import java.nio.charset.Charset
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
+import java.util.zip.ZipException
+import java.util.zip.CRC32
 import com.example.data.text.RussianBookSectionNames
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
@@ -105,12 +109,60 @@ internal object EbookImportParser {
             require(files.isNotEmpty()) { "Архив пуст." }
             return files
         }
-        return try { decode(Charsets.UTF_8) }
+        fun compatibleDecode(charset: Charset): Map<String, ByteArray> = try { decode(charset) }
+        catch (error: ZipException) {
+            // A STORED entry with a data descriptor is readable using the central directory,
+            // but Java's streaming reader rejects it before exposing the entry.
+            // ZipInputStream's exact error differs by Android/JDK version. The fallback still
+            // enforces paths, entry/size limits and CRC for every central-directory entry.
+            unpackUsingDirectory(bytes, charset)
+        }
+        return try { compatibleDecode(Charsets.UTF_8) }
         catch (invalid: IllegalArgumentException) {
             // Retry only malformed ZIP names, never budget/path failures.
             if (invalid.message?.contains("malformed", true) == true || invalid.message?.contains("MALFORMED") == true)
-                decode(Charset.forName("CP866")) else throw invalid
+                compatibleDecode(Charset.forName("CP866")) else throw invalid
         }
+    }
+
+    private fun unpackUsingDirectory(bytes: ByteArray, charset: Charset): Map<String, ByteArray> {
+        val temporary = File.createTempFile("abred-ebook-", ".zip")
+        try {
+            temporary.outputStream().use { it.write(bytes) }
+            return ZipFile(temporary, charset).use { zip ->
+                val files = linkedMapOf<String, ByteArray>()
+                var entries = 0
+                var total = 0L
+                val enumeration = zip.entries()
+                while (enumeration.hasMoreElements()) {
+                    val entry = enumeration.nextElement()
+                    require(++entries <= 5_000) { "В архиве слишком много файлов." }
+                    val path = safePath(entry.name)
+                    require(path !in files) { "В архиве повторяется путь: $path" }
+                    if (entry.isDirectory) continue
+                    require(entry.size in 0..MAX_DOCUMENT_BYTES.toLong()) { "Файл в архиве слишком большой." }
+                    val output = ByteArrayOutputStream()
+                    val crc = CRC32()
+                    zip.getInputStream(entry).use { input ->
+                        val buffer = ByteArray(32 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= MAX_UNPACKED && output.size().toLong() + count <= MAX_DOCUMENT_BYTES) {
+                                "Архив слишком большой после распаковки (до 64 МБ, один файл — до 16 МБ)."
+                            }
+                            crc.update(buffer, 0, count)
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    if (output.size().toLong() != entry.size || crc.value != entry.crc) throw ZipException("Повреждён файл ZIP: размер или CRC не совпадает.")
+                    files[path] = output.toByteArray()
+                }
+                require(files.isNotEmpty()) { "Архив пуст." }
+                files
+            }
+        } finally { temporary.delete() }
     }
 
     private fun safePath(value: String): String {

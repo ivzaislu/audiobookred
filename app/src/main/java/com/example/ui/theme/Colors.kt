@@ -158,6 +158,6 @@ internal object AbredFixedColors {
     val FaviconBackground = Color.White
 }
 
-internal val ReaderDayHighlight = Color(0xFFFFE5A3)
-internal val ReaderNightHighlight = Color(0xFF51472B)
-internal val ReaderSepiaHighlight = Color(0xFFE6D19C)
+internal val ReaderDayHighlight = Color(0xFFD0D0D0)
+internal val ReaderNightHighlight = Color(0xFF505050)
+internal val ReaderSepiaHighlight = ReaderDayHighlight

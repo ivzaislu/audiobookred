@@ -182,8 +182,9 @@ internal fun LibraryScreenV2(
                     }?.let { book.id to it.bookSourceId }
                 }.toMap(),
                 onPlaySaved = onPlayDownloaded,
-                books = textLibrary.books.filter { cleanQuery.isBlank() || it.title.contains(cleanQuery, true) || it.originalName.contains(cleanQuery, true) || textLibrary.metadata[it.id]?.author?.contains(cleanQuery, true) == true },
+                books = textLibrary.books.filter { cleanQuery.isBlank() || it.title.contains(cleanQuery, true) || it.originalName.contains(cleanQuery, true) || textLibrary.metadata[it.id]?.author?.contains(cleanQuery, true) == true || membership.books[it.id]?.seriesDisplayLabel()?.contains(cleanQuery, true) == true },
                 metadata = textLibrary.metadata,
+                cards = membership.books,
                 importing = textLibrary.importing, message = textLibrary.message, queryActive = cleanQuery.isNotBlank(),
                 onImport = onImportText, onOpen = onOpenText, onRemove = onRemoveText, onPlay = onPlayText,
             )

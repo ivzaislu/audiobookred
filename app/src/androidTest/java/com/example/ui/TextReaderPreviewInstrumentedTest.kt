@@ -57,17 +57,16 @@ class TextReaderPreviewInstrumentedTest {
                         state = TextLibraryUiState(reader = reader, preview = true, readerSession = 7),
                         onBack = {}, onPosition = { _, _, _, _ -> saves++ }, onListen = { _, _ -> },
                         audioBookId = null, audioPlaying = false, audioBuffering = false, audioError = null,
-                        onToggleAudio = {}, audioSpeed = 1f, onSetAudioSpeed = {},
-                        onRuVoiceVoiceSelected = { _, _ -> }, onReaderFocusChanged = {},
-                        onSaveAudio = { _, _ -> }, onPauseAudio = {}, onResumeAudio = {}, onRemoveAudio = {}, onPlaySavedAudio = {},
-                        onCommitPreview = { fragment, _ -> committedFragment = fragment; commits++ },
+                        onToggleAudio = {}, onCommitPreview = { fragment, _ -> committedFragment = fragment; commits++ },
                         onReturnToBookmark = { returns++ }, settings = ReaderSettings(),
                     )
                 }
             }
         }
+        compose.onNodeWithContentDescription("Показать панели чтения").performClick()
         compose.onNodeWithTag("text-reader-content").performScrollToIndex(12)
-        compose.onNodeWithContentDescription("Оглавление").performClick()
+        compose.onNodeWithContentDescription("Действия чтения").performClick()
+        compose.onNodeWithText("Оглавление").performClick()
         compose.onNodeWithText("• Вторая глава").performClick()
         compose.waitForIdle()
         compose.runOnIdle {
@@ -76,11 +75,11 @@ class TextReaderPreviewInstrumentedTest {
         }
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle { lifecycleOwner.registry.currentState = Lifecycle.State.RESUMED }
-        compose.onNodeWithContentDescription("Закладка чтения").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Действия чтения").performScrollTo().performClick()
         compose.onNodeWithText("К моей закладке").performClick()
         compose.runOnIdle { assertEquals(1, returns); assertEquals(0, saves); assertEquals(0, commits) }
         compose.onNodeWithTag("text-reader-content").performScrollToIndex(12)
-        compose.onNodeWithContentDescription("Закладка чтения").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Действия чтения").performScrollTo().performClick()
         compose.onNodeWithText("Читать отсюда").performClick()
         compose.runOnIdle {
             assertEquals(1, commits)

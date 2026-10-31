@@ -107,16 +107,22 @@ class TextNarrationPlayback @Inject internal constructor(
         val source = books.narrationBook(bookId)
         require(source.fragments.isNotEmpty()) { "В книге нет текста." }
         val installedVersion = ruVoice.requireInstalled()
-        val voiceName = voicePreferences.selected()
+        val voiceName = ruVoice.resolveVoiceName(voicePreferences.selected())
         val settingsRevision = voicePreferences.revision()
         val key = if (existingContract != null) {
             val previous = snapshot(existingContract)
-            require(previous.engineVersion == installedVersion) { "RuVoice обновился. Откройте книгу заново." }
-            existingContract
+            if (previous.engineVersion == installedVersion &&
+                previous.voiceName == voiceName && previous.settingsRevision == settingsRevision
+            ) existingContract
+            else {
+                // Changed engine, voice or settings need a new audio identity.
+                // Keep the text fragment, but drop milliseconds from the old waveform.
+                saveContract(voiceName, installedVersion, settingsRevision)
+            }
         } else saveContract(voiceName, installedVersion, settingsRevision)
         val chapters = source.chapters.associateBy { it.id }
         BookDetailDto(
-            id = bookId, title = source.book.title, narrators = listOf(PersonDto("tts:ruvoice", "RuVoice TTS")), selectedSource = TEXT_NARRATION_SOURCE,
+            id = bookId, title = source.book.title, narrators = listOf(PersonDto("tts:ruvoice", voiceName)), selectedSource = TEXT_NARRATION_SOURCE,
             coverUrl = source.metadata.coverUri,
             authors = if (source.metadata.author.isBlank()) emptyList() else listOf(PersonDto("local:author", source.metadata.author)),
             primarySource = TEXT_NARRATION_SOURCE, sourceCodes = listOf(TEXT_NARRATION_SOURCE),
@@ -177,8 +183,11 @@ class TextNarrationPlayback @Inject internal constructor(
         val text = books.narrationBook(bookId)
         val fragments = text.fragments.filter { it.chapterId == chapterId }
         val map = syncMaps.read(sourceId, chapterId, fragments.map { it.id }, bookId, text.book.sourceSha256)
-        return map?.timeAt(fragmentId, fraction)
-            ?: approximateTextAudioTime(fragments, fragmentId, fraction, durationMs)
+        val target = books.narrationFragment(bookId, fragmentId)
+            ?: error("Фрагмент в аудиоглаве не найден.")
+        val targetFraction = if (target.id == fragmentId) fraction else 0.0
+        return map?.timeAt(target.id, targetFraction)
+            ?: approximateTextAudioTime(fragments, target.id, targetFraction, durationMs)
             ?: error("Фрагмент в аудиоглаве не найден.")
     }
 
@@ -204,16 +213,20 @@ class TextNarrationPlayback @Inject internal constructor(
             ?.chapterId?.substringAfter('|', "")?.takeIf { hash.matches(it) } else null
         val book = book(bookId, previousContract)
         val saved = snapshot(book)
-        val index = if (fragmentId != null) book.chapters.indexOfFirst { textFragmentId(it.id) == fragmentId }.also {
-            require(it >= 0) { "Фрагмент больше не найден." }
+        val index = if (fragmentId != null) {
+            val target = books.narrationFragment(bookId, fragmentId)
+            book.chapters.indexOfFirst { textFragmentId(it.id) == target?.id }.also {
+                require(it >= 0) { "Фрагмент больше не найден." }
+            }
         } else saved?.chapterIndex ?: 0
         return PreparedPlayback(book, index, if (fragmentId == null) saved?.positionMs ?: 0 else 0, playbackSpeed(book))
     }
 
     internal suspend fun prepareAt(bookId: String, fragmentId: String, fraction: Double): PreparedPlayback {
         val prepared = prepare(bookId, fragmentId)
-        if (fraction <= 0.0) return prepared
         val chapter = prepared.book.chapters[prepared.chapterIndex]
+        // A blank cursor resolves to the start of nearby speech, not its old fraction.
+        if (fraction <= 0.0 || textFragmentId(chapter.id) != fragmentId) return prepared
         val ticket = acquire(Uri.parse(chapter.streamUrl), NarrationPriority.PLAYBACK)
         return try {
             val audio = ticket.await()

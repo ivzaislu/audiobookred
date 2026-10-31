@@ -207,10 +207,6 @@ class PlaybackViewModel @Inject constructor(
         }) onStarted()
     }
 
-    internal fun playLiveTextBook(bookId: String) = viewModelScope.launch {
-        prepareAndPlay { textNarration.prepare(bookId) }
-    }
-
     private fun isAudioForText(audio: BookDetailDto, bookId: String): Boolean =
         (audio.selectedSource == TEXT_NARRATION_SOURCE && audio.id == bookId) ||
             (audio.selectedSource == TEXT_AUDIO_SOURCE && audio.selectedBookSourceId.startsWith("text_audio:$bookId:"))
@@ -331,7 +327,7 @@ class PlaybackViewModel @Inject constructor(
         val before = playerState.value
         val book = before.book
         if (book?.selectedSource == TEXT_NARRATION_SOURCE) {
-            if (!before.isPlaying && player.needsRecovery() && !before.error.isNullOrBlank()) {
+            if (!before.isPlaying && player.needsRecovery()) {
                 prepareAndPlay { textNarration.prepare(book.id) }
             } else player.toggle()
             return@launch
@@ -401,15 +397,18 @@ class PlaybackViewModel @Inject constructor(
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        player.setSpeed(speed)
         val state = playerState.value
-        val book = state.book ?: return
-        rememberPlaybackSpeed.remember(
-            book = book,
-            chapterIndex = state.chapterIndex,
-            positionMs = state.positionMs,
-            speed = state.speed,
-        )
+        // Persist the requested value before an empty controller refresh can
+        // restore the previous checkpoint into the UI state.
+        state.book?.let { book ->
+            rememberPlaybackSpeed.remember(
+                book = book,
+                chapterIndex = state.chapterIndex,
+                positionMs = state.positionMs,
+                speed = speed,
+            )
+        }
+        player.setSpeed(speed)
     }
 
     fun addBookmark(note: String = "") = viewModelScope.launch {

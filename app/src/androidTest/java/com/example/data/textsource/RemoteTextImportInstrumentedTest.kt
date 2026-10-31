@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.player.PlaybackResumeStore
+import com.example.data.storage.TextBookOriginalPublisher
 import com.example.data.textbook.TextLibraryDatabase
 import com.example.data.textbook.TextLibraryRepository
 import java.io.ByteArrayOutputStream
@@ -22,6 +23,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteTextImportInstrumentedTest {
+    private class RecordingOriginals : TextBookOriginalPublisher {
+        val names = mutableListOf<String>()
+        val mimeTypes = mutableListOf<String>()
+        override fun canPublish() = true
+        override fun publish(original: File, displayName: String, mimeType: String, bytes: ByteArray, checkpoint: () -> Unit) {
+            checkpoint()
+            assertArrayEquals(bytes, original.readBytes())
+            names += displayName
+            mimeTypes += mimeType
+        }
+    }
+
     @Test fun remoteImportReusesManualBookAndBothBookmarksAcrossRepositoryRecreation() = runBlocking {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val unique = "remote-text-${UUID.randomUUID()}"
@@ -74,7 +87,8 @@ class RemoteTextImportInstrumentedTest {
                 }.toByteArray()
             }
             val registry = RemoteTextSourceRegistry(listOf(provider, second))
-            val repository = RemoteTextBookRepository(context, registry, books)
+            val published = RecordingOriginals()
+            val repository = RemoteTextBookRepository(context, registry, books, published)
             val fb2 = RemoteTextDownload("fb2", "FB2 ZIP", requireNotNull(remote.downloadUrl), "fb2.zip")
             val result = repository.importBook(remote.copy(downloads = listOf(fb2)), provider.code, fb2)
             assertEquals(manual.bookId, result.bookId)
@@ -84,7 +98,7 @@ class RemoteTextImportInstrumentedTest {
             val other = repository.importBook(remote.copy(url = second.bookUrl("1465")), second.code)
             assertNotEquals(result.bookId, other.bookId)
             assertEquals(other.bookId, repository.localBookId("1465", second.code))
-            val recreated = RemoteTextBookRepository(context, registry, TextLibraryRepository(context, db))
+            val recreated = RemoteTextBookRepository(context, registry, TextLibraryRepository(context, db), published)
             assertEquals(result.bookId, recreated.localBookId("1465"))
             assertEquals(other.bookId, recreated.localBookId("1465", second.code))
             assertEquals(result.bookId, recreated.importBook(remote).bookId)
@@ -93,6 +107,9 @@ class RemoteTextImportInstrumentedTest {
             assertEquals(1, db.library().chapters(manual.bookId).map { it.bookId }.distinct().size)
             val originals = File(folder, "book").walkTopDown().filter { it.isFile }.toList()
             assertEquals(2, originals.size)
+            assertEquals(2, published.names.size)
+            assertTrue(published.names.all { it.endsWith(".fb2.zip") })
+            assertTrue(published.mimeTypes.all { it == "application/zip" })
             assertTrue(originals.any { it.readBytes().contentEquals(bytes) })
             assertTrue(originals.all { it.name.endsWith(".fb2.zip") })
             assertEquals(readingBefore, books.open(result.bookId).position)
@@ -141,12 +158,20 @@ class RemoteTextImportInstrumentedTest {
             }.build())
             val txt = RemoteTextDownload("txt", "TXT", FantasyWorldsHtmlParser.ORIGIN + "/lib/id1465/download/txt", "txt")
             val book = RemoteTextBook("1465", "Выбранный TXT", FantasyWorldsHtmlParser.bookUrl("1465"),
+                authors = listOf(TextSourceLink("author", "Автор TXT", FantasyWorldsHtmlParser.ORIGIN + "/author/test/")),
+                description = "Описание из каталога",
                 downloadUrl = FantasyWorldsHtmlParser.ORIGIN + "/lib/id1465/download/", downloads = listOf(txt))
             val books = TextLibraryRepository(context, db)
-            val repository = RemoteTextBookRepository(context, RemoteTextSourceRegistry(listOf(provider)), books)
+            val published = RecordingOriginals()
+            val repository = RemoteTextBookRepository(context, RemoteTextSourceRegistry(listOf(provider)), books, published)
             val result = repository.importBook(book, provider.code, txt)
             assertEquals("Выбранный TXT", books.open(result.bookId).book.title)
             assertEquals("TXT", books.metadata(result.bookId).format)
+            assertEquals("Автор TXT", books.metadata(result.bookId).author)
+            assertEquals(listOf("Автор TXT"), books.metadata(result.bookId).sourceAuthors)
+            assertEquals("Описание из каталога", books.metadata(result.bookId).description)
+            assertEquals(listOf("Выбранный TXT.txt"), published.names)
+            assertEquals(listOf("text/plain"), published.mimeTypes)
             val original = File(folder, "book").walkTopDown().single { it.isFile }
             assertTrue(original.name.endsWith(".txt"))
             assertArrayEquals(bytes, original.readBytes())

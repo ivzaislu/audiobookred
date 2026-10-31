@@ -43,6 +43,17 @@ class TextNarrationIdentityTest {
         assertNull(textChapterTarget(ids, -1, false))
         assertNull(textChapterTarget(emptyList(), 0, true))
     }
+    @Test fun sleepTimerAnchorsToLastFragmentOfVisibleChapter() {
+        assertEquals(1, textChapterEnd(ids, 0))
+        assertEquals(1, textChapterEnd(ids, 1))
+        assertEquals(3, textChapterEnd(ids, 2))
+        assertEquals(4, textChapterEnd(ids, 4))
+        assertEquals(1, textChapterEnd(ids.map { it.replace("|old", "|new") }, 0))
+        assertNull(textChapterEnd(ids, -1))
+        assertNull(textChapterEnd(ids, ids.size))
+        assertNull(textChapterEnd(emptyList(), 0))
+    }
+
     @Test fun switchingNarrationModeKeepsTextFragmentAndApproximateTime() {
         val oldIds = ids
         val smoothIds = ids.map { it.replace("|old", "|smooth") }

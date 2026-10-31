@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.narration.RuVoiceDownloadPhase
 import com.example.data.narration.RuVoiceDownloadState
 import com.example.data.narration.RuVoiceReleaseInstaller
+import com.example.data.narration.RuVoiceUpdateCheckPolicy
 import com.example.ui.theme.AbredSpacing
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -35,6 +36,21 @@ internal fun RuVoiceInstallSection() {
     var error by remember { mutableStateOf<String?>(null) }
     var installed by remember { mutableStateOf(installer.installedVersion()) }
     var automaticInstallLaunchedFor by remember { mutableStateOf<String?>(null) }
+    var updateCheck by remember(installer) { mutableStateOf(installer.cachedUpdateCheck()) }
+    var checkingUpdates by remember { mutableStateOf(false) }
+
+    LaunchedEffect(installer) {
+        checkingUpdates = true
+        try {
+            updateCheck = installer.checkUpdateIfDue()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            updateCheck = updateCheck.copy(failed = true)
+        } finally {
+            checkingUpdates = false
+        }
+    }
 
     LaunchedEffect(installer, owner) {
         while (isActive) {
@@ -91,20 +107,19 @@ internal fun RuVoiceInstallSection() {
 
     Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs)) {
         Text("RuVoice TTS", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Установить или обновить отдельный офлайн-движок. " +
-                "ABRed скачивает полную APK последнего официального релиза GitHub и проверяет SHA-256. " +
-                "После загрузки ABRed откроет установку Android и автоматически удалит APK " +
-                "после успешной установки.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            "RuVoice — единственный движок новой озвучки в ABRed. " +
-                "После установки выберите голос и слушайте книги офлайн.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (installed != null) Text("Установлен RuVoice: $installed", style = MaterialTheme.typography.bodySmall)
+        if (installed != null) Text("Установлен · $installed", style = MaterialTheme.typography.bodySmall)
+        val updateStatus = when {
+            checkingUpdates -> "Проверяем обновления…"
+            updateCheck.failed -> "Не удалось проверить обновления"
+            updateCheck.latestVersion == null -> null
+            installed == null -> "Доступна версия RuVoice ${updateCheck.latestVersion}"
+            else -> when (RuVoiceUpdateCheckPolicy.compare(updateCheck.latestVersion!!, installed!!)) {
+                null -> "Последний релиз RuVoice: ${updateCheck.latestVersion}"
+                in 1..Int.MAX_VALUE -> "Доступно обновление: ${updateCheck.latestVersion}"
+                else -> "RuVoice обновлён"
+            }
+        }
+        if (updateStatus != null) Text(updateStatus, style = MaterialTheme.typography.bodySmall)
         when (progress.phase) {
             RuVoiceDownloadPhase.DOWNLOADING -> {
                 val fraction = if (progress.totalBytes > 0) {
@@ -159,6 +174,8 @@ internal fun RuVoiceInstallSection() {
                     error = null
                     try {
                         val latest = installer.latest()
+                        installer.rememberLatest(latest)
+                        updateCheck = installer.cachedUpdateCheck()
                         // Reuse a verified local APK if it still matches the latest release.
                         val sameDownloaded = progress.version == latest.version && verified != null
                         if (installer.installedVersion() == latest.version) {
@@ -186,14 +203,7 @@ internal fun RuVoiceInstallSection() {
                 }
             },
         ) {
-            Text(if (checking) "Проверяем последний релиз…" else "Скачать и установить RuVoice")
+            Text(if (checking) "Проверяем последний релиз…" else if (installed != null) "Обновить RuVoice" else "Установить RuVoice")
         }
-        Text(
-            "Нужен интернет только для загрузки (~240 МБ); сама озвучка RuVoice офлайн. " +
-                "Файл APK хранится временно и удаляется после подтверждённой установки. " +
-                "Загрузка продолжится, если закрыть настройки.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

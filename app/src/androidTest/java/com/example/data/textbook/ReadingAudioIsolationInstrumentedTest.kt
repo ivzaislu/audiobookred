@@ -83,6 +83,75 @@ class ReadingAudioIsolationInstrumentedTest {
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
+    private suspend fun seedParsed(db: TextLibraryDatabase, parsed: ParsedTxtBook): List<TextFragmentEntity> {
+        val chapters = parsed.chapters.map {
+            TextChapterEntity("book:c${it.ordinal}", "book", it.ordinal, it.title, it.startOffset, it.endOffset, it.automatic)
+        }
+        val fragments = parsed.chapters.flatMap { chapter -> chapter.fragments.map {
+            TextFragmentEntity("book:c${chapter.ordinal}:f${it.ordinal}", "book:c${chapter.ordinal}",
+                it.ordinal, it.startOffset, it.endOffset, it.text)
+        } }
+        db.library().insertBook(TextBookEntity("book", "Книга", "book.txt", "book.source", "hash", parsed.encoding,
+            1, 1, 1, parsed.normalizedText.length, chapters.size, fragments.size))
+        db.library().insertChapters(chapters)
+        db.library().insertFragments(fragments)
+        return fragments
+    }
+
+    @Test fun blankLegacyFragmentDoesNotBlockNarrationOrExportResume() = runBlocking {
+        val name = "blank-narration-${UUID.randomUUID()}.db"
+        val db = open(name)
+        try {
+            val source = "Глава 1\n" + "а".repeat(991) + "\n\nГлава 2\nКонец"
+            val parsed = TxtBookParser.parse(source.toByteArray())
+            val stored = seedParsed(db, parsed)
+            val blank = stored.single { it.text.isBlank() }
+            db.library().putPosition(TextReadingPositionEntity("book", blank.id, 0, 1))
+            val repository = TextLibraryRepository(context, db)
+            val audio = repository.narrationBook("book")
+            assertEquals(stored.filter { it.text.isNotBlank() }, audio.fragments)
+            audio.fragments.forEach { com.example.data.narration.NarrationInput.prepare(it.text) }
+
+            // An old worker failed before this blank fragment. Its committed prefix
+            // and "next" index still identify the same already synthesized fragments.
+            val originalChapter = stored.filter { it.chapterId == blank.chapterId }
+            val next = originalChapter.indexOf(blank)
+            val prefix = originalChapter.take(next)
+            val sync = com.example.data.narration.TextAudioSyncMap("manifest", blank.chapterId, 24_000,
+                prefix.mapIndexed { index, fragment ->
+                    com.example.data.narration.TextAudioSyncEntry(fragment.id, index * 2L, (index + 1) * 2L)
+                })
+            val resumedChapter = audio.fragments.filter { it.chapterId == blank.chapterId }
+            assertEquals(next, resumedChapter.size)
+            sync.validate(next * 2L, resumedChapter.take(next).map { it.id })
+
+            assertEquals(prefix.last().id, repository.narrationFragment("book", blank.id)?.id)
+            val reader = repository.open("book")
+            assertEquals(stored, reader.fragments)
+            assertEquals(blank.id, reader.position?.fragmentId)
+            assertEquals(source, reader.fragments.joinToString("") { it.text })
+            assertEquals(stored, db.library().allFragments("book"))
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
+    @Test fun whitespaceOnlyAutomaticChaptersAreExcludedOnlyFromAudio() = runBlocking {
+        val name = "blank-chapters-${UUID.randomUUID()}.db"
+        val db = open(name)
+        try {
+            val source = "Начало\n" + " \n".repeat(17_000) + "Конец"
+            val stored = seedParsed(db, TxtBookParser.parse(source.toByteArray()))
+            val originalChapters = db.library().chapters("book")
+            val spoken = stored.filter { it.text.isNotBlank() }
+            assertTrue(originalChapters.any { chapter -> spoken.none { it.chapterId == chapter.id } })
+            val repository = TextLibraryRepository(context, db)
+            val audio = repository.narrationBook("book")
+            assertEquals(spoken, audio.fragments)
+            assertEquals(originalChapters.filter { chapter -> spoken.any { it.chapterId == chapter.id } }, audio.chapters)
+            audio.fragments.forEach { com.example.data.narration.NarrationInput.prepare(it.text) }
+            assertEquals(stored, repository.open("book").fragments)
+            assertEquals(originalChapters, db.library().chapters("book"))
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
     @Test fun openingABookWithoutBookmarkDoesNotCreateOne() = runBlocking {
         val name = "sync-open-${UUID.randomUUID()}.db"
         val db = open(name)

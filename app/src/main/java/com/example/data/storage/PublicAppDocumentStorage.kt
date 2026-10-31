@@ -59,22 +59,37 @@ internal class PublicAppDocumentStorage(context: Context) {
         bytes = bytes,
     )
 
+    fun writeBook(
+        displayName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        checkpoint: () -> Unit = {},
+    ): StoredDocument = write(
+        directory = BOOKS_DIRECTORY,
+        displayName = displayName,
+        mimeType = mimeType,
+        bytes = bytes,
+        checkpoint = checkpoint,
+    )
+
     private fun write(
         directory: String,
         displayName: String,
         mimeType: String,
         bytes: ByteArray,
+        checkpoint: () -> Unit = {},
     ): StoredDocument {
         if (!canWrite()) {
             throw IOException("Нет разрешения на запись в папку Download/AudioBookRed")
         }
-        require(directory == BACKUPS_DIRECTORY || directory == EXPORTS_DIRECTORY)
+        require(directory in setOf(BACKUPS_DIRECTORY, EXPORTS_DIRECTORY, BOOKS_DIRECTORY))
         require(displayName.isNotBlank())
+        checkpoint()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            writeScoped(directory, displayName, mimeType, bytes)
+            writeScoped(directory, displayName, mimeType, bytes, checkpoint)
         } else {
-            writeLegacy(directory, displayName, mimeType, bytes)
+            writeLegacy(directory, displayName, mimeType, bytes, checkpoint)
         }
     }
 
@@ -84,6 +99,7 @@ internal class PublicAppDocumentStorage(context: Context) {
         displayName: String,
         mimeType: String,
         bytes: ByteArray,
+        checkpoint: () -> Unit,
     ): StoredDocument {
         val resolver = appContext.contentResolver
         val relativeDirectory = rootRelativeDirectory() + directory + "/"
@@ -98,10 +114,11 @@ internal class PublicAppDocumentStorage(context: Context) {
 
         try {
             resolver.openOutputStream(uri, "w")?.use { output ->
-                output.write(bytes)
+                writeBytes(output, bytes, checkpoint)
                 output.flush()
             } ?: throw IOException("Не удалось открыть файл для записи")
 
+            checkpoint()
             val finalized = resolver.update(
                 uri,
                 ContentValues().apply {
@@ -173,6 +190,7 @@ internal class PublicAppDocumentStorage(context: Context) {
         displayName: String,
         mimeType: String,
         bytes: ByteArray,
+        checkpoint: () -> Unit,
     ): StoredDocument {
         val directory = File(legacyRoot(), directoryName)
         if (!directory.isDirectory && !directory.mkdirs()) {
@@ -184,9 +202,10 @@ internal class PublicAppDocumentStorage(context: Context) {
         temporary.delete()
         try {
             temporary.outputStream().buffered().use { output ->
-                output.write(bytes)
+                writeBytes(output, bytes, checkpoint)
                 output.flush()
             }
+            checkpoint()
             if (!temporary.renameTo(target)) {
                 temporary.copyTo(target, overwrite = true)
                 temporary.delete()
@@ -245,9 +264,20 @@ internal class PublicAppDocumentStorage(context: Context) {
     private fun rootRelativeDirectory(): String =
         Environment.DIRECTORY_DOWNLOADS + "/" + ROOT_DIRECTORY + "/"
 
+    private fun writeBytes(output: java.io.OutputStream, bytes: ByteArray, checkpoint: () -> Unit) {
+        var offset = 0
+        while (offset < bytes.size) {
+            checkpoint()
+            val count = minOf(32 * 1024, bytes.size - offset)
+            output.write(bytes, offset, count)
+            offset += count
+        }
+    }
+
     private companion object {
         const val ROOT_DIRECTORY = "AudioBookRed"
         const val BACKUPS_DIRECTORY = "Backups"
         const val EXPORTS_DIRECTORY = "Exports"
+        const val BOOKS_DIRECTORY = "Books"
     }
 }

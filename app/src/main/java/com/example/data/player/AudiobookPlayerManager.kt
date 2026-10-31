@@ -343,6 +343,9 @@ class AudiobookPlayerManager internal constructor(
                         TAG,
                         "toggle: rebuilding empty player for ${book.id} at ${recovery.chapterIndex}/${recovery.positionMs}"
                     )
+                    // A recovered UI snapshot does not update the speed used by loadBook.
+                    // Carry its saved speed into the replacement playlist as well.
+                    setDefaultSpeed(recovery.speed)
                     loadBook(
                         c,
                         book,
@@ -466,8 +469,7 @@ class AudiobookPlayerManager internal constructor(
             bookId = book.id,
             sourceCode = book.selectedSource.takeIf { it.isNotBlank() },
             chapterIndex = if (book.selectedSource == TEXT_NARRATION_SOURCE) {
-                val group = textChapterId(book.chapters[current.chapterIndex].id)
-                book.chapters.indexOfLast { textChapterId(it.id) == group }
+                textChapterEnd(book.chapters.map { it.id }, current.chapterIndex) ?: return
             } else current.chapterIndex,
         )
         refreshTransientState()

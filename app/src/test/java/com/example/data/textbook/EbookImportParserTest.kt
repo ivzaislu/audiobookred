@@ -7,6 +7,71 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EbookImportParserTest {
+    @Test fun storedEntriesWithDataDescriptorsImportAsEpub() {
+        val entries = java.util.zip.ZipInputStream(epub().inputStream()).use { input ->
+            buildList { while (true) { val entry = input.nextEntry ?: break; add(entry.name to input.readBytes()) } }
+        }
+        val parsed = EbookImportParser.parse(storedDescriptorZip(*entries.toTypedArray()), "site.epub")
+        assertEquals("EPUB", parsed.format)
+        assertEquals("Название EPUB", parsed.title)
+        assertTrue(parsed.text.normalizedText.contains("Первый текст"))
+        assertTrue(parsed.text.normalizedText.contains("Второй текст"))
+        assertEquals(parsed.text.normalizedText, parsed.text.chapters.flatMap { it.fragments }.joinToString("") { it.text })
+    }
+
+    @Test fun centralDirectoryFallbackRejectsCorruptedCrcAndUnsafePaths() {
+        val bytes = storedDescriptorZip("book.fb2" to fb2().toByteArray())
+        val central = bytes.indices.first { i -> i + 4 < bytes.size && bytes[i] == 0x50.toByte() &&
+            bytes[i + 1] == 0x4b.toByte() && bytes[i + 2] == 1.toByte() && bytes[i + 3] == 2.toByte() }
+        bytes[central + 16] = (bytes[central + 16].toInt() xor 1).toByte()
+        val error = assertThrows(IllegalArgumentException::class.java) { EbookImportParser.parse(bytes, "bad.zip") }
+        assertTrue(error.cause is java.util.zip.ZipException)
+        assertTrue(error.cause?.message.orEmpty().contains("CRC"))
+        val unsafe = assertThrows(IllegalArgumentException::class.java) {
+            EbookImportParser.parse(storedDescriptorZip("../outside.fb2" to fb2().toByteArray()), "unsafe.zip")
+        }
+        assertTrue(unsafe.message.orEmpty().contains("небезопасный"))
+    }
+
+    @Test fun centralDirectoryFallbackKeepsEntryLimitAndDeletesTemporaryArchive() {
+        val folder = java.io.File(System.getProperty("java.io.tmpdir"))
+        val before = folder.list().orEmpty().filter { it.startsWith("abred-ebook-") }.toSet()
+        val archive = storedDescriptorZip(*(0..5_000).map { "item$it.txt" to byteArrayOf(1) }.toTypedArray())
+        val error = assertThrows(IllegalArgumentException::class.java) { EbookImportParser.parse(archive, "many.zip") }
+        assertTrue(error.message.orEmpty().contains("слишком много"))
+        assertEquals(before, folder.list().orEmpty().filter { it.startsWith("abred-ebook-") }.toSet())
+    }
+
+    /** Site-style STORED + bit 3 + trailing descriptor, with a complete central directory. */
+    private fun storedDescriptorZip(vararg entries: Pair<String, ByteArray>): ByteArray {
+        val output = ByteArrayOutputStream()
+        val directory = ByteArrayOutputStream()
+        fun ByteArrayOutputStream.number(value: Long, bytes: Int) {
+            repeat(bytes) { write((value ushr (it * 8)).toInt() and 255) }
+        }
+        entries.forEach { (name, data) ->
+            val encoded = name.toByteArray(Charsets.UTF_8)
+            val crc = java.util.zip.CRC32().apply { update(data) }.value
+            val offset = output.size().toLong()
+            output.number(0x04034b50, 4); output.number(20, 2); output.number(8, 2); output.number(0, 2)
+            output.number(0, 4); output.number(0, 4); output.number(0, 4); output.number(0, 4)
+            output.number(encoded.size.toLong(), 2); output.number(0, 2); output.write(encoded); output.write(data)
+            output.number(0x08074b50, 4); output.number(crc, 4)
+            output.number(data.size.toLong(), 4); output.number(data.size.toLong(), 4)
+            directory.number(0x02014b50, 4); directory.number(20, 2); directory.number(20, 2)
+            directory.number(8, 2); directory.number(0, 2); directory.number(0, 4); directory.number(crc, 4)
+            directory.number(data.size.toLong(), 4); directory.number(data.size.toLong(), 4)
+            directory.number(encoded.size.toLong(), 2); directory.number(0, 2); directory.number(0, 2)
+            directory.number(0, 2); directory.number(0, 2); directory.number(0, 4); directory.number(offset, 4); directory.write(encoded)
+        }
+        val offset = output.size().toLong()
+        output.write(directory.toByteArray())
+        output.number(0x06054b50, 4); output.number(0, 4)
+        output.number(entries.size.toLong(), 2); output.number(entries.size.toLong(), 2)
+        output.number(directory.size().toLong(), 4); output.number(offset, 4); output.number(0, 2)
+        return output.toByteArray()
+    }
+
     @Test fun calibreSceneSeparatorsAreNotChaptersAndNestedContentsIsNotProse() {
         val body = """<div><h1>Глава 1</h1><div class="paragraph">Первая сцена.</div>
             <h5>* * *</h5><div class="paragraph">Вторая сцена.</div><h5>* * *</h5><div class="paragraph">Третья сцена.</div></div>

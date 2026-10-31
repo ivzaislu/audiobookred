@@ -9,7 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** Sidecar stays in the manifest directory after the private WAV is published to Downloads. */
+/** Sidecar stays in the manifest directory after the audio is published to Downloads. */
 @Singleton
 internal class TextAudioSyncStore @Inject constructor(private val downloads: DownloadStore) {
     suspend fun read(sourceId: String, chapterId: String, fragmentIds: List<String>, bookId: String? = null, sourceSha256: String? = null): TextAudioSyncMap? = withContext(Dispatchers.IO) {
@@ -27,7 +27,7 @@ internal class TextAudioSyncStore @Inject constructor(private val downloads: Dow
                     require(bookId == null || it.bookId == bookId)
                     require(sourceSha256 == null || it.sourceSha256 == sourceSha256)
                 }
-                it.validate(file.downloadedBytes - 44L, fragmentIds)
+                it.validateStoredAudio(file.mediaType, file.downloadedBytes, file.durationSeconds, fragmentIds)
             }
         }.getOrNull()
     }

@@ -6,6 +6,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.example.ui.viewmodel.ReaderSettingsViewModel
 import com.example.data.narration.RuVoiceTtsEngine
 import com.example.data.narration.RuVoiceVoicePreferences
 import com.example.ui.theme.AbredSpacing
@@ -15,7 +17,7 @@ import kotlinx.coroutines.CancellationException
 @Composable
 internal fun RuVoiceVoiceSelector(onVoiceSelected: (String) -> Unit = {}) {
     val context = LocalContext.current
-    val engine = remember(context) { RuVoiceTtsEngine(context.applicationContext) }
+    val viewModel: ReaderSettingsViewModel = hiltViewModel()
     val preferences = remember(context) { RuVoiceVoicePreferences(context.applicationContext) }
     var chosen by remember { mutableStateOf(preferences.selected()) }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -23,10 +25,10 @@ internal fun RuVoiceVoiceSelector(onVoiceSelected: (String) -> Unit = {}) {
     var error by remember { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(engine) {
+    LaunchedEffect(viewModel) {
         loading = true
         try {
-            names = engine.voices().map { it.name }
+            names = viewModel.ruVoiceVoiceNames()
             error = if (names.isEmpty()) "В RuVoice нет установленных русских голосов. Проверьте его настройки." else null
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -73,7 +75,7 @@ internal fun RuVoiceVoiceSelector(onVoiceSelected: (String) -> Unit = {}) {
                 ?: context.packageManager.getLaunchIntentForPackage(RuVoiceTtsEngine.PACKAGE)
             if (launch != null) context.startActivity(launch)
             else error = "Установите RuVoice в настройках озвучки ABRed."
-        }) { Text("Настроить RuVoice: ударения, паузы, профили") }
+        }) { Text("Настройки RuVoice") }
         TextButton(onClick = {
             try {
                 preferences.refreshSettings()
@@ -82,11 +84,6 @@ internal fun RuVoiceVoiceSelector(onVoiceSelected: (String) -> Unit = {}) {
             } catch (failed: Exception) {
                 error = failed.message ?: "Не удалось обновить озвучку."
             }
-        }) { Text("Обновить озвучку после изменения настроек RuVoice") }
-        Text(
-            "Для книг используется только RuVoice. Словари, паузы и интонация настраиваются в RuVoice; " +
-                "ABRed сохраняет скорость воспроизведения и позицию книги.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        }) { Text("Обновить озвучку") }
     }
 }

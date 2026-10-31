@@ -32,6 +32,7 @@ class TextLibraryMembershipTest {
         assertEquals(listOf("two"), result.history.map { it.id })
         assertEquals("two", result.series.single().currentBook?.book?.id)
         assertEquals(1, result.series.single().availableCount)
+        assertEquals(listOf("two"), result.seriesBooks.getValue("text:source:cycle").map { it.id })
     }
 
     @Test fun hiddenHistoryAndHiddenCycleAreIndependent() {
@@ -55,4 +56,31 @@ class TextLibraryMembershipTest {
         assertEquals("Цикл", rewound.history.single().sourceSeriesName)
     }
 
+    @Test fun unreadAndHiddenBooksRetainCardsAndCycleInformation() {
+        val unread = record("one", "2.5")
+        val hidden = record("two", "3").visited(10).copy(historyVisible = false, seriesVisible = false)
+        val result = textLibraryMembership(listOf(book("one"), book("two"), book("local")), emptyMap(),
+            mapOf("one" to unread, "two" to hidden, "deleted" to record("deleted", "4")))
+        assertTrue(result.history.isEmpty())
+        assertTrue(result.series.isEmpty())
+        assertEquals(setOf("one", "two", "local"), result.books.keys)
+        val cycle = result.availableSeries.getValue("text:source:cycle")
+        assertEquals("Цикл", cycle.name)
+        assertEquals(listOf("one", "two"), result.seriesBooks.getValue(cycle.id).map { it.id })
+        assertEquals(2, cycle.availableCount)
+        assertFalse(result.availableSeries.containsKey("text:source:deleted"))
+        assertEquals("Цикл", result.books.getValue("one").series.single().name)
+        assertEquals(2.5, result.books.getValue("one").series.single().position ?: 0.0, 0.0)
+        assertEquals("Цикл", result.books.getValue("two").sourceSeriesName)
+        assertTrue(result.books.getValue("local").series.isEmpty())
+    }
+
+    @Test fun sourceAuthorsAreSeparateClickablePeopleInsteadOfOneCombinedSearchQuery() {
+        val result = textLibraryMembership(listOf(book("one")),
+            mapOf("one" to TextBookMetadata(author = "Первый, Второй", sourceAuthors = listOf("Первый", "Второй"))),
+            mapOf("one" to record("one", "1")))
+        val authors = result.books.getValue("one").authors
+        assertEquals(listOf("Первый", "Второй"), authors.map { it.name })
+        assertEquals(2, authors.map { it.id }.distinct().size)
+    }
 }

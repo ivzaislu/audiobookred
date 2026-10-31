@@ -9,6 +9,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TextCatalogPagingSourceTest {
+    @Test fun detailsDoNotReplaceAnAlreadyLoadedCatalogThumbnailWithAnotherUrl() {
+        val listing = book("1").copy(coverUrl = "https://books.test/mini/short/cover.jpg").catalogCard("test")
+        val details = listing.copy(coverUrl = "https://books.test/mini/full/cover.jpg")
+        val merged = mergeTextCatalogCard(listing, details)
+        assertEquals(listing.coverUrl, merged.coverUrl)
+        assertEquals(details.coverUrl, mergeTextCatalogCard(listing.copy(coverUrl = ""), details).coverUrl)
+    }
     private val first = "https://books.test/list/1"
     private val second = "https://books.test/list/2"
     private fun book(id: String) = RemoteTextBook(id, "Книга $id", "https://books.test/book/$id")

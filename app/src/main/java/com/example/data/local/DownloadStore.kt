@@ -110,6 +110,7 @@ class DownloadStore(
 
     fun canPublishCompletedFiles(): Boolean = completedStorage.canPublish()
     internal fun importedCoverUri(raw: String): Uri? = com.example.data.image.LocalBookCover.uri(appContext, raw)
+    internal fun importedCoverArtwork(raw: String): ByteArray? = com.example.data.image.LocalBookCover.mediaArtwork(appContext, raw)
 
     internal fun markDownloadGenerationActive(bookSourceId: String, manifestId: String) {
         generationStorage.markActive(bookSourceId, manifestId)

@@ -58,9 +58,13 @@ internal class TextAudioExportWorker @AssistedInject constructor(
                     require(request.chapterId == null || file.chapterId == request.chapterId)
                     if (file.state == "completed" && store.hasUsableCompletedArtifact(file)) {
                         // Also repairs a private final recovered by prepare() after process death.
-                        val recoveredDuration = store.finalFile(file).takeIf { it.isFile && it.length() > 44 }
-                            ?.let { runCatching { PreviewWav.readExport(it).durationMs / 1_000L }.getOrNull() }
+                        val recoveredDuration = store.finalFile(file).takeIf { it.isFile && it.length() > 0 }
+                            ?.let { recovered -> runCatching {
+                                if (request.encoding.compressed) ChapterAacEncoder.durationMs(recovered) / 1_000L
+                                else PreviewWav.readExport(recovered).durationMs / 1_000L
+                            }.getOrNull()?.coerceAtLeast(1L) }
                         store.publishCompletedFile(file, manifestId, durationSeconds = file.durationSeconds.takeIf { it > 0 } ?: recoveredDuration)
+                        AtomicFile(File(store.partialFile(file).path + ".json")).delete()
                         continue
                     }
                     workingFile = file
@@ -84,9 +88,9 @@ internal class TextAudioExportWorker @AssistedInject constructor(
                         }
                     }
                     sync = sync?.copy(bookId = source.book.id, sourceSha256 = source.book.sourceSha256)
-                    // Death between rename and public publication leaves a complete private WAV.
+                    // WAV exports can reuse the private final after a death before publication.
                     val privateFinal = store.finalFile(file)
-                    if (!partial.exists() && privateFinal.isFile && next == chapter.size && privateFinal.length() == bytes + 44) {
+                    if (!request.encoding.compressed && !partial.exists() && privateFinal.isFile && next == chapter.size && privateFinal.length() == bytes + 44) {
                         check(privateFinal.renameTo(partial))
                     }
                     store.markFileState(sourceId, manifestId, file.fileId, "downloading", bytes)
@@ -132,6 +136,17 @@ internal class TextAudioExportWorker @AssistedInject constructor(
                     require(bytes > 0) { "В главе нет звука." }
                     // Publication and deletion are fenced by DownloadStore's lifecycle mutex.
                     val final = store.finalFile(file)
+                    val encoded = File(partial.path + ".encoded")
+                    val durationMs = if (request.encoding.compressed) {
+                        val result = ChapterAacEncoder.encode(partial, encoded, checkNotNull(request.encoding.bitrateKbps)) {
+                            checkActive(sourceId, manifestId)
+                        }
+                        sync = sync?.copy(audioMimeType = "audio/mp4", audioOffsetUs = result.audioOffsetUs)
+                        checkActive(sourceId, manifestId)
+                        result.durationMs
+                    } else {
+                        PreviewWav.readExport(partial).durationMs
+                    }
                     sync?.validate(bytes, chapter.map { it.id })?.let { map ->
                         val sidecar = AtomicFile(File(final.path + ".sync.json"))
                         val output = sidecar.startWrite()
@@ -141,8 +156,10 @@ internal class TextAudioExportWorker @AssistedInject constructor(
                         } catch (error: Throwable) { sidecar.failWrite(output); throw error }
                     }
                     if (sync == null) AtomicFile(File(final.path + ".sync.json")).delete()
-                    check(partial.renameTo(final)) { "Не удалось завершить аудиоглаву." }
-                    val durationSeconds = (PreviewWav.readExport(final).durationMs / 1_000L).coerceAtLeast(1)
+                    checkActive(sourceId, manifestId)
+                    val ready = if (request.encoding.compressed) encoded else partial
+                    check(ready.renameTo(final)) { "Не удалось завершить аудиоглаву." }
+                    val durationSeconds = (durationMs / 1_000L).coerceAtLeast(1)
                     store.publishCompletedFile(file, manifestId, durationSeconds = durationSeconds)
                     checkpoint.delete()
                     workingFile = null
@@ -164,6 +181,7 @@ internal class TextAudioExportWorker @AssistedInject constructor(
                 }
             } finally {
                 withContext(NonCancellable) {
+                    workingFile?.let { File(store.partialFile(it).path + ".encoded").delete() }
                     val current = store.book(sourceId)
                     if (current?.manifestId == manifestId && current.state == "downloading") {
                         store.markBookState(sourceId, manifestId, "queued")

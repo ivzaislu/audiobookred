@@ -76,6 +76,8 @@ internal interface TextLibraryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putPosition(position: TextReadingPositionEntity)
     @Query("UPDATE text_books SET lastOpenedAtMs = :now WHERE id = :bookId")
     suspend fun touch(bookId: String, now: Long)
+    @Query("SELECT COUNT(*) FROM text_books WHERE sourceSha256 = :sourceSha256 AND id != :bookId")
+    suspend fun otherSourceOwners(sourceSha256: String, bookId: String): Int
     @Query("DELETE FROM text_books WHERE id = :bookId") suspend fun delete(bookId: String)
 }
 

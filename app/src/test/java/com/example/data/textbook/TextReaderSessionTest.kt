@@ -104,4 +104,28 @@ class TextReaderSessionTest {
         assertFalse(session.canSave(preview))
     }
 
+
+    @Test fun manualSuspensionKeepsPreviewReadOnlyUntilAnExplicitReturn() {
+        val session = TextReaderSession()
+        val preview = session.open(true)
+        session.suspendFollowing(preview)
+        assertFalse(session.canFollow(preview))
+        assertFalse(session.canSave(preview))
+        assertEquals(TextReaderSession.Mode.PREVIEW, session.mode)
+        val reopened = session.open(true)
+        session.suspendFollowing(preview) // A disposed gesture cannot stop the new session.
+        assertTrue(session.canFollow(reopened))
+        session.suspendFollowing(reopened)
+        session.allowFollowing(reopened)
+        assertTrue(session.canFollow(reopened))
+        assertFalse(session.canSave(reopened))
+    }
+
+    @Test fun suspendingFollowInNormalReadingDoesNotDisableTheIndependentBookmark() {
+        val session = TextReaderSession()
+        val reading = session.open(false)
+        session.suspendFollowing(reading)
+        assertFalse(session.canFollow(reading))
+        assertTrue(session.canSave(reading))
+    }
 }

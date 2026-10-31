@@ -25,7 +25,7 @@ internal fun RemoteTextBook.catalogCard(sourceCode: String): BookCardDto = BookC
 internal fun mergeTextCatalogCard(listing: BookCardDto, details: BookCardDto): BookCardDto {
     if (listing.id != details.id || listing.primarySource != details.primarySource) return listing
     return listing.copy(title = details.title.ifBlank { listing.title },
-        authors = details.authors.ifEmpty { listing.authors }, coverUrl = details.coverUrl.ifBlank { listing.coverUrl },
+        authors = details.authors.ifEmpty { listing.authors }, coverUrl = listing.coverUrl.ifBlank { details.coverUrl },
         series = details.series.ifEmpty { listing.series },
         sourceSeriesName = details.sourceSeriesName.ifBlank { listing.sourceSeriesName },
         sourceSeriesPosition = details.sourceSeriesPosition ?: listing.sourceSeriesPosition)

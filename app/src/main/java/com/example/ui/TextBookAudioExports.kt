@@ -5,15 +5,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.example.data.narration.textAudioSourceId
-import com.example.data.textbook.TextReadingSnapshot
+import com.example.data.textbook.TextChapterEntity
 import com.example.ui.theme.AbredSpacing
 import com.example.ui.viewmodel.TextLibraryUiState
 
 /** Saved and unfinished exports; player and voice settings are not duplicated here. */
 @Composable
 internal fun TextBookAudioExports(
-    reader: TextReadingSnapshot,
-    state: TextLibraryUiState,
+    bookId: String, chapters: List<TextChapterEntity>, state: TextLibraryUiState,
     onPause: (String) -> Unit, onResume: (String) -> Unit,
     onRemove: (String) -> Unit, onPlaySaved: (String) -> Unit,
 ) {
@@ -31,11 +30,11 @@ internal fun TextBookAudioExports(
     )
     Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xxs)) {
         val relevant = state.audioExports.filter {
-            it.bookSourceId.startsWith("text_audio:${reader.book.id}:") && it.deletedAtMs == null && it.state != "purged"
+            it.bookSourceId.startsWith("text_audio:${bookId}:") && it.deletedAtMs == null && it.state != "purged"
         }
         for (job in relevant) {
-            val scope = if (job.bookSourceId == textAudioSourceId(reader.book.id, null)) "Вся книга" else
-                reader.chapters.firstOrNull { job.bookSourceId == textAudioSourceId(reader.book.id, it.id) }?.title ?: "Глава"
+            val scope = if (job.bookSourceId == textAudioSourceId(bookId, null)) "Вся книга" else
+                chapters.firstOrNull { job.bookSourceId == textAudioSourceId(bookId, it.id) }?.title ?: "Глава"
             val status = when (job.state) {
                 "completed" -> "аудио сохранено"
                 "paused" -> "подготовка приостановлена"

@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.example.data.model.BookCardDto
 import com.example.data.textbook.TextBookEntity
 import com.example.data.textbook.TextBookMetadata
 import com.example.ui.theme.AbredStroke
@@ -25,6 +26,7 @@ import com.example.ui.theme.AbredSpacing
 internal fun TextBooksSection(
     books: List<TextBookEntity>, importing: Boolean, message: String?, queryActive: Boolean,
     metadata: Map<String, TextBookMetadata> = emptyMap(),
+    cards: Map<String, BookCardDto> = emptyMap(),
     savedAudioIds: Map<String, String> = emptyMap(),
     onPlaySaved: (String) -> Unit = {},
     onImport: () -> Unit, onOpen: (String) -> Unit, onRemove: (String) -> Unit, onPlay: (String) -> Unit,
@@ -34,7 +36,7 @@ internal fun TextBooksSection(
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text("Удалить текстовую книгу?") },
-            text = { Text("«${book.title}»: будет удалена импортированная копия и позиция чтения. Исходный файл у вас останется.") },
+            text = { Text("Будут удалены «${book.title}», позиция чтения и файлы книги, сохранённые приложением в Download/AudioBookRed/Books. Сохранённая озвучка останется.") },
             confirmButton = { TextButton(onClick = { removing = null; onRemove(book.id) }) { Text("Удалить") } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Отмена") } },
         )
@@ -59,6 +61,7 @@ internal fun TextBooksSection(
         items(books, key = { it.id }) { book ->
             val info = metadata[book.id] ?: TextBookMetadata()
             val saved = savedAudioIds[book.id]
+            val seriesLabel = cards[book.id]?.seriesDisplayLabel().orEmpty()
             val metrics = libraryBookRowTextMetrics()
             Card(
                 onClick = { onOpen(book.id) },
@@ -76,6 +79,13 @@ internal fun TextBooksSection(
                             Spacer(Modifier.height(AbredSpacing.Xxs))
                             Text(info.author, style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = if (metrics.largeText) 2 else 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (seriesLabel.isNotBlank()) {
+                            Spacer(Modifier.height(AbredSpacing.Xxs))
+                            Text(seriesLabel, style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.abredAccentText,
                                 maxLines = if (metrics.largeText) 2 else 1, overflow = TextOverflow.Ellipsis)
                         }
                         Spacer(Modifier.height(AbredSpacing.Xxs))

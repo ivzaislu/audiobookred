@@ -268,17 +268,20 @@ class BookDetailRepository @Inject constructor(
             .sortedWith(compareBy({ it.chapterPosition }, { it.fileId }))
         require(files.isNotEmpty()) { "У скачанной книги нет сохранённых глав" }
         val duration = files.sumOf { it.durationSeconds.coerceAtLeast(0L) }
-        val author = if (stored.sourceCode == "text_audio" && stored.manifestId.matches(Regex("[0-9a-f]{64}"))) withContext(Dispatchers.IO) {
+        val audioMetadata = if (textAudio && stored.manifestId.matches(Regex("[0-9a-f]{64}"))) withContext(Dispatchers.IO) {
             runCatching {
                 AtomicFile(File(audioMetadataFolder, "${stored.manifestId}.json")).openRead().use {
-                    JSONObject(it.bufferedReader().readText()).optString("author").take(1000)
+                    JSONObject(it.bufferedReader().readText())
                 }
-            }.getOrDefault("")
-        } else ""
+            }.getOrNull()
+        } else null
+        val author = audioMetadata?.optString("author").orEmpty().take(1000)
+        // A saved recording owns its voice; current preferences may describe another one.
+        val voiceName = audioMetadata?.optString("voiceName").orEmpty().take(200).trim()
         return BookDetailDto(
             id = stored.bookId,
             title = stored.title,
-            narrators = if (stored.sourceCode == "text_audio") listOf(PersonDto("local:ruvoice", "RuVoice")) else emptyList(),
+            narrators = if (textAudio) listOf(PersonDto("local:ruvoice", voiceName.ifBlank { "Голос не сохранён" })) else emptyList(),
             authors = if (author.isBlank()) emptyList() else listOf(PersonDto("local:author", author)),
             coverUrl = stored.coverUrl,
             durationSeconds = duration,

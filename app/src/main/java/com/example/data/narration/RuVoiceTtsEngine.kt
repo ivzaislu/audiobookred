@@ -79,12 +79,13 @@ internal class RuVoiceTtsEngine @Inject constructor(@ApplicationContext private 
             }
             if (tts == null) {
                 val initialized = CompletableDeferred<Int>()
-                val created = withContext(Dispatchers.Main.immediate) {
-                    TextToSpeech(context.applicationContext, { status ->
-                        initialized.complete(status)
-                    }, PACKAGE)
-                }
+                var pending: TextToSpeech? = null
                 try {
+                    val created = withContext(Dispatchers.Main.immediate) {
+                        TextToSpeech(context.applicationContext, { status ->
+                            initialized.complete(status)
+                        }, PACKAGE).also { pending = it }
+                    }
                     val status = withTimeout(INITIALIZATION_TIMEOUT_MS) { initialized.await() }
                     // Android's requested engine can silently fall back; disallow that.
                     check(status == TextToSpeech.SUCCESS &&
@@ -96,7 +97,8 @@ internal class RuVoiceTtsEngine @Inject constructor(@ApplicationContext private 
                     connectedVersion = version
                     tts = created
                 } catch (error: Throwable) {
-                    dispose(created)
+                    // Keep ownership even if cancellation wins the dispatcher handoff.
+                    pending?.let { dispose(it) }
                     throw error
                 }
             }
@@ -112,6 +114,19 @@ internal class RuVoiceTtsEngine @Inject constructor(@ApplicationContext private 
                 throw error
             }
         }
+
+    /** Freeze the default to the same concrete voice that synthesis would select. */
+    suspend fun resolveVoiceName(requested: String): String {
+        if (requested.isNotBlank()) return requested
+        return useEngine { tts ->
+            check(tts.setLanguage(Locale.forLanguageTag("ru-RU")) >= TextToSpeech.LANG_AVAILABLE) {
+                "RuVoice не предоставил русский голос. Проверьте установленные голосовые модели."
+            }
+            checkNotNull(tts.voice?.name?.takeIf { it.isNotBlank() }) {
+                "RuVoice не сообщил имя выбранного голоса."
+            }
+        }
+    }
 
     suspend fun voices(): List<Voice> = useEngine { tts ->
         (tts.voices ?: emptySet()).filter {

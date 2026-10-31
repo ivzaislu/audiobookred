@@ -15,22 +15,23 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayCircleOutline
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.contentDescription
 import com.example.data.narration.TextPlaybackHighlight
 import com.example.data.textbook.textHighlightRange
 import com.example.data.textbook.textPositionAtOffset
 import com.example.data.textbook.textSelectionPosition
-import androidx.compose.material.icons.filled.BookmarkBorder
 import com.example.ui.theme.readerHighlightColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -53,6 +54,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.textbook.TextReadingSnapshot
 import com.example.ui.theme.AbredSizes
 import com.example.ui.theme.AbredSpacing
+import com.example.ui.theme.AbredOpacity
+import com.example.ui.theme.AbredStroke
 import com.example.ui.theme.TextReaderDesign
 import com.example.ui.theme.readerTextStyle
 import com.example.ui.theme.readerColors
@@ -74,38 +77,40 @@ internal fun TextBookReaderScreen(
     onPosition: (String, String, String, Int) -> Unit,
     onListen: (String, String?) -> Unit,
     audioBookId: String?, audioPlaying: Boolean, audioBuffering: Boolean, audioError: String?, onToggleAudio: () -> Unit,
-    audioSpeed: Float, onSetAudioSpeed: (Float) -> Unit,
-    onRuVoiceVoiceSelected: (String, String) -> Unit,
-    onReaderFocusChanged: (Boolean) -> Unit,
-    onSaveAudio: (String, String?) -> Unit, onPauseAudio: (String) -> Unit,
-    onResumeAudio: (String) -> Unit, onRemoveAudio: (String) -> Unit, onPlaySavedAudio: (String) -> Unit,
     readingJump: TextAudioReadingPosition? = null,
     onReadingJumpApplied: () -> Unit = {},
     onCommitPreview: (String, Int) -> Unit = { _, _ -> },
     onReturnToBookmark: () -> Unit = {},
     onListenFromText: (String, String, Double) -> Unit = { book, fragment, _ -> onListen(book, fragment) },
-    onListenLive: (String) -> Unit = { onListen(it, null) },
     settings: ReaderSettings? = null,
     onBackAtPosition: ((String, Int) -> Unit)? = null,
     textHighlight: TextPlaybackHighlight? = null,
     onFollowChanged: (Boolean) -> Unit = {},
+    onResumeFollowing: () -> Unit = { onFollowChanged(true) },
+    audioSpeed: Float = 1f,
+    onSeekBy: (Long) -> Unit = {},
+    onSetAudioSpeed: (Float) -> Unit = {},
+    rewindSeconds: Int = 15,
+    forwardSeconds: Int = 15,
+    onSettingsChanged: ((ReaderSettings) -> Unit)? = null,
 ) {
     val reader = state.reader
     if (reader == null) {
         BackHandler(onBack = onBack)
         Column(Modifier.fillMaxSize().padding(AbredSpacing.ScreenHorizontal)) {
-            TextButton(onClick = onBack) { Text("Назад в библиотеку") }
+            TextButton(onClick = onBack) { Text("Назад") }
             if (state.opening) CircularProgressIndicator()
             state.message?.let { Text(it) }
         }
         return
     }
+    var controlsVisible by rememberSaveable(reader.book.id) { mutableStateOf(false) }
     key(reader.book.id, state.readerIdentity, state.readerSession) {
         TextChapterReader(reader, state, onBack, onPosition, onListen,
-            audioBookId, audioPlaying, audioBuffering, audioError, onToggleAudio, audioSpeed, onSetAudioSpeed,
-            onRuVoiceVoiceSelected, onReaderFocusChanged,
-            onSaveAudio, onPauseAudio, onResumeAudio, onRemoveAudio, onPlaySavedAudio,
-            readingJump, onReadingJumpApplied, onCommitPreview, onReturnToBookmark, onListenFromText, onListenLive, settings, onBackAtPosition, textHighlight, onFollowChanged)
+            audioBookId, audioPlaying, audioBuffering, audioError, onToggleAudio,
+            readingJump, onReadingJumpApplied, onCommitPreview, onReturnToBookmark, onListenFromText, settings, onBackAtPosition, textHighlight, onFollowChanged,
+            onResumeFollowing, audioSpeed, onSeekBy, onSetAudioSpeed, rewindSeconds, forwardSeconds, onSettingsChanged,
+            controlsVisible, { controlsVisible = it })
     }
 }
 
@@ -116,27 +121,31 @@ private fun TextChapterReader(
     onPosition: (String, String, String, Int) -> Unit,
     onListen: (String, String?) -> Unit,
     audioBookId: String?, audioPlaying: Boolean, audioBuffering: Boolean, audioError: String?, onToggleAudio: () -> Unit,
-    audioSpeed: Float, onSetAudioSpeed: (Float) -> Unit,
-    onRuVoiceVoiceSelected: (String, String) -> Unit,
-    onReaderFocusChanged: (Boolean) -> Unit,
-    onSaveAudio: (String, String?) -> Unit, onPauseAudio: (String) -> Unit,
-    onResumeAudio: (String) -> Unit, onRemoveAudio: (String) -> Unit, onPlaySavedAudio: (String) -> Unit,
     readingJump: TextAudioReadingPosition? = null,
     onReadingJumpApplied: () -> Unit = {},
     onCommitPreview: (String, Int) -> Unit = { _, _ -> },
     onReturnToBookmark: () -> Unit = {},
     onListenFromText: (String, String, Double) -> Unit = { book, fragment, _ -> onListen(book, fragment) },
-    onListenLive: (String) -> Unit = { onListen(it, null) },
     settings: ReaderSettings? = null,
     onBackAtPosition: ((String, Int) -> Unit)? = null,
     textHighlight: TextPlaybackHighlight? = null,
     onFollowChanged: (Boolean) -> Unit = {},
+    onResumeFollowing: () -> Unit = { onFollowChanged(true) },
+    audioSpeed: Float = 1f,
+    onSeekBy: (Long) -> Unit = {},
+    onSetAudioSpeed: (Float) -> Unit = {},
+    rewindSeconds: Int = 15,
+    forwardSeconds: Int = 15,
+    onSettingsChanged: ((ReaderSettings) -> Unit)? = null,
+    controlsVisible: Boolean,
+    onControlsVisible: (Boolean) -> Unit,
 ) {
-    val readerSettings = settings ?: run {
-        val readerSettingsVm: ReaderSettingsViewModel = hiltViewModel()
-        val value by readerSettingsVm.settings.collectAsStateWithLifecycle()
+    val settingsVm: ReaderSettingsViewModel? = if (settings == null) hiltViewModel() else null
+    val readerSettings = if (settingsVm != null) {
+        val value by settingsVm.settings.collectAsStateWithLifecycle()
         value
-    }
+    } else requireNotNull(settings)
+    val changeSettings: (ReaderSettings) -> Unit = onSettingsChanged ?: { settingsVm?.setReadingAppearance(it) }
     val colors = readerColors(readerSettings.appearance)
     val blocks = reader.blocks
     val fragmentsById = remember(reader.fragments) { reader.fragments.associateBy { it.id } }
@@ -151,12 +160,6 @@ private fun TextChapterReader(
         IntArray(blocks.size + 1).also { starts -> blocks.forEachIndexed { index, block -> starts[index + 1] = starts[index] + block.text.length } }
     }
     val textLayouts = remember(blocks) { mutableStateMapOf<String, TextLayoutResult>() }
-    var controlsVisible by rememberSaveable(reader.book.id) { mutableStateOf(true) }
-    val currentFocusCallback by rememberUpdatedState(onReaderFocusChanged)
-    DisposableEffect(controlsVisible) {
-        currentFocusCallback(!controlsVisible)
-        onDispose { currentFocusCallback(false) }
-    }
     val jump = readingJump?.takeIf {
         it.bookId == reader.book.id && it.chapterId == reader.chapter.id
     }
@@ -176,16 +179,31 @@ private fun TextChapterReader(
     val textInteraction = remember { MutableInteractionSource() }
     val selectingText by textInteraction.collectIsPressedAsState()
     fun clearSelection() { selectionBlockId = null; selectionStart = 0; selectionEnd = 0 }
-    var bookmarkMenu by remember { mutableStateOf(false) }
+    var actionsMenu by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
-    var saveMenu by remember { mutableStateOf(false) }
-    var showExports by remember { mutableStateOf(false) }
-    val requestAudioSave = rememberBookDownloadRequester(
-        onStart = { onSaveAudio(reader.book.id, it.takeUnless { value -> value == "all" }) },
-        onResume = onResumeAudio, onRetry = onResumeAudio,
-    )
-    val followObstructed = selectingText || selectedAudioTarget != null || bookmarkMenu ||
-        showChapters || saveMenu || showExports
+    var showAppearance by remember { mutableStateOf(false) }
+    var followSuspended by rememberSaveable(reader.book.id) { mutableStateOf(false) }
+    val userDragging by listState.interactionSource.collectIsDraggedAsState()
+    val followObstructed = selectingText || selectedAudioTarget != null || actionsMenu || showChapters || showAppearance
+    val active = audioBookId == reader.book.id || state.audioExports.any {
+        it.bookId == audioBookId && it.bookSourceId.startsWith("text_audio:${reader.book.id}:")
+    }
+    fun pauseFollowing() {
+        followSuspended = true
+        onFollowChanged(false)
+    }
+    fun resumeFollowing() {
+        clearSelection()
+        focusManager.clearFocus()
+        followSuspended = false
+        onResumeFollowing()
+    }
+    LaunchedEffect(userDragging) {
+        if (userDragging) pauseFollowing()
+    }
+    LaunchedEffect(selectedAudioTarget != null) {
+        if (selectedAudioTarget != null) onControlsVisible(true)
+    }
 
     LaunchedEffect(jump?.fragmentId, jump?.fractionInFragment) {
         val destination = jump ?: return@LaunchedEffect
@@ -211,17 +229,21 @@ private fun TextChapterReader(
         }
         onReadingJumpApplied()
     }
-    LaunchedEffect(readerSettings.followNarration, audioPlaying, spoken?.bookId, state.autoFollowAllowed, state.committing) {
-        // The preference is global; the session flag only protects the reading bookmark.
-        // Start following only when this book actually has a spoken fragment.
-        val enabled = readerSettings.followNarration && audioPlaying && spoken != null && state.autoFollowAllowed && !state.committing
-        if (enabled != state.following && (enabled || !readerSettings.followNarration)) {
-            onFollowChanged(enabled)
-        }
+    LaunchedEffect(readerSettings.followNarration, audioPlaying, active, spoken?.bookId,
+        state.autoFollowAllowed, state.committing, followSuspended, userDragging, followObstructed) {
+        if (readerSettings.followNarration && active && audioPlaying && spoken != null &&
+            state.autoFollowAllowed && !state.committing && !followSuspended && !userDragging && !followObstructed &&
+            !state.following
+        ) onFollowChanged(true)
     }
-    LaunchedEffect(readerSettings.followNarration, state.following, state.autoFollowAllowed, state.committing, spoken?.fragmentId, audioPlaying, followObstructed) {
-        // A follow session is PREVIEW before any scroll; all save paths reject it.
-        if (!readerSettings.followNarration || !state.following || !state.autoFollowAllowed || state.committing || !state.preview || !audioPlaying || followObstructed) return@LaunchedEffect
+    LaunchedEffect(active) {
+        if (!active && state.following) pauseFollowing()
+    }
+    LaunchedEffect(state.following, state.autoFollowAllowed, state.committing, spoken?.fragmentId,
+        active, followSuspended, userDragging, followObstructed) {
+        // PREVIEW revokes bookmark writes before any programmatic scroll.
+        if (!state.following || !state.autoFollowAllowed || state.committing || !state.preview ||
+            !active || followSuspended || userDragging || followObstructed) return@LaunchedEffect
         val id = spoken?.fragmentId ?: return@LaunchedEffect
         // An old read-only field must not bring its cursor back over the audio scroll.
         focusManager.clearFocus()
@@ -254,9 +276,6 @@ private fun TextChapterReader(
         val chapterId = blocks.getOrNull(listState.firstVisibleItemIndex)?.chapterId
         reader.chapters.firstOrNull { it.id == chapterId } ?: reader.chapter
     } }
-    val active = audioBookId == reader.book.id || state.audioExports.any {
-        it.bookId == audioBookId && it.bookSourceId.startsWith("text_audio:${reader.book.id}:")
-    }
     fun save(index: Int = listState.firstVisibleItemIndex, offset: Int = listState.firstVisibleItemScrollOffset) {
         if (state.preview || state.committing) return
         blocks.getOrNull(index)?.let {
@@ -266,7 +285,10 @@ private fun TextChapterReader(
     fun listen() {
         save()
         if (active && (audioPlaying || audioBuffering)) onToggleAudio()
-        else onListen(reader.book.id, null)
+        else {
+            followSuspended = false
+            onListen(reader.book.id, null)
+        }
     }
     fun visibleFragment(): Pair<String, Double>? {
         val block = blocks.getOrNull(listState.firstVisibleItemIndex) ?: return null
@@ -276,6 +298,7 @@ private fun TextChapterReader(
     }
 
     fun fromReading() {
+        followSuspended = false
         val target = selectedAudioTarget?.let { it.fragmentId to it.fraction } ?: visibleFragment()
         focusManager.clearFocus()
         target?.let { (fragment, fraction) -> onListenFromText(reader.book.id, fragment, fraction) }
@@ -287,6 +310,7 @@ private fun TextChapterReader(
         else { save(); onBack() }
     }
     fun selectChapter(chapterId: String) {
+        pauseFollowing()
         val target = blocks.indexOfFirst { it.chapterId == chapterId }.coerceAtLeast(0)
         showChapters = false
         clearSelection()
@@ -304,17 +328,8 @@ private fun TextChapterReader(
         owner.lifecycle.addObserver(observer)
         onDispose { save(); owner.lifecycle.removeObserver(observer) }
     }
-    if (showExports) {
-        ModalBottomSheet(onDismissRequest = { showExports = false }) {
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Sm)) {
-                Text("Сохранение аудио", style = MaterialTheme.typography.titleLarge)
-                TextBookAudioExports(
-                    reader = reader.copy(chapter = currentChapter), state = state,
-                    onPause = onPauseAudio, onResume = onResumeAudio,
-                    onRemove = onRemoveAudio, onPlaySaved = onPlaySavedAudio,
-                )
-            }
-        }
+    if (showAppearance) {
+        TextReaderAppearanceSheet(readerSettings, changeSettings, onDismiss = { showAppearance = false })
     }
     if (showChapters) {
         ModalBottomSheet(onDismissRequest = { showChapters = false }) {
@@ -331,140 +346,164 @@ private fun TextChapterReader(
             }
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val showReturnToAudio = active && spoken != null && (!state.following || followSuspended)
+    val spokenChapter = reader.chapters.firstOrNull { it.id == spoken?.chapterId }
+    val accent = MaterialTheme.colorScheme.primary
+    BoxWithConstraints(Modifier.fillMaxSize().background(colors.first)) {
         val headerMaxHeight = maxHeight * TextReaderDesign.HeaderMaxHeightFraction
-        Column(
-            Modifier.fillMaxSize().widthIn(max = AbredSizes.ContentMaxWidth),
-        ) {
-            if (controlsVisible) Column(Modifier.heightIn(max = headerMaxHeight).verticalScroll(rememberScrollState()).padding(horizontal = AbredSpacing.ScreenHorizontal)) {
-                Row {
-                    IconButton(onClick = ::back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад в библиотеку") }
-                    Column(Modifier.weight(1f).padding(vertical = AbredSpacing.Xs)) {
-                        Text(reader.book.title, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                        if (reader.metadata.author.isNotBlank()) Text(reader.metadata.author, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                        Text(if (currentChapter.automatic) "Текст книги" else currentChapter.title, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                    }
-                    if (state.preview) Box {
-                        IconButton(onClick = { bookmarkMenu = true }) {
-                            Icon(Icons.Default.BookmarkBorder, contentDescription = "Закладка чтения")
-                        }
-                        DropdownMenu(expanded = bookmarkMenu, onDismissRequest = { bookmarkMenu = false }) {
-                            DropdownMenuItem(text = { Text("Читать отсюда") }, enabled = !state.committing, onClick = {
-                                bookmarkMenu = false
-                                blocks.getOrNull(listState.firstVisibleItemIndex)?.let {
-                                    onCommitPreview(it.anchorId, listState.firstVisibleItemScrollOffset)
+        val audioMaxHeight = maxHeight * TextReaderDesign.AudioPanelMaxHeightFraction
+        CompositionLocalProvider(LocalContentColor provides colors.second) {
+            Column(Modifier.fillMaxHeight().widthIn(max = AbredSizes.ContentMaxWidth).fillMaxWidth().align(Alignment.TopCenter)) {
+                if (controlsVisible) Column(Modifier.heightIn(max = headerMaxHeight).verticalScroll(rememberScrollState())) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = AbredSpacing.Xxs), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = ::back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") }
+                        Text(reader.book.title, style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TextButton(onClick = { showAppearance = true },
+                            modifier = Modifier.semantics { contentDescription = "Настройки чтения" }) { Text("Aa") }
+                        Box {
+                            IconButton(onClick = { actionsMenu = true }) { Icon(Icons.Default.MoreVert, "Действия чтения") }
+                            DropdownMenu(expanded = actionsMenu, onDismissRequest = { actionsMenu = false }) {
+                                DropdownMenuItem(text = { Text("Оглавление") }, leadingIcon = {
+                                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = null)
+                                }, onClick = { actionsMenu = false; showChapters = true })
+                                DropdownMenuItem(text = { Text("Слушать с этого места") }, leadingIcon = {
+                                    Icon(Icons.Default.PlayCircleOutline, contentDescription = null)
+                                }, onClick = { actionsMenu = false; fromReading() })
+                                if (state.preview) {
+                                    HorizontalDivider()
+                                    DropdownMenuItem(text = { Text("Читать отсюда") }, enabled = !state.committing, onClick = {
+                                        actionsMenu = false
+                                        blocks.getOrNull(listState.firstVisibleItemIndex)?.let {
+                                            onCommitPreview(it.anchorId, listState.firstVisibleItemScrollOffset)
+                                        }
+                                    })
+                                    DropdownMenuItem(text = { Text("К моей закладке") }, enabled = !state.committing, onClick = {
+                                        actionsMenu = false
+                                        onReturnToBookmark()
+                                    })
                                 }
-                            })
-                            DropdownMenuItem(text = { Text("К моей закладке") }, enabled = !state.committing, onClick = {
-                                bookmarkMenu = false
-                                onReturnToBookmark()
-                            })
+                            }
+                        }
+                    }
+                    if (selectedAudioTarget != null && selectedBlock != null) Row(
+                        Modifier.fillMaxWidth().padding(horizontal = AbredSpacing.ScreenHorizontal),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = {
+                            val text = selectedBlock.text.removeSuffix("\n")
+                            val start = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
+                            val end = maxOf(selectionStart, selectionEnd).coerceIn(start, text.length)
+                            clipboard.setText(AnnotatedString(text.substring(start, end)))
+                        }) { Icon(Icons.Default.ContentCopy, "Копировать выделенный текст") }
+                        TextButton(onClick = ::fromReading) {
+                            Icon(Icons.Default.PlayCircleOutline, "Слушать с этого места")
+                            Spacer(Modifier.width(AbredSpacing.Xs))
+                            Text("Слушать отсюда")
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { showChapters = true }) {
-                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Оглавление")
-                    }
-                    IconButton(onClick = ::listen) {
-                        val paused = active && (audioPlaying || audioBuffering)
-                        Icon(if (paused) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (paused) "Пауза" else "Продолжить слушать")
-                    }
-                    Box {
-                        IconButton(onClick = { saveMenu = true }) {
-                            Icon(Icons.Default.Download, contentDescription = "Сохранить аудио")
+                Text(if (currentChapter.automatic) "Текст книги" else currentChapter.title,
+                    modifier = Modifier.padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Xs),
+                    style = MaterialTheme.typography.labelSmall, color = colors.second.copy(alpha = AbredOpacity.SectionLabel),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().background(colors.first).testTag("text-reader-content")
+                            .readerPanelToggle { if (selectedAudioTarget == null) { focusManager.clearFocus(); onControlsVisible(!controlsVisible) } }, state = listState,
+                        contentPadding = PaddingValues(
+                            start = if (readerSettings.wideMargins) AbredSpacing.Lg else AbredSpacing.ScreenHorizontal,
+                            end = if (readerSettings.wideMargins) AbredSpacing.Lg else AbredSpacing.ScreenHorizontal,
+                            top = AbredSpacing.Sm,
+                            bottom = if (showReturnToAudio) AbredSizes.ControlHeight + AbredSpacing.Md else AbredSpacing.Sm),
+                    ) {
+                        items(blocks, key = { it.anchorId }) { block ->
+                            val range = textHighlightRange(block, fragmentsById, spoken?.fragmentId)
+                            val content = AnnotatedString.Builder(block.text.removeSuffix("\n")).apply {
+                                if (range != null && !range.isEmpty()) addStyle(SpanStyle(background = highlightColor), range.first, range.last + 1)
+                            }.toAnnotatedString()
+                            val selection = if (selectionBlockId == block.anchorId) TextRange(selectionStart, selectionEnd) else TextRange.Zero
+                            BasicTextField(
+                                value = TextFieldValue(content, selection),
+                                onValueChange = { value ->
+                                    if (value.selection.collapsed) {
+                                        if (selectionBlockId == block.anchorId) clearSelection()
+                                    } else {
+                                        selectionBlockId = block.anchorId
+                                        selectionStart = value.selection.start
+                                        selectionEnd = value.selection.end
+                                    }
+                                },
+                                readOnly = true,
+                                textStyle = readerTextStyle(readerSettings).copy(color = colors.second),
+                                interactionSource = textInteraction,
+                                modifier = Modifier.fillMaxWidth().testTag("reader-paragraph:${block.anchorId}")
+                                    .drawBehind {
+                                        if (range != null && !range.isEmpty()) drawLine(accent,
+                                            Offset.Zero, Offset(0f, size.height), strokeWidth = AbredStroke.Hairline.toPx())
+                                    }
+                                    .padding(start = AbredSpacing.Xs)
+                                    .semantics {
+                                        // Keep the paragraph's stable tag; a second testTag on the same
+                                        // node masks one of the tags when Compose collapses semantics.
+                                        if (range != null && !range.isEmpty()) {
+                                            spoken?.fragmentId?.let { this[TextReaderSpokenFragmentId] = it }
+                                        }
+                                    },
+                                onTextLayout = { layout ->
+                                    textLayouts[block.anchorId] = layout
+                                    // Keep only a small set of visible/prefetched layouts, not the whole book.
+                                    if (textLayouts.size > 16) {
+                                        val visibleKeys = listState.layoutInfo.visibleItemsInfo.map { it.key }.toSet()
+                                        textLayouts.keys.toList().filter { it !in visibleKeys && it != block.anchorId }
+                                            .take(textLayouts.size - 16).forEach { textLayouts.remove(it) }
+                                    }
+                                },
+                            )
                         }
-                        DropdownMenu(expanded = saveMenu, onDismissRequest = { saveMenu = false }) {
-                            if (!currentChapter.automatic) DropdownMenuItem(text = { Text("Текущую главу") }, enabled = !state.startingAudioExport, onClick = {
-                                saveMenu = false
-                                requestAudioSave(BookDownloadAction.Start, currentChapter.id)
-                            })
-                            DropdownMenuItem(text = { Text("Всю книгу") }, enabled = !state.startingAudioExport, onClick = {
-                                saveMenu = false
-                                requestAudioSave(BookDownloadAction.Start, "all")
-                            })
-                            if (state.audioExports.any { it.bookSourceId.startsWith("text_audio:${reader.book.id}:") && it.deletedAtMs == null && it.state != "purged" }) {
-                                HorizontalDivider()
-                                DropdownMenuItem(text = { Text("Управление сохранением") }, onClick = {
-                                    saveMenu = false
-                                    showExports = true
-                                })
-                            }
-                        }
                     }
-                    IconButton(onClick = ::fromReading) {
-                        Icon(Icons.Default.PlayCircleOutline, contentDescription = "Слушать с этого места")
-                    }
-                    if (selectedAudioTarget != null && selectedBlock != null) IconButton(onClick = {
-                        val text = selectedBlock.text.removeSuffix("\n")
-                        val start = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
-                        val end = maxOf(selectionStart, selectionEnd).coerceIn(start, text.length)
-                        clipboard.setText(AnnotatedString(text.substring(start, end)))
-                    }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Копировать выделенный текст")
+
+                    if (showReturnToAudio) OutlinedButton(
+                        onClick = ::resumeFollowing,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(AbredSpacing.Sm),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.first, contentColor = accent),
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(AbredSizes.IconSmall))
+                        Spacer(Modifier.width(AbredSpacing.Xs))
+                        Text("К озвучке")
                     }
                 }
-                if (spoken?.approximate == true) Text("Подсветка приблизительная: у этой записи нет карты времени.", style = MaterialTheme.typography.bodySmall)
-                if (state.preview) Text("Просмотр места озвучки", style = MaterialTheme.typography.bodySmall)
-                if (audioJumpHint && !state.following) Text("Положение внутри фрагмента приблизительное.", style = MaterialTheme.typography.bodySmall)
-                if (active && audioBuffering) Text("Подготовка к воспроизведению…", style = MaterialTheme.typography.bodySmall)
-                if (active && !audioError.isNullOrBlank()) Text(audioError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
-            if (controlsVisible) HorizontalDivider()
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth().background(colors.first).testTag("text-reader-content"), state = listState,
-                contentPadding = PaddingValues(horizontal = if (readerSettings.wideMargins) AbredSpacing.Lg else AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Sm),
-            ) {
-                items(blocks, key = { it.anchorId }) { block ->
-                    val range = textHighlightRange(block, fragmentsById, spoken?.fragmentId)
-                    val content = AnnotatedString.Builder(block.text.removeSuffix("\n")).apply {
-                        if (range != null && !range.isEmpty()) addStyle(SpanStyle(background = highlightColor), range.first, range.last + 1)
-                    }.toAnnotatedString()
-                    val selection = if (selectionBlockId == block.anchorId) TextRange(selectionStart, selectionEnd) else TextRange.Zero
-                    BasicTextField(
-                        value = TextFieldValue(content, selection),
-                        onValueChange = { value ->
-                            if (value.selection.collapsed) {
-                                if (selectionBlockId == block.anchorId) clearSelection()
-                            } else {
-                                selectionBlockId = block.anchorId
-                                selectionStart = value.selection.start
-                                selectionEnd = value.selection.end
-                            }
-                        },
-                        readOnly = true,
-                        textStyle = readerTextStyle(readerSettings).copy(color = colors.second),
-                        interactionSource = textInteraction,
-                        modifier = Modifier.fillMaxWidth().testTag("reader-paragraph:${block.anchorId}")
-                            .semantics {
-                                // Keep the paragraph's stable tag; a second testTag on the same
-                                // node masks one of the tags when Compose collapses semantics.
-                                if (range != null && !range.isEmpty()) {
-                                    spoken?.fragmentId?.let { this[TextReaderSpokenFragmentId] = it }
-                                }
-                            },
-                        onTextLayout = { layout ->
-                            textLayouts[block.anchorId] = layout
-                            // Keep only a small set of visible/prefetched layouts, not the whole book.
-                            if (textLayouts.size > 16) {
-                                val visibleKeys = listState.layoutInfo.visibleItemsInfo.map { it.key }.toSet()
-                                textLayouts.keys.toList().filter { it !in visibleKeys && it != block.anchorId }
-                                    .take(textLayouts.size - 16).forEach { textLayouts.remove(it) }
-                            }
-                        },
+                if (controlsVisible) Column(Modifier.heightIn(max = audioMaxHeight).verticalScroll(rememberScrollState())) {
+                    TextReaderAudioPanel(
+                        chapter = (spokenChapter ?: currentChapter).let { if (it.automatic) "Текст книги" else it.title },
+                        active = active, playing = audioPlaying, buffering = audioBuffering,
+                        following = state.following && !followSuspended, canFollow = active && spoken != null && !state.committing,
+                        speed = audioSpeed, rewindSeconds = rewindSeconds, forwardSeconds = forwardSeconds,
+                        onListen = ::listen, onFollow = { if (it) resumeFollowing() else pauseFollowing() },
+                        onSeekBy = onSeekBy, onSpeed = onSetAudioSpeed,
                     )
+                    if (spoken?.approximate == true || (audioJumpHint && !state.following)) Text("Подсветка и позиция приблизительные.",
+                        modifier = Modifier.padding(horizontal = AbredSpacing.ScreenHorizontal), style = MaterialTheme.typography.labelSmall)
+                    if (active && audioBuffering) Text("Готовим озвучку…",
+                        modifier = Modifier.padding(horizontal = AbredSpacing.ScreenHorizontal), style = MaterialTheme.typography.bodySmall)
+                    if (active && !audioError.isNullOrBlank()) Text(audioError,
+                        modifier = Modifier.padding(horizontal = AbredSpacing.ScreenHorizontal),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    state.message?.let { Text(it, modifier = Modifier.padding(horizontal = AbredSpacing.ScreenHorizontal),
+                        style = MaterialTheme.typography.bodySmall) }
                 }
-            }
-            Column(Modifier.fillMaxWidth().background(colors.first)) {
-                if (controlsVisible) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth().padding(horizontal = AbredSpacing.ScreenHorizontal), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Прочитано $progress%", style = MaterialTheme.typography.labelMedium,
-                        color = colors.second, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = { controlsVisible = !controlsVisible }) {
-                        Icon(if (controlsVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (controlsVisible) "Скрыть панели чтения" else "Показать панели чтения", tint = colors.second)
+                Column(Modifier.fillMaxWidth()) {
+                    LinearProgressIndicator(progress = { progress / 100f },
+                        modifier = Modifier.fillMaxWidth().height(AbredSizes.ProgressTrack))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = AbredSpacing.ScreenHorizontal),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("${if (currentChapter.automatic) "Текст книги" else currentChapter.title} · $progress%",
+                            style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconButton(onClick = { focusManager.clearFocus(); onControlsVisible(!controlsVisible) }) {
+                            Icon(if (controlsVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (controlsVisible) "Скрыть панели чтения" else "Показать панели чтения")
+                        }
                     }
                 }
             }

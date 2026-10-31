@@ -29,7 +29,9 @@ internal fun PreparedCatalogScreen(
     listState: LazyListState,
     onBook: (String) -> Unit,
     showProgressPercent: Boolean,
-    onOpenTextBook: (String) -> Unit,
+    onReadTextBook: (String) -> Unit,
+    onListenTextBook: (String) -> Unit,
+    onPlaySavedAudio: (String) -> Unit,
 ) {
     var textBooks by rememberSaveable { mutableStateOf(false) }
     val modes = rememberSaveableStateHolder()
@@ -39,7 +41,7 @@ internal fun PreparedCatalogScreen(
     }
     Box(Modifier.fillMaxSize()) {
         modes.SaveableStateProvider(if (textBooks) "books" else "audio") {
-            if (textBooks) PreparedTextCatalogScreen(onOpenTextBook, textViewModel, modeActions)
+            if (textBooks) PreparedTextCatalogScreen(onReadTextBook, onListenTextBook, showProgressPercent, onPlaySavedAudio, textViewModel, modeActions)
             else PreparedAudioCatalogScreen(listState, onBook, showProgressPercent, modeActions)
         }
     }

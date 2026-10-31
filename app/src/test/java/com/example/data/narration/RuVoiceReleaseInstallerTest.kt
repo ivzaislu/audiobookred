@@ -23,6 +23,24 @@ class RuVoiceReleaseInstallerTest {
         ))
         .toString()
 
+    @Test fun automaticReleaseCheckIsLimitedToOncePerDay() {
+        val now = 100_000_000L
+        val interval = RuVoiceUpdateCheckPolicy.INTERVAL_MS
+        assertTrue(RuVoiceUpdateCheckPolicy.isDue(0L, now))
+        assertFalse(RuVoiceUpdateCheckPolicy.isDue(now - 1_000L, now))
+        assertFalse(RuVoiceUpdateCheckPolicy.isDue(now - interval + 1L, now))
+        assertTrue(RuVoiceUpdateCheckPolicy.isDue(now - interval, now))
+        assertTrue(RuVoiceUpdateCheckPolicy.isDue(now + 1_000L, now))
+    }
+
+    @Test fun availableUpdateRequiresNewerSemanticVersion() {
+        val policy = RuVoiceUpdateCheckPolicy
+        assertEquals(1, policy.compare("1.10.0", "1.9.9"))
+        assertEquals(0, policy.compare("1.2.3", "1.2.3"))
+        assertEquals(-1, policy.compare("1.2.2", "1.2.3"))
+        assertNull(policy.compare("1.2.3", "local-build"))
+    }
+
     @Test fun installedApkIsDeletedOnlyAfterConfirmedMatchingPackageUpdate() {
         val policy = RuVoiceApkCleanupPolicy
         val apkTime = 2000L

@@ -6,9 +6,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.TextRange
-import android.content.ClipboardManager
-import android.content.Context
-import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -40,42 +41,47 @@ class TextReaderListenFromSelectionInstrumentedTest {
         var targetFraction = -1.0
         var playing by mutableStateOf(true)
         var toggles = 0
-        var focus = false
+        // Keep the copy assertion independent of the emulator's system clipboard
+        // and window-focus changes during saved-state restoration.
+        val clipboard = object : ClipboardManager {
+            private var text: AnnotatedString? = null
+            override fun setText(annotatedString: AnnotatedString) { text = annotatedString }
+            override fun getText(): AnnotatedString? = text
+        }
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             MaterialTheme {
-                TextBookReaderScreen(
-                    state = TextLibraryUiState(reader = reader, preview = true, readerSession = 3),
-                    onBack = {}, onPosition = { _, _, _, _ -> saves++ }, onListen = { _, _ -> resumes++ },
-                    audioBookId = "book", audioPlaying = playing, audioBuffering = false, audioError = null,
-                    onToggleAudio = { toggles++ }, audioSpeed = 1f, onSetAudioSpeed = {}, onRuVoiceVoiceSelected = { _, _ -> },
-                    onReaderFocusChanged = { focus = it }, onSaveAudio = { _, _ -> }, onPauseAudio = {}, onResumeAudio = {},
-                    onRemoveAudio = {}, onPlaySavedAudio = {}, settings = ReaderSettings(),
-                    textHighlight = TextPlaybackHighlight("book", chapters[0].id, fragments[0].id, false),
-                    onCommitPreview = { _, _ -> commits++ },
-                    onListenFromText = { book, fragment, fraction ->
-                        assertEquals("book", book); target = fragment; targetFraction = fraction
-                    },
-                )
+                CompositionLocalProvider(LocalClipboardManager provides clipboard) {
+                    TextBookReaderScreen(
+                        state = TextLibraryUiState(reader = reader, preview = true, readerSession = 3),
+                        onBack = {}, onPosition = { _, _, _, _ -> saves++ }, onListen = { _, _ -> resumes++ },
+                        audioBookId = "book", audioPlaying = playing, audioBuffering = false, audioError = null,
+                        onToggleAudio = { toggles++ },
+                        settings = ReaderSettings(),
+                        textHighlight = TextPlaybackHighlight("book", chapters[0].id, fragments[0].id, false),
+                        onCommitPreview = { _, _ -> commits++ },
+                        onListenFromText = { book, fragment, fraction ->
+                            assertEquals("book", book); target = fragment; targetFraction = fraction
+                        },
+                    )
+                }
             }
         }
+        compose.onNodeWithContentDescription("Показать панели чтения").performClick()
         compose.onNodeWithText("Читать отсюда").assertDoesNotExist()
         compose.onNodeWithText("К моей закладке").assertDoesNotExist()
         compose.onNodeWithTag("text-reader-content").performScrollToIndex(12)
         val paragraph = compose.onNodeWithText(fragments[12].text.removeSuffix("\n"))
         paragraph.performTouchInput { click(Offset(5f, 5f)) }
-        compose.onNodeWithContentDescription("Оглавление").assertIsDisplayed()
-        compose.runOnIdle { assertFalse(focus) }
+        compose.onNodeWithContentDescription("Действия чтения").assertIsDisplayed()
         paragraph.performTouchInput { longClick(Offset(20f, 10f)) }
-        compose.onNodeWithContentDescription("Оглавление").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Действия чтения").assertIsDisplayed()
         paragraph.performTextInputSelection(TextRange(2, 8))
         restoration.emulateSavedInstanceStateRestore()
+        compose.runOnIdle { assertNull(clipboard.getText()) }
         compose.onNodeWithContentDescription("Копировать выделенный текст").performClick()
         compose.runOnIdle {
-            val clipboard = InstrumentationRegistry.getInstrumentation().targetContext
-                .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            assertEquals(fragments[12].text.substring(2, 8), clipboard.primaryClip?.getItemAt(0)?.text?.toString())
-            assertFalse(focus)
+            assertEquals(fragments[12].text.substring(2, 8), clipboard.getText()?.text)
         }
         compose.onNodeWithContentDescription("Слушать с этого места").performClick()
         compose.runOnIdle {
@@ -87,7 +93,8 @@ class TextReaderListenFromSelectionInstrumentedTest {
             assertEquals(bookmark, reader.position)
         }
         compose.onNodeWithTag("text-reader-content").performScrollToIndex(14)
-        compose.onNodeWithContentDescription("Слушать с этого места").performClick()
+        compose.onNodeWithContentDescription("Действия чтения").performClick()
+        compose.onNodeWithText("Слушать с этого места").performClick()
         compose.runOnIdle { assertEquals(fragments[14].id, target); assertEquals(0, saves) }
         compose.onNodeWithContentDescription("Пауза").performClick()
         compose.runOnIdle { assertEquals(1, toggles); assertEquals(0, resumes); playing = false }
@@ -95,14 +102,11 @@ class TextReaderListenFromSelectionInstrumentedTest {
         compose.onNodeWithContentDescription("Продолжить слушать").performClick()
         compose.runOnIdle { assertEquals(1, resumes); assertEquals(fragments[14].id, target) }
         compose.onNodeWithContentDescription("Скрыть панели чтения").performClick()
-        compose.onNodeWithContentDescription("Оглавление").assertDoesNotExist()
-        compose.runOnIdle { assertTrue(focus) }
+        compose.onNodeWithContentDescription("Действия чтения").assertDoesNotExist()
         compose.onNodeWithContentDescription("Показать панели чтения").performClick()
-        compose.onNodeWithContentDescription("Оглавление").assertIsDisplayed()
-        compose.runOnIdle { assertFalse(focus) }
-        compose.onNodeWithContentDescription("Сохранить аудио").performClick()
-        compose.onNodeWithText("Текущую главу").assertIsDisplayed()
-        compose.onNodeWithText("Всю книгу").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Действия чтения").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Сохранить аудио").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Сохранить озвучку").assertDoesNotExist()
         compose.onNodeWithText("Аудио книги").assertDoesNotExist()
         compose.onNodeWithText("Голос и скорость").assertDoesNotExist()
     }

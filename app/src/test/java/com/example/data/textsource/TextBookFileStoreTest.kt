@@ -79,4 +79,46 @@ class TextBookFileStoreTest {
             assertArrayEquals(bytes, file.readBytes())
         }
     }
+
+    @Test fun importedFilesKeepTheirFormatAndReuseTheSameManagedOriginal() {
+        val store = TextBookFileStore(folder.root)
+        val first = store.saveImported("Архив.fb2.zip", bytes)
+        assertTrue(first.name.endsWith("Архив.fb2.zip"))
+        assertEquals(first, store.saveImported("Архив.fb2.zip", bytes))
+        assertArrayEquals(bytes, first.readBytes())
+        val longName = store.saveImported("📚".repeat(150) + ".epub", bytes)
+        assertTrue(longName.name.toByteArray(Charsets.UTF_8).size <= 255)
+        assertTrue(longName.name.endsWith(".epub"))
+    }
+
+    @Test fun sourceLookupFindsLegacyDownloadsAndImportedCopiesButNotOtherBooks() {
+        val store = TextBookFileStore(folder.root)
+        val downloaded = store.save("source", "12", "Книга", txt, bytes)
+        val imported = store.saveImported("Книга.txt", bytes)
+        val other = store.saveImported("Другая.txt", "Другой текст".toByteArray())
+        assertEquals(setOf(downloaded, imported), store.originalsFor(downloaded.name.take(64)).toSet())
+        assertEquals(listOf(other), store.originalsFor(other.name.take(64)))
+        assertTrue(store.originalsFor("../").isEmpty())
+        assertArrayEquals(bytes, downloaded.readBytes())
+    }
+
+    @Test fun sourceLookupDoesNotFollowLinksOutsideTheManagedDirectory() {
+        val app = folder.newFolder("app")
+        val outside = folder.newFolder("outside")
+        val hash = "a".repeat(64)
+        val original = File(outside, "$hash-book.txt").apply { writeBytes(bytes) }
+        val root = File(app, "book").apply { mkdirs() }
+        java.nio.file.Files.createSymbolicLink(File(root, "link").toPath(), outside.toPath())
+        assertTrue(TextBookFileStore(app).originalsFor(hash).isEmpty())
+        assertTrue(original.isFile)
+    }
+
+    @Test fun sourceLookupPreservesThePathUsedToTrackThePublicCopy() {
+        val actual = folder.newFolder("actual-files")
+        val alias = File(folder.root, "files-alias")
+        java.nio.file.Files.createSymbolicLink(alias.toPath(), actual.toPath())
+        val store = TextBookFileStore(alias)
+        val original = store.save("source", "12", "Книга", txt, bytes)
+        assertEquals(original.absolutePath, store.originalsFor(original.name.take(64)).single().absolutePath)
+    }
 }

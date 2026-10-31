@@ -23,6 +23,9 @@ internal class TextReaderSession {
     @Synchronized fun allowFollowing(token: Long) {
         if (token == generation && mode in setOf(Mode.NORMAL, Mode.PREVIEW)) followAllowed = true
     }
+    @Synchronized fun suspendFollowing(token: Long) {
+        if (token == generation) followAllowed = false
+    }
     @Synchronized fun canSave(token: Long) = token == generation && mode == Mode.NORMAL
     @Synchronized fun canCommit(token: Long) = token == generation && mode == Mode.COMMITTING
     @Synchronized fun beginCommit(token: Long): Boolean {

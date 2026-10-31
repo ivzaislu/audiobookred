@@ -43,7 +43,7 @@ private val CATALOG_SOURCE_OPTIONS =
         )
     }
 
-private fun sourceFaviconRes(code: String): Int? = when (code) {
+internal fun sourceFaviconRes(code: String): Int? = when (code) {
     "audiopolka" -> R.drawable.source_favicon_audiopolka
     "uknig" -> R.drawable.source_favicon_uknig
     "audioboo" -> R.drawable.source_favicon_audioboo
@@ -52,6 +52,7 @@ private fun sourceFaviconRes(code: String): Int? = when (code) {
     "myaudiobooks" -> R.drawable.source_favicon_myaudiobooks
     "audioknigalife" -> R.drawable.source_favicon_audioknigalife
     "rutracker" -> R.drawable.source_favicon_rutracker
+    "fantasy_worlds" -> R.drawable.source_favicon_fantasy_worlds
     else -> null
 }
 

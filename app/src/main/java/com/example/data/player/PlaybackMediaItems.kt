@@ -12,6 +12,8 @@ import com.example.data.narration.*
 import com.example.data.model.BookDetailDto
 import java.net.URI
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal const val EXTRA_CHAPTER_DURATION_MS = "audiobookred.chapter_duration_ms"
 internal const val EXTRA_BOOK_DURATION_MS = "audiobookred.book_duration_ms"
@@ -76,6 +78,12 @@ internal suspend fun buildPlaybackMediaItems(
     val byChapterId = downloaded.filter { it.state == "completed" }.associateBy { it.chapterId }
     val byPosition = downloaded.filter { it.state == "completed" }.associateBy { it.chapterPosition }
     val bookDurationMs = book.durationSeconds.coerceAtLeast(0L) * 1_000L
+    // Local cover files live under app-private storage; SystemUI cannot read file:// URIs.
+    // Decode once per playlist, on IO, and keep the compressed preview small for long books.
+    val localArtwork = withContext(Dispatchers.IO) { downloadStore.importedCoverArtwork(book.coverUrl) }
+    val remoteArtworkUri = if (localArtwork == null) {
+        ApiClient.coverImageUrl(book.coverUrl)?.let(Uri::parse)
+    } else null
 
     return book.chapters.map { chapter ->
         val localRow = byChapterId[chapter.id] ?: byPosition[chapter.position]
@@ -121,7 +129,12 @@ internal suspend fun buildPlaybackMediaItems(
                     .setSubtitle(chapter.title.ifBlank { "Глава ${chapter.position}" })
                     .setAlbumTitle(book.title)
                     .setArtist(book.authorText)
-                    .setArtworkUri(downloadStore.importedCoverUri(book.coverUrl) ?: ApiClient.coverImageUrl(book.coverUrl)?.let(Uri::parse))
+                    .setArtworkUri(remoteArtworkUri)
+                    .apply {
+                        if (localArtwork != null) {
+                            setArtworkData(localArtwork, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                        }
+                    }
                     .setExtras(extras)
                     .build()
             )

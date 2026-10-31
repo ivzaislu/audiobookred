@@ -1,6 +1,11 @@
 package com.example.ui
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
@@ -17,7 +22,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.BookmarkUiItem
-import com.example.data.narration.TextAudioReadingPosition
 import com.example.data.model.MySeriesDto
 import com.example.ui.viewmodel.LibraryViewModel
 import com.example.ui.viewmodel.TextLibraryViewModel
@@ -34,96 +38,44 @@ internal fun PreparedLibraryScreen(
     onPlayBookmark: (BookmarkUiItem) -> Unit,
     onSeries: (MySeriesDto) -> Unit,
     showProgressPercent: Boolean,
-    audioSpeed: Float = 1f,
-    onSetAudioSpeed: (Float) -> Unit = {},
-    onRuVoiceVoiceSelected: (String, String) -> Unit = { _, _ -> },
     onPlayText: (String, String?) -> Unit = { _, _ -> },
-    onListenFromText: (String, String, Double) -> Unit = { book, fragment, _ -> onPlayText(book, fragment) },
-    onListenLive: (String) -> Unit = { onPlayText(it, null) },
-    textHighlight: com.example.data.narration.TextPlaybackHighlight? = null,
-    audioBookId: String? = null,
-    audioPlaying: Boolean = false,
-    audioBuffering: Boolean = false,
-    audioError: String? = null,
-    onToggleAudio: () -> Unit = {},
-    onReaderFocusChanged: (Boolean) -> Unit = {},
-    requestedTextBookId: String? = null,
-    requestedAudioReadingPosition: TextAudioReadingPosition? = null,
-    onAudioReadingPositionConsumed: () -> Unit = {},
-    onTextBookRequestConsumed: () -> Unit = {},
+    onTextBook: (String) -> Unit,
 ) {
     val textViewModel: TextLibraryViewModel = hiltViewModel()
     val textState by textViewModel.state.collectAsStateWithLifecycle()
-    // Capture the value, not the live State delegate, in callbacks retained by the old screen.
-    val readerSession = textState.readerSession
-    var textBookId by rememberSaveable(entryKey) { mutableStateOf<String?>(null) }
     var libraryTab by rememberSaveable(entryKey) { mutableStateOf(LibraryTabV2.History) }
-    val textImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) textViewModel.importBook(uri)
+    val context = LocalContext.current
+    val textImporter = rememberLauncherForActivityResult(object : ActivityResultContracts.OpenDocument() {
+        override fun createIntent(context: Context, input: Array<String>): Intent =
+            super.createIntent(context, input).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+    }) { uri ->
+        if (uri != null) textViewModel.requestImport(uri)
+    }
+    val importPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) textViewModel.chooseImportLocation(true)
+        else Toast.makeText(context, "Для переноса книги разрешите запись в папку Download.", Toast.LENGTH_LONG).show()
+    }
+    if (textState.choosingImportLocation) {
+        AlertDialog(
+            onDismissRequest = textViewModel::cancelArchiveImport,
+            title = { Text("Перенести файл книги?") },
+            text = { Text("Перенести исходный файл в Download/AudioBookRed/Books? После удаления книги из библиотеки её файлы в этой папке тоже будут удалены.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                    ) importPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    else textViewModel.chooseImportLocation(true)
+                }) { Text("Перенести") }
+            },
+            dismissButton = {
+                TextButton(onClick = { textViewModel.chooseImportLocation(false) }) { Text("Оставить на месте") }
+            },
+        )
     }
     if (textState.archiveEntries.isNotEmpty()) {
         TextArchiveSelectionDialog(textState.archiveEntries, textViewModel::chooseArchiveEntry, textViewModel::cancelArchiveImport)
-    }
-    LaunchedEffect(requestedTextBookId) {
-        requestedTextBookId?.let { id ->
-            val jump = requestedAudioReadingPosition?.takeIf { it.bookId == id }
-            textBookId = id
-            libraryTab = LibraryTabV2.Texts
-            textViewModel.open(id, jump?.chapterId, preview = jump)
-            onAudioReadingPositionConsumed()
-            onTextBookRequestConsumed()
-        }
-    }
-    LaunchedEffect(textBookId) {
-        if (requestedTextBookId == null) {
-            textBookId?.let(textViewModel::ensureOpen)
-        }
-    }
-    if (textBookId != null) {
-        TextBookReaderScreen(
-            state = textState,
-            onBack = {
-                textViewModel.closeReader()
-                textBookId = null
-            },
-            onBackAtPosition = { fragment, offset ->
-                textViewModel.closeReader(readerSession, fragment, offset)
-                textBookId = null
-            },
-            textHighlight = textHighlight,
-            onFollowChanged = { enabled -> textViewModel.setFollowing(readerSession, enabled) },
-            readingJump = textState.readingJump,
-            onReadingJumpApplied = { textViewModel.readingJumpApplied(readerSession) },
-            onPosition = { book, chapter, fragment, offset ->
-                textViewModel.savePosition(readerSession, book, chapter, fragment, offset)
-            },
-            onCommitPreview = { fragment, offset -> textViewModel.commitPreview(readerSession, fragment, offset) },
-            onReturnToBookmark = { textViewModel.returnToBookmark(readerSession) },
-            onListen = { book, fragment ->
-                textViewModel.allowFollowing(readerSession)
-                onPlayText(book, fragment)
-            },
-            onListenFromText = { book, fragment, fraction ->
-                textViewModel.allowFollowing(readerSession)
-                onListenFromText(book, fragment, fraction)
-            },
-            onListenLive = { book ->
-                textViewModel.allowFollowing(readerSession)
-                onListenLive(book)
-            },
-            audioBookId = audioBookId, audioPlaying = audioPlaying, audioBuffering = audioBuffering,
-            audioError = audioError, audioSpeed = audioSpeed, onSetAudioSpeed = onSetAudioSpeed,
-            onRuVoiceVoiceSelected = onRuVoiceVoiceSelected,
-            onToggleAudio = onToggleAudio,
-            onReaderFocusChanged = onReaderFocusChanged,
-            onSaveAudio = textViewModel::saveAudio, onPauseAudio = textViewModel::pauseAudio,
-            onResumeAudio = textViewModel::resumeAudio, onRemoveAudio = textViewModel::removeAudio,
-            onPlaySavedAudio = { source ->
-                textViewModel.allowFollowing(readerSession)
-                onPlayDownloaded(source)
-            },
-        )
-        return
     }
     val libraryViewModel: LibraryViewModel = hiltViewModel()
     val state by libraryViewModel.state.collectAsStateWithLifecycle()
@@ -133,7 +85,6 @@ internal fun PreparedLibraryScreen(
         val legacy = legacyTextHistoryActivity(state.history, state.historyActivityTimes, downloads, textIds)
         textViewModel.restoreLegacyHistory(legacy)
     }
-    val context = LocalContext.current
 
     var pendingStorageAction by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingStorageBookSourceId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -143,6 +94,7 @@ internal fun PreparedLibraryScreen(
             "resume" -> libraryViewModel.resumeDownload(bookSourceId)
             "retry" -> libraryViewModel.retryDownload(bookSourceId)
             "remove" -> libraryViewModel.removeDownload(bookSourceId)
+            "remove-text" -> textViewModel.remove(bookSourceId)
         }
     }
     val storagePermissionLauncher = rememberLauncherForActivityResult(
@@ -200,10 +152,10 @@ internal fun PreparedLibraryScreen(
         onSelectTab = { libraryTab = it },
         textLibrary = textState,
         onImportText = { textImporter.launch(arrayOf("*/*")) },
-        onOpenText = {
-            textBookId = it
+        onOpenText = onTextBook,
+        onRemoveText = { bookId ->
+            textViewModel.remove(bookId) { requestStorageAction("remove-text", bookId) }
         },
-        onRemoveText = textViewModel::remove,
         onRemoveTextHistory = textViewModel::removeHistory,
         onRemoveTextSeries = textViewModel::removeSeries,
         onPlayText = { onPlayText(it, null) },

@@ -61,6 +61,23 @@ class TextAudioSyncMapTest {
         assertEquals(map, TextAudioSyncMap.parse(old).validate(192_000))
     }
 
+    @Test fun compressedSidecarUsesPcmTimingAndEncoderOffsetInsteadOfFileSize() {
+        val compressed = map.copy(bookId = "book", sourceSha256 = "a".repeat(64),
+            audioMimeType = "audio/mp4", audioOffsetUs = 40_000L)
+        val json = compressed.json()
+        assertEquals(3, json.getInt("version"))
+        val restored = TextAudioSyncMap.parse(json).validateStoredAudio("audio/mp4", 32_000L, 4L, listOf("first", "second"))
+        assertEquals(compressed, restored)
+        assertEquals("first" to 0.0, restored.textAt(0))
+        assertEquals("second", restored.textAt(1_040)!!.first)
+        assertEquals(0.5, restored.textAt(2_540)!!.second, 0.000001)
+        assertEquals(2_540L, restored.timeAt("second", 0.5))
+        reject { restored.validateStoredAudio("audio/wav", 32_000L, 4L, listOf("first", "second")) }
+        reject { restored.validateStoredAudio("audio/mp4", 32_000L, 30L, listOf("first", "second")) }
+        json.put("pcmBytes", 999L)
+        reject { TextAudioSyncMap.parse(json) }
+    }
+
     private fun reject(action: () -> Unit) {
         try { action(); fail("Invalid sync map must fail validation") }
         catch (_: IllegalArgumentException) { }

@@ -27,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 internal data class TextCatalogState(
@@ -45,7 +46,6 @@ internal data class TextCatalogState(
     val error: String? = null,
     val notice: String? = null,
     val localBookId: String? = null,
-    val openedBookId: String? = null,
     val canGoBack: Boolean = false,
 ) {
     val busy: Boolean get() = importing
@@ -78,7 +78,35 @@ internal class TextCatalogViewModel @Inject constructor(
     private var request = 0L
     private var transferGeneration = 0L
 
-    init { load() }
+    init {
+        load()
+        viewModelScope.launch {
+            repository.observeLocalBooks().collectLatest {
+                val book = state.value.book ?: return@collectLatest
+                val sourceCode = state.value.sourceCode
+                val generation = request
+                try {
+                    val local = repository.localBookId(book.id, sourceCode)
+                    if (generation == request) mutableState.update { it.copy(localBookId = local) }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    if (generation == request) mutableState.update {
+                        it.copy(error = error.message ?: "Не удалось проверить наличие книги в библиотеке.")
+                    }
+                }
+            }
+        }
+    }
+
+    fun openAuthorSearch(sourceCode: String, authorName: String) {
+        if (state.value.busy) return
+        val source = registry.provider(sourceCode)
+        val query = authorName.trim().take(300)
+        if (query.isEmpty()) return
+        history.clear()
+        history.add(TextCatalogDestination(source.code, source.searchUrl(query), query = query))
+        load()
+    }
 
     fun selectSource(code: String) {
         if (state.value.busy || code == state.value.sourceCode) return
@@ -119,20 +147,15 @@ internal class TextCatalogViewModel @Inject constructor(
         return true
     }
     fun retry() { if (!state.value.busy) load() }
-    fun consumeOpened() { mutableState.update { it.copy(openedBookId = null) } }
     fun catalogRootKey(sourceCode: String): String = root(sourceCode).key
     suspend fun listingDetails(card: BookCardDto): BookCardDto {
         val source = registry.provider(card.primarySource)
         return mergeTextCatalogCard(card, source.book(card.id).catalogCard(source.code))
     }
 
-    fun importAndOpen(option: RemoteTextDownload? = null) {
+    fun importBook(option: RemoteTextDownload? = null) {
         val book = state.value.book ?: return
         if (state.value.busy || state.value.loading) return
-        state.value.localBookId?.let { id ->
-            mutableState.update { it.copy(openedBookId = id) }
-            return
-        }
         val sourceCode = state.value.sourceCode
         mutableState.update { it.copy(importing = true, error = null, notice = null) }
         val generation = request
@@ -145,6 +168,7 @@ internal class TextCatalogViewModel @Inject constructor(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
+                android.util.Log.w("AbredTextImport", "Import failed source=$sourceCode book=${book.id} format=${option?.code ?: "default"}", error)
                 if (request == generation && transferGeneration == transfer) mutableState.update { it.copy(error = error.message ?: "Не удалось добавить книгу.") }
             } finally {
                 if (transferGeneration == transfer) mutableState.update { it.copy(importing = false) }
@@ -155,7 +179,7 @@ internal class TextCatalogViewModel @Inject constructor(
     fun cancelImport() {
         transferGeneration++
         transferJob?.cancel()
-        mutableState.update { it.copy(importing = false, openedBookId = null) }
+        mutableState.update { it.copy(importing = false) }
     }
     private fun navigate(destination: TextCatalogDestination) {
         if (state.value.busy) return

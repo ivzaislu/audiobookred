@@ -128,6 +128,7 @@ internal object CoverDesign {
 }
 
 internal object TextReaderDesign {
-    const val HeaderMaxHeightFraction = 0.55f
+    const val HeaderMaxHeightFraction = 0.22f
+    const val AudioPanelMaxHeightFraction = 0.33f
     val ArchivePickerMaxHeight = 360.dp
 }

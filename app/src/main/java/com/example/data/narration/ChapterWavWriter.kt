@@ -7,9 +7,9 @@ import java.io.RandomAccessFile
 internal data class WavPcm16Payload(val sampleRate: Int, val offset: Long, val byteCount: Long)
 
 internal object WavPcm16Reader {
-    fun inspect(input: RandomAccessFile): WavPcm16Payload {
+    fun inspect(input: RandomAccessFile, maxBytes: Long = PreviewWav.MAX_BYTES): WavPcm16Payload {
         val size = input.length()
-        require(size in 44..PreviewWav.MAX_BYTES) { "Фрагмент RuVoice слишком большой или пустой." }
+        require(size in 44..maxBytes) { "WAV слишком большой или пустой." }
         input.seek(0)
         fun tag(): String = ByteArray(4).also(input::readFully).toString(Charsets.US_ASCII)
         fun u16() = java.lang.Short.reverseBytes(input.readShort()).toInt() and 0xffff
