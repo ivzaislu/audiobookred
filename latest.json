@@ -1,11 +1,11 @@
 {
   "schema": "abred.android.update/v1",
   "application_id": "com.aistudio.audiobookred.player.debug",
-  "version_name": "0.5.3.8.6.2-debug",
-  "version_code": 101,
+  "version_name": "0.5.3.8.6.3-debug",
+  "version_code": 102,
   "mandatory": false,
-  "release_notes": "• Тестовая версия для проверки обновления debug-приложения через встроенную кнопку и запуска после установки.\n",
-  "size_bytes": 27706699,
-  "sha256": "fbb93c4658c0c75d7d934020b9813b427ded9220be95b7d77c3d7076bcf0da02",
-  "download_url": "https://github.com/ivzaislu/audiobookred/releases/download/android-debug-v0.5.3.8.6.2-debug-r84.1-43921963454/abred-android-debug-0.5.3.8.6.2-debug-r84.1-43921963454.apk"
+  "release_notes": "• После проверки скачанного APK обновление передаётся обычному системному установщику Android с экраном завершения установки и действием «Открыть».\n• APK сохраняется до чтения установщиком. После открытия приложения резервное уведомление об установленном обновлении снимается.\n",
+  "size_bytes": 27706747,
+  "sha256": "1b41690ec9deae321af07aaf50280bd9cecac087bafbb9eb64dd53b25e72c06d",
+  "download_url": "https://github.com/ivzaislu/audiobookred/releases/download/android-debug-v0.5.3.8.6.3-debug-r85.1-43931693051/abred-android-debug-0.5.3.8.6.3-debug-r85.1-43931693051.apk"
 }
