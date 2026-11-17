@@ -39,8 +39,8 @@ android {
         applicationId = "com.aistudio.audiobookred.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = 99
-        versionName = "0.5.3.8.6.0"
+        versionCode = 100
+        versionName = "0.5.3.8.6.1"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "com.example.MigrationTestRunner"
         // Public raw.githubusercontent.com/latest.json. No token is embedded in APK.

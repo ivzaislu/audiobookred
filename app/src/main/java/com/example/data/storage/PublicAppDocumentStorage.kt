@@ -48,6 +48,29 @@ internal class PublicAppDocumentStorage(context: Context) {
         bytes = bytes,
     )
 
+    fun writeBackup(
+        displayName: String,
+        mimeType: String,
+        file: File,
+        checkpoint: () -> Unit = {},
+    ): StoredDocument = writeDocument(
+        directory = BACKUPS_DIRECTORY,
+        displayName = displayName,
+        mimeType = mimeType,
+        sizeBytes = file.length(),
+        checkpoint = checkpoint,
+    ) { output ->
+        file.inputStream().use { input ->
+            val buffer = ByteArray(32 * 1024)
+            while (true) {
+                checkpoint()
+                val count = input.read(buffer)
+                if (count < 0) break
+                output.write(buffer, 0, count)
+            }
+        }
+    }
+
     fun writeExport(
         displayName: String,
         mimeType: String,
@@ -78,6 +101,17 @@ internal class PublicAppDocumentStorage(context: Context) {
         mimeType: String,
         bytes: ByteArray,
         checkpoint: () -> Unit = {},
+    ): StoredDocument = writeDocument(
+        directory, displayName, mimeType, bytes.size.toLong(), checkpoint,
+    ) { output -> writeBytes(output, bytes, checkpoint) }
+
+    private fun writeDocument(
+        directory: String,
+        displayName: String,
+        mimeType: String,
+        sizeBytes: Long,
+        checkpoint: () -> Unit = {},
+        writeContent: (java.io.OutputStream) -> Unit,
     ): StoredDocument {
         if (!canWrite()) {
             throw IOException("Нет разрешения на запись в папку Download/AudioBookRed")
@@ -87,9 +121,9 @@ internal class PublicAppDocumentStorage(context: Context) {
         checkpoint()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            writeScoped(directory, displayName, mimeType, bytes, checkpoint)
+            writeScoped(directory, displayName, mimeType, sizeBytes, checkpoint, writeContent)
         } else {
-            writeLegacy(directory, displayName, mimeType, bytes, checkpoint)
+            writeLegacy(directory, displayName, mimeType, sizeBytes, checkpoint, writeContent)
         }
     }
 
@@ -98,8 +132,9 @@ internal class PublicAppDocumentStorage(context: Context) {
         directory: String,
         displayName: String,
         mimeType: String,
-        bytes: ByteArray,
+        sizeBytes: Long,
         checkpoint: () -> Unit,
+        writeContent: (java.io.OutputStream) -> Unit,
     ): StoredDocument {
         val resolver = appContext.contentResolver
         val relativeDirectory = rootRelativeDirectory() + directory + "/"
@@ -114,7 +149,7 @@ internal class PublicAppDocumentStorage(context: Context) {
 
         try {
             resolver.openOutputStream(uri, "w")?.use { output ->
-                writeBytes(output, bytes, checkpoint)
+                writeContent(output)
                 output.flush()
             } ?: throw IOException("Не удалось открыть файл для записи")
 
@@ -131,11 +166,11 @@ internal class PublicAppDocumentStorage(context: Context) {
                 throw IOException("Не удалось завершить публикацию файла")
             }
 
-            val metadata = scopedMetadata(uri, displayName, bytes.size.toLong())
-            if (metadata.second != bytes.size.toLong()) {
+            val metadata = scopedMetadata(uri, displayName, sizeBytes)
+            if (metadata.second != sizeBytes) {
                 throw IOException(
                     "Файл опубликован не полностью: " +
-                        metadata.second + " из " + bytes.size + " байт"
+                        metadata.second + " из " + sizeBytes + " байт"
                 )
             }
             return StoredDocument(
@@ -189,8 +224,9 @@ internal class PublicAppDocumentStorage(context: Context) {
         directoryName: String,
         displayName: String,
         mimeType: String,
-        bytes: ByteArray,
+        sizeBytes: Long,
         checkpoint: () -> Unit,
+        writeContent: (java.io.OutputStream) -> Unit,
     ): StoredDocument {
         val directory = File(legacyRoot(), directoryName)
         if (!directory.isDirectory && !directory.mkdirs()) {
@@ -202,7 +238,7 @@ internal class PublicAppDocumentStorage(context: Context) {
         temporary.delete()
         try {
             temporary.outputStream().buffered().use { output ->
-                writeBytes(output, bytes, checkpoint)
+                writeContent(output)
                 output.flush()
             }
             checkpoint()
@@ -210,7 +246,7 @@ internal class PublicAppDocumentStorage(context: Context) {
                 temporary.copyTo(target, overwrite = true)
                 temporary.delete()
             }
-            if (!target.isFile || target.length() != bytes.size.toLong()) {
+            if (!target.isFile || target.length() != sizeBytes) {
                 throw IOException("Не удалось полностью сохранить " + target.name)
             }
 

@@ -35,12 +35,16 @@ internal fun BackupExportCard(
     message: String?,
     isError: Boolean,
     onExport: () -> Unit,
+    title: String = "Экспорт данных",
+    subtitle: String = "Сохранить JSON в Download/AudioBookRed/Backups.",
+    buttonLabel: String = "Создать резервную копию",
+    busyLabel: String = "Создаём резервную копию…",
 ) {
     AbredInnerSettingsCard {
         BackupCardHeader(
             icon = Icons.Default.FileUpload,
-            title = "Экспорт данных",
-            subtitle = "Сохранить JSON в Download/AudioBookRed/Backups.",
+            title = title,
+            subtitle = subtitle,
             active = exporting,
         )
         Spacer(Modifier.height(AbredSpacing.Sm))
@@ -60,7 +64,7 @@ internal fun BackupExportCard(
                 Icon(Icons.Default.FileUpload, null, Modifier.size(AbredSizes.IconSmall))
             }
             Spacer(Modifier.width(AbredSpacing.Xs))
-            Text(if (exporting) "Создаём резервную копию…" else "Создать резервную копию")
+            Text(if (exporting) busyLabel else buttonLabel)
         }
         BackupStatus(message = message, isError = isError)
     }
@@ -73,12 +77,16 @@ internal fun BackupImportCard(
     message: String?,
     isError: Boolean,
     onImport: () -> Unit,
+    title: String = "Восстановление",
+    subtitle: String = "Выбрать ранее созданную резервную копию AudioBookRed.",
+    buttonLabel: String = "Выбрать файл и восстановить",
+    busyLabel: String = "Восстанавливаем данные…",
 ) {
     AbredInnerSettingsCard {
         BackupCardHeader(
             icon = Icons.Default.Restore,
-            title = "Восстановление",
-            subtitle = "Выбрать ранее созданную резервную копию AudioBookRed.",
+            title = title,
+            subtitle = subtitle,
             active = importing,
         )
         Spacer(Modifier.height(AbredSpacing.Sm))
@@ -98,7 +106,7 @@ internal fun BackupImportCard(
                 Icon(Icons.Default.FolderOpen, null, Modifier.size(AbredSizes.IconSmall))
             }
             Spacer(Modifier.width(AbredSpacing.Xs))
-            Text(if (importing) "Восстанавливаем данные…" else "Выбрать файл и восстановить")
+            Text(if (importing) busyLabel else buttonLabel)
         }
         BackupStatus(message = message, isError = isError)
     }
@@ -155,4 +163,3 @@ private fun BackupStatus(message: String?, isError: Boolean) {
         }
     }
 }
-

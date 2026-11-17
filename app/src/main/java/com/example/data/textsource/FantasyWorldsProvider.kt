@@ -3,6 +3,7 @@ package com.example.data.textsource
 import com.example.data.textbook.EbookImportParser
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,7 +35,7 @@ internal class FantasyWorldsProvider(client: OkHttpClient) : RemoteTextBookProvi
     override suspend fun page(url: String): RemoteTextPage {
         require(FantasyWorldsHtmlParser.isPageUrl(url))
         val bytes = get(url, HTML_LIMIT)
-        return withContext(Dispatchers.Default) { FantasyWorldsHtmlParser.page(bytes.toString(Charsets.UTF_8), url) }
+        return parsePage { FantasyWorldsHtmlParser.page(bytes.toString(Charsets.UTF_8), url) }
     }
     override suspend fun book(id: String): RemoteTextBook {
         val url = FantasyWorldsHtmlParser.bookUrl(id)
@@ -42,7 +43,7 @@ internal class FantasyWorldsProvider(client: OkHttpClient) : RemoteTextBookProvi
         return detailsSlots.withPermit {
             cachedBook(id)?.let { return@withPermit it }
             val bytes = get(url, HTML_LIMIT)
-            val book = withContext(Dispatchers.Default) { FantasyWorldsHtmlParser.book(bytes.toString(Charsets.UTF_8), url) }
+            val book = parsePage { FantasyWorldsHtmlParser.book(bytes.toString(Charsets.UTF_8), url) }
             synchronized(detailsCache) {
                 detailsCache[id] = CachedBook(book, System.nanoTime())
                 while (detailsCache.size > 128) detailsCache.remove(detailsCache.keys.first())
@@ -54,15 +55,21 @@ internal class FantasyWorldsProvider(client: OkHttpClient) : RemoteTextBookProvi
         val url = book.downloadUrl ?: error("На сайте нет доступной ссылки FB2 для этой книги.")
         require(FantasyWorldsHtmlParser.isDownloadUrl(url, book.id))
         return get(url, EbookImportParser.MAX_SOURCE_BYTES, book.url).also {
-            require(isBookPayload(it)) { "Вместо книги сайт вернул другую страницу. Загрузка не импортирована." }
+            if (!isBookPayload(it)) throw TextSourceContentException(TextSourceContentFailure.FILE)
         }
     }
     override suspend fun downloadFile(book: RemoteTextBook, option: RemoteTextDownload): ByteArray {
         require(option in book.downloads && FantasyWorldsHtmlParser.isFileDownloadUrl(option.url, book.id)) { "Формат загрузки недоступен." }
         require(bookId(book.url) == book.id)
         return get(option.url, EbookImportParser.MAX_SOURCE_BYTES, book.url).also { bytes ->
-            require(isDownloadPayload(bytes, option.code)) { "Вместо файла книги сайт вернул неподдерживаемый ответ." }
+            if (!isDownloadPayload(bytes, option.code)) throw TextSourceContentException(TextSourceContentFailure.FILE)
         }
+    }
+    private suspend fun <T> parsePage(parse: () -> T): T = withContext(Dispatchers.Default) {
+        try { parse() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: IllegalArgumentException) { throw TextSourceContentException(TextSourceContentFailure.PAGE, error) }
+        catch (error: IllegalStateException) { throw TextSourceContentException(TextSourceContentFailure.PAGE, error) }
     }
     private suspend fun get(initialUrl: String, limit: Int, referer: String = FantasyWorldsHtmlParser.ORIGIN + "/"): ByteArray {
         var url = initialUrl
@@ -90,9 +97,12 @@ internal class FantasyWorldsProvider(client: OkHttpClient) : RemoteTextBookProvi
                         val result = if (response.code in setOf(301, 302, 303, 307, 308)) {
                             Payload(redirect = response.header("Location") ?: error("Пустой редирект источника."))
                         } else {
-                            check(response.isSuccessful) { "Fantasy Worlds: HTTP ${response.code}." }
+                            if (response.header("cf-mitigated").equals("challenge", ignoreCase = true)) {
+                                throw TextSourceHttpException(response.code, browserChallenge = true)
+                            }
+                            if (!response.isSuccessful) throw TextSourceHttpException(response.code)
                             val body = response.body ?: error("Пустой ответ источника.")
-                            require(body.contentLength() <= limit) { "Файл источника слишком большой." }
+                            if (body.contentLength() > limit) throw TextSourceContentException(TextSourceContentFailure.TOO_LARGE)
                             val data = ByteArrayOutputStream()
                             body.byteStream().use { input ->
                                 val buffer = ByteArray(32 * 1024)
@@ -100,11 +110,13 @@ internal class FantasyWorldsProvider(client: OkHttpClient) : RemoteTextBookProvi
                                     if (!continuation.isActive) return
                                     val count = input.read(buffer)
                                     if (count < 0) break
-                                    require(data.size().toLong() + count <= limit) { "Файл источника слишком большой." }
+                                    if (data.size().toLong() + count > limit) throw TextSourceContentException(TextSourceContentFailure.TOO_LARGE)
                                     data.write(buffer, 0, count)
                                 }
                             }
-                            Payload(data.toByteArray())
+                            val bytes = data.toByteArray()
+                            if (isBrowserChallenge(bytes)) throw TextSourceContentException(TextSourceContentFailure.BROWSER_CHALLENGE)
+                            Payload(bytes)
                         }
                         if (continuation.isActive) continuation.resume(result)
                     } catch (e: Exception) {
@@ -116,6 +128,11 @@ internal class FantasyWorldsProvider(client: OkHttpClient) : RemoteTextBookProvi
     }
     companion object {
         private const val HTML_LIMIT = 4 * 1024 * 1024
+        private fun isBrowserChallenge(bytes: ByteArray): Boolean {
+            val prefix = bytes.take(64 * 1024).toByteArray().toString(Charsets.UTF_8)
+            return Regex("<(?:!doctype\\s+html|html)(?:\\s|>)", RegexOption.IGNORE_CASE).containsMatchIn(prefix) &&
+                listOf("window._cf_chl_opt", "/cdn-cgi/challenge-platform/", "id=\"challenge-form\"", "id='challenge-form'").any { it in prefix }
+        }
         internal fun isDownloadPayload(bytes: ByteArray, format: String): Boolean {
             val prefix = bytes.take(4096).toByteArray().toString(Charsets.ISO_8859_1).replace("\u0000", "").trimStart()
             if (bytes.isEmpty() || Regex("<(?:!doctype\\s+html|html|head|body)(?:\\s|>)", RegexOption.IGNORE_CASE).containsMatchIn(prefix)) return false

@@ -58,7 +58,7 @@ internal class RemoteTextBookRepository internal constructor(
             localBookId(book.id, sourceCode)?.also { rememberCatalog(book, sourceCode, it) }
         }
         if (existing != null) return@withLock TextImportResult(existing, true)
-        check(originals.canPublish()) { "Разрешите доступ к хранилищу для сохранения книг в Download/AudioBookRed/Books." }
+        if (!originals.canPublish()) throw TextImportStorageException(TextImportStorageFailure.PERMISSION)
         val selected = option ?: book.downloads.firstOrNull { it.canImport }
         require(selected != null || book.downloads.isEmpty()) { "Источник не предлагает формат для чтения в приложении." }
         val bytes = if (selected != null) source.downloadFile(book, selected) else source.download(book)
@@ -81,6 +81,9 @@ internal class RemoteTextBookRepository internal constructor(
                         if (file.exists() && !file.delete()) error.addSuppressed(IOException("Не удалось убрать незавершённую загрузку книги."))
                         file.parentFile?.takeIf { it.list()?.isEmpty() == true }?.delete()
                     }
+                    if (error is IllegalArgumentException) {
+                        throw TextSourceContentException(TextSourceContentFailure.FILE, error)
+                    }
                     throw error
                 }
                 coroutine.ensureActive()
@@ -90,11 +93,11 @@ internal class RemoteTextBookRepository internal constructor(
                     }
                 } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                 catch (error: Exception) {
-                    throw IOException("Книга добавлена в библиотеку, но сохранить оригинал в Books не удалось. Повторите загрузку из источника.", error)
+                    throw TextImportStorageException(TextImportStorageFailure.PUBLICATION, error)
                 }
                 coroutine.ensureActive()
-                check(links.edit().putString(key(book.id, sourceCode), result.bookId).commit()) {
-                    "Книга добавлена, но не удалось сохранить связь с источником. Повторите открытие."
+                if (!links.edit().putString(key(book.id, sourceCode), result.bookId).commit()) {
+                    throw TextImportStorageException(TextImportStorageFailure.SOURCE_LINK)
                 }
                 rememberCatalog(book, sourceCode, result.bookId)
                 result

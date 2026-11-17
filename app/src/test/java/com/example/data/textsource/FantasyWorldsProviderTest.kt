@@ -38,7 +38,8 @@ class FantasyWorldsProviderTest {
             server.enqueue(MockResponse().setResponseCode(503))
             server.enqueue(MockResponse().setBody(suppliedBook()))
             val provider = provider(server)
-            try { provider.book("31866"); fail("Expected metadata error") } catch (_: IllegalStateException) { }
+            try { provider.book("31866"); fail("Expected metadata error") }
+            catch (error: TextSourceHttpException) { assertEquals(503, error.status) }
             assertEquals("31866", provider.book("31866").id)
             assertEquals(2, server.requestCount)
         }
@@ -77,6 +78,49 @@ class FantasyWorldsProviderTest {
     @Test fun payloadSniffingDoesNotAcceptAnHtmlErrorPage() {
         assertFalse(FantasyWorldsProvider.isBookPayload("<html>404</html>".toByteArray()))
         assertTrue(FantasyWorldsProvider.isBookPayload("<?xml version='1.0'?><FictionBook xmlns='x'>".toByteArray()))
+    }
+
+    @Test fun httpStatusAndExplicitChallengeArePreservedWithoutReadingErrorPages() = runBlocking {
+        MockWebServer().use { server ->
+            val provider = provider(server)
+            for (status in listOf(401, 403, 404, 410, 429, 503, 504)) {
+                server.enqueue(MockResponse().setResponseCode(status).setBody("private response"))
+                try { provider.book("31866"); fail("HTTP $status accepted") }
+                catch (error: TextSourceHttpException) {
+                    assertEquals(status, error.status)
+                    assertFalse(error.browserChallenge)
+                }
+            }
+            server.enqueue(MockResponse().setResponseCode(503).setHeader("cf-mitigated", "challenge"))
+            try { provider.book("31866"); fail("Challenge accepted") }
+            catch (error: TextSourceHttpException) { assertTrue(error.browserChallenge) }
+        }
+    }
+
+    @Test fun successfulHtmlChallengeIsNotParsedAsACatalogOrImportedAsABook() = runBlocking {
+        MockWebServer().use { server ->
+            val provider = provider(server)
+            val challenge = "<!DOCTYPE html><html><script>window._cf_chl_opt = {};</script></html>"
+            repeat(2) { server.enqueue(MockResponse().setBody(challenge)) }
+            try { provider.page(provider.catalogUrl); fail("Challenge page accepted") }
+            catch (error: TextSourceContentException) { assertEquals(TextSourceContentFailure.BROWSER_CHALLENGE, error.reason) }
+            try { provider.download(book); fail("Challenge imported") }
+            catch (error: TextSourceContentException) { assertEquals(TextSourceContentFailure.BROWSER_CHALLENGE, error.reason) }
+        }
+    }
+
+    @Test fun changedMarkupIsAContentFailureAndDoesNotPoisonTheDetailCache() = runBlocking {
+        MockWebServer().use { server ->
+            val provider = provider(server)
+            server.enqueue(MockResponse().setBody("<html><body>Changed page</body></html>"))
+            try { provider.book("31866"); fail("Changed page accepted") }
+            catch (error: TextSourceContentException) {
+                assertEquals(TextSourceContentFailure.PAGE, error.reason)
+                assertNotNull(error.cause)
+            }
+            server.enqueue(MockResponse().setBody(suppliedBook()))
+            assertEquals("31866", provider.book("31866").id)
+        }
     }
 
     @Test fun chosenFormatDownloadsItsOwnRouteAndKeepsCardReferer() = runBlocking {

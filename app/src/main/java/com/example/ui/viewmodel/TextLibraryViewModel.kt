@@ -50,6 +50,9 @@ internal data class TextLibraryUiState(
     val metadata: Map<String, TextBookMetadata> = emptyMap(),
     val archiveEntries: List<String> = emptyList(),
     val choosingImportLocation: Boolean = false,
+    val editingContents: Boolean = false,
+    val contentsEditError: Boolean = false,
+    val contentsRevision: Long = 0L,
 )
 
 @HiltViewModel
@@ -145,11 +148,43 @@ internal class TextLibraryViewModel @Inject constructor(
         if (!state.value.opening && state.value.reader?.book?.id != bookId) open(bookId)
     }
 
+    fun renameContentsChapter(token: Long, chapterId: String, title: String) = editContents(token) {
+        repository.renameContentsChapter(it, chapterId, title)
+    }
+    fun saveContentsMarker(token: Long, fragmentId: String, offset: Int, title: String) = editContents(token) {
+        repository.saveContentsMarker(it, fragmentId, offset, title)
+    }
+    fun removeContentsMarker(token: Long, fragmentId: String, offset: Int) = editContents(token) {
+        repository.removeContentsMarker(it, fragmentId, offset)
+    }
+    private fun editContents(token: Long, edit: suspend (String) -> com.example.data.textbook.TextContentsEdits) {
+        val reader = state.value.reader ?: return
+        if (state.value.readerSession != token || state.value.editingContents) return
+        mutableState.update { it.copy(editingContents = true, contentsEditError = false, message = null) }
+        viewModelScope.launch {
+            try {
+                val contents = edit(reader.book.id)
+                if (state.value.readerSession == token) mutableState.update {
+                    it.copy(reader = it.reader?.takeIf { value -> value.book.id == reader.book.id }?.copy(contents = contents),
+                        contentsRevision = it.contentsRevision + 1,
+                        message = "Оглавление сохранено.")
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (state.value.readerSession == token) mutableState.update {
+                    it.copy(contentsEditError = true, message = "Не удалось сохранить оглавление. Повторите попытку.")
+                }
+            } finally {
+                if (state.value.readerSession == token) mutableState.update { it.copy(editingContents = false) }
+            }
+        }
+    }
+
     fun open(bookId: String, chapterId: String? = null, preview: TextAudioReadingPosition? = null, allowFollowing: Boolean = true) {
         val generation = session.open(preview != null, allowFollowing)
         val token = ++readerRequest
         opening?.cancel()
-        mutableState.update { it.copy(opening = true, reader = null, message = null, readerSession = generation, readerIdentity = session.identity,
+        mutableState.update { it.copy(opening = true, reader = null, message = null, editingContents = false, readerSession = generation, readerIdentity = session.identity,
             preview = preview != null, following = false, autoFollowAllowed = allowFollowing, committing = false, readingJump = preview) }
         opening = viewModelScope.launch {
             try {

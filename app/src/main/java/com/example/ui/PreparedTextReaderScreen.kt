@@ -81,5 +81,8 @@ internal fun PreparedTextReaderScreen(
         onSetAudioSpeed = onSetAudioSpeed,
         rewindSeconds = rewindSeconds,
         forwardSeconds = forwardSeconds,
+        onRenameContentsChapter = { chapter, title -> textViewModel.renameContentsChapter(readerSession, chapter, title) },
+        onSaveContentsMarker = { fragment, offset, title -> textViewModel.saveContentsMarker(readerSession, fragment, offset, title) },
+        onRemoveContentsMarker = { fragment, offset -> textViewModel.removeContentsMarker(readerSession, fragment, offset) },
     )
 }

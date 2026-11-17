@@ -110,6 +110,9 @@ private fun TextCatalogList(state: TextCatalogState, vm: TextCatalogViewModel, o
                     Text(error, modifier = Modifier.fillMaxWidth().padding(horizontal = AbredSpacing.ScreenHorizontal,
                         vertical = AbredSpacing.Xs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
+                (books.loadState.refresh as? LoadState.Error)?.takeIf { books.itemCount > 0 }?.let {
+                    CatalogLoadErrorState(it.error.message.orEmpty(), books::retry)
+                }
             },
         )
     }
@@ -131,6 +134,7 @@ private fun TextCatalogBookPage(
         descriptionKey = state.destinationKey,
         actions = { state.book?.let {
             TextCatalogBookActions(it, state, vm::importBook, vm::cancelImport, onRead, onListen,
+                onRetryImport = vm::retryImport,
                 localActions = { id -> PreparedTextBookActions(id, { onRead(id) }, { onListen(id) }, showProgressPercent, onPlaySavedAudio,
                     enabled = !state.busy && !state.loading) })
         } },
@@ -148,14 +152,19 @@ internal fun TextCatalogBookActions(
     onCancel: () -> Unit,
     onRead: (String) -> Unit,
     onListen: (String) -> Unit,
+    onRetryImport: (() -> Unit)? = null,
     localActions: @Composable (String) -> Unit = { local ->
         TextBookReadingActions(onRead = { onRead(local) }, onListen = { onListen(local) },
             enabled = !state.busy && !state.loading)
     },
 ) {
     val local = state.localBookId
-    if (local != null) localActions(local)
-    else TextBookImportActions(book, state, onImport, onCancel)
+    if (local != null) {
+        Column(verticalArrangement = Arrangement.spacedBy(AbredSpacing.Xs)) {
+            localActions(local)
+            state.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
+    } else TextBookImportActions(book, state, onImport, onCancel, onRetryImport)
 }
 
 @Composable
@@ -164,6 +173,7 @@ private fun TextBookImportActions(
     state: TextCatalogState,
     onOpen: (RemoteTextDownload?) -> Unit,
     onCancel: () -> Unit,
+    onRetryImport: (() -> Unit)?,
 ) {
     var choosingFormat by rememberSaveable(book.url) { mutableStateOf(false) }
     val context = LocalContext.current
@@ -211,6 +221,11 @@ private fun TextBookImportActions(
             }
             state.error?.let { error ->
                 Text(error, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                if (state.importFailed && onRetryImport != null) {
+                    TextButton(enabled = !state.busy && !state.loading, onClick = onRetryImport) {
+                        Text("Повторить загрузку")
+                    }
+                }
             }
             state.notice?.let { notice ->
                 Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

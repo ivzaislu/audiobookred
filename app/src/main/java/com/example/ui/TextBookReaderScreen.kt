@@ -41,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import com.example.data.textbook.readingContents
+import com.example.data.textbook.TextContentsEntry
+import com.example.data.textbook.TextChapterEntity
 import com.example.data.narration.TextAudioReadingPosition
 import com.example.data.textbook.textReadingPercent
 import kotlinx.coroutines.launch
@@ -93,6 +95,9 @@ internal fun TextBookReaderScreen(
     rewindSeconds: Int = 15,
     forwardSeconds: Int = 15,
     onSettingsChanged: ((ReaderSettings) -> Unit)? = null,
+    onRenameContentsChapter: ((String, String) -> Unit)? = null,
+    onSaveContentsMarker: ((String, Int, String) -> Unit)? = null,
+    onRemoveContentsMarker: ((String, Int) -> Unit)? = null,
 ) {
     val reader = state.reader
     if (reader == null) {
@@ -110,7 +115,7 @@ internal fun TextBookReaderScreen(
             audioBookId, audioPlaying, audioBuffering, audioError, onToggleAudio,
             readingJump, onReadingJumpApplied, onCommitPreview, onReturnToBookmark, onListenFromText, settings, onBackAtPosition, textHighlight, onFollowChanged,
             onResumeFollowing, audioSpeed, onSeekBy, onSetAudioSpeed, rewindSeconds, forwardSeconds, onSettingsChanged,
-            controlsVisible, { controlsVisible = it })
+            controlsVisible, { controlsVisible = it }, onRenameContentsChapter, onSaveContentsMarker, onRemoveContentsMarker)
     }
 }
 
@@ -139,6 +144,9 @@ private fun TextChapterReader(
     onSettingsChanged: ((ReaderSettings) -> Unit)? = null,
     controlsVisible: Boolean,
     onControlsVisible: (Boolean) -> Unit,
+    onRenameContentsChapter: ((String, String) -> Unit)?,
+    onSaveContentsMarker: ((String, Int, String) -> Unit)?,
+    onRemoveContentsMarker: ((String, Int) -> Unit)?,
 ) {
     val settingsVm: ReaderSettingsViewModel? = if (settings == null) hiltViewModel() else null
     val readerSettings = if (settingsVm != null) {
@@ -155,7 +163,13 @@ private fun TextChapterReader(
     } } }
     val spoken = textHighlight?.takeIf { it.bookId == reader.book.id }
     val highlightColor = readerHighlightColor(readerSettings.appearance)
-    val contents = remember(reader.chapters) { readingContents(reader.chapters) }
+    val contents = remember(reader.chapters, reader.contents, reader.fragments) {
+        readingContents(reader.chapters, reader.contents, reader.fragments)
+    }
+    val editableContents = reader.metadata.format.equals("TXT", ignoreCase = true) && onRenameContentsChapter != null &&
+        onSaveContentsMarker != null && onRemoveContentsMarker != null
+    fun chapterTitle(chapter: TextChapterEntity): String = reader.contents.chapterTitles[chapter.id]
+        ?: if (chapter.automatic) "Текст книги" else chapter.title
     val characterStarts = remember(blocks) {
         IntArray(blocks.size + 1).also { starts -> blocks.forEachIndexed { index, block -> starts[index + 1] = starts[index] + block.text.length } }
     }
@@ -182,9 +196,11 @@ private fun TextChapterReader(
     var actionsMenu by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
+    var newMarkerFragment by rememberSaveable { mutableStateOf<String?>(null) }
+    var newMarkerOffset by rememberSaveable { mutableIntStateOf(0) }
     var followSuspended by rememberSaveable(reader.book.id) { mutableStateOf(false) }
     val userDragging by listState.interactionSource.collectIsDraggedAsState()
-    val followObstructed = selectingText || selectedAudioTarget != null || actionsMenu || showChapters || showAppearance
+    val followObstructed = selectingText || selectedAudioTarget != null || actionsMenu || showChapters || showAppearance || newMarkerFragment != null
     val active = audioBookId == reader.book.id || state.audioExports.any {
         it.bookId == audioBookId && it.bookSourceId.startsWith("text_audio:${reader.book.id}:")
     }
@@ -309,12 +325,27 @@ private fun TextChapterReader(
         if (block != null && onBackAtPosition != null) onBackAtPosition(block.anchorId, listState.firstVisibleItemScrollOffset)
         else { save(); onBack() }
     }
-    fun selectChapter(chapterId: String) {
+    fun selectContents(entry: TextContentsEntry) {
         pauseFollowing()
-        val target = blocks.indexOfFirst { it.chapterId == chapterId }.coerceAtLeast(0)
+        val target = blocks.indexOfFirst {
+            if (entry.fragmentId != null) entry.fragmentId in it.fragmentIds else it.chapterId == entry.chapterId
+        }
+        if (target < 0) return
         showChapters = false
         clearSelection()
-        scope.launch { listState.scrollToItem(target); save() }
+        scope.launch {
+            listState.scrollToItem(target)
+            if (entry.fragmentId != null) {
+                val block = blocks[target]
+                val before = block.fragmentIds.takeWhile { it != entry.fragmentId }.sumOf { fragmentsById[it]?.text?.length ?: 0 }
+                val layout = withTimeoutOrNull(5000) { snapshotFlow { textLayouts[block.anchorId] }.filterNotNull().first() }
+                if (layout != null && block.text.isNotEmpty()) {
+                    val line = layout.getLineForOffset((before + entry.offset).coerceIn(0, block.text.length - 1))
+                    listState.scrollToItem(target, layout.getLineTop(line).toInt().coerceAtLeast(0))
+                }
+            }
+            save()
+        }
     }
     BackHandler { back() }
     LaunchedEffect(listState, reader.chapter.id) {
@@ -332,19 +363,20 @@ private fun TextChapterReader(
         TextReaderAppearanceSheet(readerSettings, changeSettings, onDismiss = { showAppearance = false })
     }
     if (showChapters) {
-        ModalBottomSheet(onDismissRequest = { showChapters = false }) {
-            Text("Главы", modifier = Modifier.padding(AbredSpacing.ScreenHorizontal), style = MaterialTheme.typography.titleLarge)
-            LazyColumn {
-                items(contents, key = { it.chapterId }) { chapter ->
-                    TextButton(onClick = { selectChapter(chapter.chapterId) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = if ((chapter.wholeBook || chapter.chapterId == currentChapter.id)) "• ${chapter.title}" else chapter.title,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
-        }
+        TextReaderContentsSheet(contents, currentChapter.id, editableContents, state.editingContents,
+            state.message.takeIf { state.contentsEditError }, onSelect = ::selectContents,
+            onRename = { entry, title ->
+                if (entry.fragmentId == null) onRenameContentsChapter?.invoke(entry.chapterId, title)
+                else onSaveContentsMarker?.invoke(entry.fragmentId, entry.offset, title)
+            },
+            onRemove = { entry -> entry.fragmentId?.let { onRemoveContentsMarker?.invoke(it, entry.offset) } },
+            onDismiss = { showChapters = false }, revision = state.contentsRevision)
+    }
+    newMarkerFragment?.let { fragment ->
+        TextContentsTitleDialog("Метка оглавления", "", state.editingContents,
+            state.message.takeIf { state.contentsEditError },
+            onSave = { onSaveContentsMarker?.invoke(fragment, newMarkerOffset, it) },
+            onDismiss = { newMarkerFragment = null }, revision = state.contentsRevision)
     }
     val showReturnToAudio = active && spoken != null && (!state.following || followSuspended)
     val spokenChapter = reader.chapters.firstOrNull { it.id == spoken?.chapterId }
@@ -367,6 +399,16 @@ private fun TextChapterReader(
                                 DropdownMenuItem(text = { Text("Оглавление") }, leadingIcon = {
                                     Icon(Icons.AutoMirrored.Filled.List, contentDescription = null)
                                 }, onClick = { actionsMenu = false; showChapters = true })
+                                if (editableContents) DropdownMenuItem(text = { Text("Добавить метку оглавления") }, onClick = {
+                                    val target = selectedAudioTarget?.let { it.fragmentId to it.fraction } ?: visibleFragment()
+                                    target?.let { (id, fraction) -> fragmentsById[id]?.let { fragment ->
+                                        var offset = (fragment.text.length * fraction).toInt().coerceIn(0, (fragment.text.length - 1).coerceAtLeast(0))
+                                        if (offset > 0 && fragment.text[offset].isLowSurrogate() && fragment.text[offset - 1].isHighSurrogate()) offset--
+                                        newMarkerOffset = offset
+                                        newMarkerFragment = id
+                                    } }
+                                    actionsMenu = false
+                                })
                                 DropdownMenuItem(text = { Text("Слушать с этого места") }, leadingIcon = {
                                     Icon(Icons.Default.PlayCircleOutline, contentDescription = null)
                                 }, onClick = { actionsMenu = false; fromReading() })
@@ -403,7 +445,7 @@ private fun TextChapterReader(
                         }
                     }
                 }
-                Text(if (currentChapter.automatic) "Текст книги" else currentChapter.title,
+                Text(chapterTitle(currentChapter),
                     modifier = Modifier.padding(horizontal = AbredSpacing.ScreenHorizontal, vertical = AbredSpacing.Xs),
                     style = MaterialTheme.typography.labelSmall, color = colors.second.copy(alpha = AbredOpacity.SectionLabel),
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -475,7 +517,7 @@ private fun TextChapterReader(
                 }
                 if (controlsVisible) Column(Modifier.heightIn(max = audioMaxHeight).verticalScroll(rememberScrollState())) {
                     TextReaderAudioPanel(
-                        chapter = (spokenChapter ?: currentChapter).let { if (it.automatic) "Текст книги" else it.title },
+                        chapter = chapterTitle(spokenChapter ?: currentChapter),
                         active = active, playing = audioPlaying, buffering = audioBuffering,
                         following = state.following && !followSuspended, canFollow = active && spoken != null && !state.committing,
                         speed = audioSpeed, rewindSeconds = rewindSeconds, forwardSeconds = forwardSeconds,
@@ -497,7 +539,7 @@ private fun TextChapterReader(
                         modifier = Modifier.fillMaxWidth().height(AbredSizes.ProgressTrack))
                     Row(Modifier.fillMaxWidth().padding(horizontal = AbredSpacing.ScreenHorizontal),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Text("${if (currentChapter.automatic) "Текст книги" else currentChapter.title} · $progress%",
+                        Text("${chapterTitle(currentChapter)} · $progress%",
                             style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f),
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         IconButton(onClick = { focusManager.clearFocus(); onControlsVisible(!controlsVisible) }) {

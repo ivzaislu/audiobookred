@@ -37,6 +37,7 @@ internal data class TextReadingSnapshot(
     val fragments: List<TextFragmentEntity>, val position: TextReadingPositionEntity?,
     val metadata: TextBookMetadata = TextBookMetadata(),
     val blocks: List<TextReadingBlock> = readingBlocks(fragments),
+    val contents: TextContentsEdits = TextContentsEdits(),
 )
 
 @Singleton
@@ -52,6 +53,7 @@ internal class TextLibraryRepository private constructor(
     private val mutations = Mutex()
     private val sourceFolder get() = File(context.filesDir, "text-library")
     private val metadataStore get() = TextBookMetadataStore(sourceFolder)
+    private val contentsStore get() = TextContentsStore(sourceFolder)
     private val originals by lazy { PublicTextBookStorage(context) }
     private val originalFiles by lazy { TextBookFileStore(context.filesDir) }
     private val activityStore by lazy { TextLibraryActivityStore(context) }
@@ -86,6 +88,28 @@ internal class TextLibraryRepository private constructor(
 
     suspend fun metadata(bookId: String): TextBookMetadata = withContext(Dispatchers.IO) { metadataStore.read(bookId) }
 
+    suspend fun renameContentsChapter(bookId: String, chapterId: String, title: String) = editContents(bookId) {
+        it.rename(chapterId, title)
+    }
+    suspend fun saveContentsMarker(bookId: String, fragmentId: String, offset: Int, title: String) = editContents(bookId) {
+        it.putMarker(fragmentId, offset, title)
+    }
+    suspend fun removeContentsMarker(bookId: String, fragmentId: String, offset: Int) = editContents(bookId) {
+        it.removeMarker(fragmentId, offset)
+    }
+    private suspend fun editContents(bookId: String, edit: (TextContentsEdits) -> TextContentsEdits): TextContentsEdits = mutations.withLock {
+        withContext(Dispatchers.IO) {
+            checkNotNull(dao.book(bookId))
+            require(metadataStore.read(bookId).format.equals("TXT", ignoreCase = true))
+            val chapters = dao.chapters(bookId)
+            val fragments = dao.allFragments(bookId)
+            val current = contentsStore.read(bookId).validate(chapters, fragments)
+            val updated = edit(current).validate(chapters, fragments)
+            contentsStore.save(bookId, updated)
+            updated
+        }
+    }
+
     fun observeBooks(): Flow<List<TextBookEntity>> = dao.observeBooks()
     suspend fun chapters(bookId: String): List<TextChapterEntity> = withContext(Dispatchers.IO) { dao.chapters(bookId) }
     suspend fun narrationFragment(bookId: String, fragmentId: String): TextFragmentEntity? = withContext(Dispatchers.IO) {
@@ -108,6 +132,38 @@ internal class TextLibraryRepository private constructor(
             val fragments = dao.allFragments(bookId).filter { it.text.isNotBlank() }
             val spokenChapters = fragments.mapTo(mutableSetOf()) { it.chapterId }
             TextNarrationBook(book, dao.chapters(bookId).filter { it.id in spokenChapters }, fragments, metadataStore.read(bookId))
+        }
+    }
+
+    suspend fun exportArchive(file: File): Int = mutations.withLock {
+        withContext(Dispatchers.IO) {
+            database.withTransaction {
+                val books = dao.allBooks()
+                file.outputStream().use { TextLibraryArchive(sourceFolder).write(it, books, dao) }
+                books.size
+            }
+        }
+    }
+
+    suspend fun restoreArchive(uri: Uri): Int = mutations.withLock {
+        withContext(Dispatchers.IO) {
+            val published = linkedMapOf<File, String>()
+            try {
+                val added = database.withTransaction {
+                    val input = checkNotNull(context.contentResolver.openInputStream(uri))
+                    input.use { TextLibraryArchive(sourceFolder).read(it, dao, published) }
+                }
+                metadataRevision.value += 1
+                added
+            } finally {
+                // A cancelled transaction may already have committed. Keep every asset
+                // referenced by Room, and discard only files belonging to rolled-back rows.
+                withContext(NonCancellable) {
+                    published.entries.groupBy { it.value }.forEach { (id, files) ->
+                        if (dao.book(id) == null) files.forEach { it.key.delete() }
+                    }
+                }
+            }
         }
     }
 
@@ -275,7 +331,8 @@ internal class TextLibraryRepository private constructor(
                     ?: TextReadingPositionEntity(bookId, fragments.first { it.chapterId == selected.id }.id, 0, System.currentTimeMillis())
                 dao.touch(bookId, System.currentTimeMillis())
                 activityStore.visit(bookId)
-                TextReadingSnapshot(book, chapters, selected, fragments, restored, metadataStore.read(bookId))
+                TextReadingSnapshot(book, chapters, selected, fragments, restored, metadataStore.read(bookId),
+                    contents = contentsStore.read(bookId).validate(chapters, fragments))
             }
         }
     }
@@ -317,6 +374,7 @@ internal class TextLibraryRepository private constructor(
                 dao.delete(bookId)
                 activityStore.remove(bookId)
                 metadataStore.remove(bookId)
+                contentsStore.remove(bookId)
             }
         }
     }

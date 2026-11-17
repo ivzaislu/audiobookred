@@ -57,6 +57,8 @@ internal data class TextReadingPositionEntity(
 internal interface TextLibraryDao {
     @Query("SELECT * FROM text_books ORDER BY lastOpenedAtMs DESC, importedAtMs DESC, id")
     fun observeBooks(): Flow<List<TextBookEntity>>
+    @Query("SELECT * FROM text_books ORDER BY id")
+    suspend fun allBooks(): List<TextBookEntity>
     @Query("SELECT * FROM text_books WHERE id = :id") suspend fun book(id: String): TextBookEntity?
     @Query("SELECT * FROM text_chapters WHERE bookId = :bookId ORDER BY ordinal")
     suspend fun chapters(bookId: String): List<TextChapterEntity>

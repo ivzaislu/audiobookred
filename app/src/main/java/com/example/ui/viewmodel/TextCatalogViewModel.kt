@@ -20,6 +20,7 @@ import com.example.data.textsource.RemoteTextBookRepository
 import com.example.data.textsource.RemoteTextDownload
 import com.example.data.textsource.RemoteTextPage
 import com.example.data.textsource.RemoteTextSourceInfo
+import com.example.data.textsource.recordTextSourceFailure
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -40,6 +41,7 @@ internal data class TextCatalogState(
     val book: RemoteTextBook? = null,
     val loading: Boolean = false,
     val importing: Boolean = false,
+    val importFailed: Boolean = false,
     val sourceCode: String = "",
     val sourceName: String = "",
     val sources: List<RemoteTextSourceInfo> = emptyList(),
@@ -77,6 +79,7 @@ internal class TextCatalogViewModel @Inject constructor(
     private var transferJob: Job? = null
     private var request = 0L
     private var transferGeneration = 0L
+    private var lastImportOption: RemoteTextDownload? = null
 
     init {
         load()
@@ -90,8 +93,9 @@ internal class TextCatalogViewModel @Inject constructor(
                     if (generation == request) mutableState.update { it.copy(localBookId = local) }
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Exception) {
+                    recordTextSourceFailure(error, "book")
                     if (generation == request) mutableState.update {
-                        it.copy(error = error.message ?: "Не удалось проверить наличие книги в библиотеке.")
+                        it.copy(error = textCatalogError(error, TextCatalogOperation.LIBRARY))
                     }
                 }
             }
@@ -157,7 +161,8 @@ internal class TextCatalogViewModel @Inject constructor(
         val book = state.value.book ?: return
         if (state.value.busy || state.value.loading) return
         val sourceCode = state.value.sourceCode
-        mutableState.update { it.copy(importing = true, error = null, notice = null) }
+        lastImportOption = option
+        mutableState.update { it.copy(importing = true, importFailed = false, error = null, notice = null) }
         val generation = request
         val transfer = ++transferGeneration
         transferJob = viewModelScope.launch {
@@ -168,18 +173,22 @@ internal class TextCatalogViewModel @Inject constructor(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
-                android.util.Log.w("AbredTextImport", "Import failed source=$sourceCode book=${book.id} format=${option?.code ?: "default"}", error)
-                if (request == generation && transferGeneration == transfer) mutableState.update { it.copy(error = error.message ?: "Не удалось добавить книгу.") }
+                recordTextSourceFailure(error, "book")
+                if (request == generation && transferGeneration == transfer) mutableState.update {
+                    it.copy(error = textCatalogError(error, TextCatalogOperation.IMPORT), importFailed = true)
+                }
             } finally {
                 if (transferGeneration == transfer) mutableState.update { it.copy(importing = false) }
             }
         }
     }
 
+    fun retryImport() { if (state.value.importFailed) importBook(lastImportOption) }
+
     fun cancelImport() {
         transferGeneration++
         transferJob?.cancel()
-        mutableState.update { it.copy(importing = false) }
+        mutableState.update { it.copy(importing = false, importFailed = false) }
     }
     private fun navigate(destination: TextCatalogDestination) {
         if (state.value.busy) return
@@ -222,6 +231,7 @@ internal class TextCatalogViewModel @Inject constructor(
         savedState["textSource"] = source.code
         val generation = ++request
         job?.cancel()
+        lastImportOption = null
         mutableState.value = TextCatalogState(loading = destination.bookId != null, canGoBack = history.size > 1,
             destinationKey = destination.key, query = destination.query, isBookDestination = destination.bookId != null,
             navigationKeys = history.map { it.key }.distinct(),
@@ -239,7 +249,10 @@ internal class TextCatalogViewModel @Inject constructor(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
-                if (generation == request) mutableState.update { it.copy(loading = false, error = error.message ?: "Источник недоступен.") }
+                recordTextSourceFailure(error, "book")
+                if (generation == request) mutableState.update {
+                    it.copy(loading = false, error = textCatalogError(error, TextCatalogOperation.BOOK))
+                }
             }
         }
     }

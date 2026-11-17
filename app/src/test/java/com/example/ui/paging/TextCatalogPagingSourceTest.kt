@@ -91,6 +91,27 @@ class TextCatalogPagingSourceTest {
         try { firstPage(source); fail("Cancellation swallowed") } catch (_: CancellationException) { }
     }
 
+    @Test fun failedAppendKeepsItsCauseAndSafeMessageAndRetriesTheSamePage() = runBlocking {
+        var failNext = true
+        val failure = java.net.UnknownHostException("secret.internal")
+        val provider = source(emptyMap()) { url ->
+            if (url == first) RemoteTextPage("Каталог", listOf(book("1")), second)
+            else {
+                if (failNext) { failNext = false; throw failure }
+                RemoteTextPage("Каталог", listOf(book("2")), null)
+            }
+        }
+        val paging = TextCatalogPagingSource(provider, first)
+        val firstResult = firstPage(paging)
+        val error = paging.load(PagingSource.LoadParams.Append(key = second, loadSize = 20, placeholdersEnabled = false))
+            as PagingSource.LoadResult.Error<String, BookCardDto>
+        assertSame(failure, error.throwable.cause)
+        assertFalse(error.throwable.message.orEmpty().contains("secret.internal"))
+        assertTrue(error.throwable.message.orEmpty().contains("интернет-соединение"))
+        assertEquals(listOf("1"), firstResult.data.map { it.id })
+        assertEquals(listOf("2"), append(paging, second).data.map { it.id })
+    }
+
     @Test fun cardKeepsProviderIdentityAndFractionalSeriesNumber() {
         val card = book("1465").copy(authors = listOf(TextSourceLink("a", "Автор", "https://books.test/author")),
             series = TextSourceLink("cycle", "Цикл", "https://books.test/cycle"), seriesNumber = "1,5").catalogCard("test")

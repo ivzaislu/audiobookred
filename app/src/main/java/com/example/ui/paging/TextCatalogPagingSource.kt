@@ -8,6 +8,8 @@ import com.example.data.model.SeriesBriefDto
 import com.example.data.textsource.RemoteTextBook
 import com.example.data.textsource.RemoteTextBookProvider
 import com.example.data.textsource.RemoteTextPage
+import com.example.data.textsource.recordTextSourceFailure
+import com.example.ui.viewmodel.TextCatalogLoadException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -65,6 +67,9 @@ internal class TextCatalogPagingSource(
             if (url == firstUrl) onFirstPage(page)
             result
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { LoadResult.Error(error) }
+        catch (error: Exception) {
+            recordTextSourceFailure(error, "catalog")
+            LoadResult.Error(TextCatalogLoadException(error))
+        }
     }
 }
